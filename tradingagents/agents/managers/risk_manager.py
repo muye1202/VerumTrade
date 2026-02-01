@@ -25,7 +25,29 @@ def create_risk_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Risky, Neutral, and Safe/Conservative—and determine the best course of action for the trader. Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
+        # NOTE: add in current state of user's portfolio
+        portfolio_context = state.get("portfolio_context", "")
+        portfolio_block = ""
+        if portfolio_context:
+            portfolio_block = f"""
+
+---
+**CURRENT PORTFOLIO STATE (from live brokerage):**
+{portfolio_context}
+
+CRITICAL PORTFOLIO RULES:
+1. If the portfolio shows ZERO shares, SELL is NOT valid. Choose BUY or HOLD only.
+2. If there is an existing position, factor in unrealized P&L when deciding.
+3. Size the recommendation relative to available cash and concentration limits.
+4. Do not recommend adding to a position exceeding 20% of portfolio value.
+---
+"""
+
+        prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Risky, Neutral, and Safe/Conservative—and determine the best course of action for the trader. 
+Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
+
+CRITICAL: Your decision must be PORTFOLIO-AWARE and result in a clear, actionable recommendation.
+{portfolio_block}
 
 Guidelines for Decision-Making:
 1. **Summarize Key Arguments**: Extract the strongest points from each analyst, focusing on relevance to the context.
@@ -44,7 +66,25 @@ Deliverables:
 
 ---
 
-Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes."""
+Focus on actionable insights and continuous improvement.
+
+YOUR OUTPUT MUST END WITH a structured decision:
+
+---
+FINAL TRADING DECISION:
+- ACTION: BUY / SELL / HOLD
+- TICKER: [symbol]
+- QUANTITY: [shares based on portfolio cash/buying power, or "N/A" for HOLD]
+- ORDER_TYPE: MARKET / LIMIT
+- LIMIT_PRICE: [target price if LIMIT, otherwise "N/A"]
+- STOP_LOSS: [stop-loss price or "N/A"]
+- TAKE_PROFIT: [profit target or "N/A"]
+- POSITION_SIZE_PCT: [% of portfolio]
+- TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks"]
+- CONFIDENCE: HIGH / MEDIUM / LOW
+- RATIONALE: [2-3 sentence summary]
+---
+"""
 
         response = invoke_with_backoff(
             llm,

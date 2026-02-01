@@ -24,6 +24,7 @@ from rich import box
 from rich.align import Align
 from rich.rule import Rule
 
+from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.agents.discovery.stock_screener import create_discovery_agent
 from tradingagents.graph.batch_analysis import BatchAnalyzer
 from tradingagents.execution import AlpacaExecutor
@@ -993,9 +994,14 @@ def run_analysis():
 
         # Initialize state and get graph args
         init_agent_state = graph.propagator.create_initial_state(
-            selections["ticker"], selections["analysis_date"]
+            selections["ticker"], selections["analysis_date"],
+            portfolio_context=portfolio_ctx,
         )
         args = graph.propagator.get_graph_args()
+
+        # Fetch live portfolio state for agent awareness
+        portfolio_ctx = fetch_portfolio_context(selections["ticker"])
+        message_buffer.add_message("System", f"Portfolio context loaded for {selections['ticker']}")
 
         # Stream the analysis
         trace = []
@@ -1320,6 +1326,9 @@ def run_analysis():
 
         # Get final state and decision
         if final_state:
+            structured = graph.extract_structured_decision(
+                final_state["final_trade_decision"]
+            )
             decision = graph.process_signal(final_state["final_trade_decision"])
 
             # Execute trade if executor is configured
@@ -1334,7 +1343,9 @@ def run_analysis():
                         ticker=selections["ticker"],
                         signal=decision,
                         analysis_state=final_state,
-                        trade_date=selections["analysis_date"]
+                        trade_date=selections["analysis_date"],
+                        agent_quantity=structured.get("quantity"),
+                        agent_limit_price=structured.get("limit_price"),
                     )
 
                     # Display execution results
@@ -1343,7 +1354,7 @@ def run_analysis():
                         exec_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
                         exec_table.add_column("Field", style="cyan")
                         exec_table.add_column("Value", style="white")
-                        
+
                         exec_table.add_row("Action", f"[bold green]{execution_result['side']}[/bold green]")
                         exec_table.add_row("Quantity", f"{execution_result['qty']} shares")
                         exec_table.add_row("Price", f"${execution_result['price']:.2f}")

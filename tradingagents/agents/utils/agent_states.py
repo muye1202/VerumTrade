@@ -78,3 +78,6 @@ class AgentState(MessagesState):
     # Tool-call guardrails (prevents infinite tool loops hitting LangGraph recursion limit)
     tool_call_counts: Annotated[dict, "Tool-call cycles per analyst (e.g., market/social/news/fundamentals)"]
     tool_call_total: Annotated[int, "Total number of tool-call cycles across analysts"]
+
+    # Portfolio awareness (injected at graph init from brokerage API)
+    portfolio_context: Annotated[str, "Current portfolio state from brokerage (positions, cash, buying power)"]

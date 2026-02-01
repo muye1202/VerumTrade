@@ -239,7 +239,9 @@ class AlpacaExecutor:
         ticker: str,
         signal: str,
         analysis_state: Optional[Dict[str, Any]] = None,
-        trade_date: Optional[str] = None
+        trade_date: Optional[str] = None,
+        agent_quantity: Optional[int] = None,
+        agent_limit_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Execute a trading signal from TradingAgents.
@@ -273,7 +275,11 @@ class AlpacaExecutor:
 
         try:
             if signal == "BUY":
-                result.update(self._execute_buy(ticker, current_position, account))
+                result.update(self._execute_buy(
+                    ticker, current_position, account,
+                    agent_quantity=agent_quantity,
+                    agent_limit_price=agent_limit_price,
+                ))
             elif signal == "SELL":
                 result.update(self._execute_sell(ticker, current_position, account))
             elif signal == "HOLD":
@@ -297,7 +303,9 @@ class AlpacaExecutor:
         self,
         ticker: str,
         current_position: Optional[Dict],
-        account: Any
+        account: Any,
+        agent_quantity: Optional[int] = None,
+        agent_limit_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute BUY signal."""
         # Check if we already have a position
@@ -327,8 +335,16 @@ class AlpacaExecutor:
         if not current_price:
             return {"executed": False, "error": "Quote missing ask/bid price"}
 
-        # Calculate shares to buy
-        qty = int(target_value / current_price)
+        # Use agent-specified quantity if provided, otherwise calculate
+        if agent_quantity and agent_quantity > 0:
+            max_affordable = int(cash_available / current_price)
+            qty = min(agent_quantity, max_affordable)
+            self.logger.info(
+                f"{ticker}: Agent requested {agent_quantity} shares, "
+                f"capped to {qty} by available cash ${cash_available:,.2f}"
+            )
+        else:
+            qty = int(target_value / current_price)
 
         if qty <= 0:
             self.logger.warning(f"{ticker}: Insufficient funds for BUY")

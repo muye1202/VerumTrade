@@ -11,6 +11,7 @@ def create_trader(llm, memory):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        portfolio_context = state.get("portfolio_context", "")
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -22,15 +23,57 @@ def create_trader(llm, memory):
         else:
             past_memory_str = "No past memories found."
 
+        # Build portfolio awareness block
+        portfolio_block = ""
+        if portfolio_context:
+            portfolio_block = f"""
+
+CRITICAL — CURRENT PORTFOLIO STATE:
+{portfolio_context}
+
+You MUST factor in the portfolio state above when making your decision:
+- If you hold ZERO shares, do NOT recommend SELL (there is nothing to sell).
+- If you already hold a large position, consider whether adding more increases concentration risk.
+- Size your recommendation relative to available cash and buying power.
+"""
+
         context = {
             "role": "user",
-            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nLeverage these insights to make an informed and strategic decision.",
+            "content": f"""Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment.
+
+Proposed Investment Plan: {investment_plan}
+{portfolio_block}
+Leverage these insights to make an informed and strategic decision.""",
         }
 
         messages = [
             {
                 "role": "system",
-                "content": f"""You are a trading agent analyzing market data to make investment decisions. Based on your analysis, provide a specific recommendation to buy, sell, or hold. End with a firm decision and always conclude your response with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' to confirm your recommendation. Do not forget to utilize lessons from past decisions to learn from your mistakes. Here is some reflections from similar situatiosn you traded in and the lessons learned: {past_memory_str}""",
+                "content": f"""You are a professional trading agent analyzing market data to make investment decisions. You must produce a PORTFOLIO-AWARE recommendation.
+
+Based on your analysis, provide a specific, actionable recommendation. Do not forget to utilize lessons from past decisions. Here are reflections from similar situations: {past_memory_str}
+
+YOUR OUTPUT MUST END WITH A STRUCTURED TRADING DECISION in exactly this format:
+
+---
+FINAL TRANSACTION PROPOSAL:
+- ACTION: BUY / SELL / HOLD
+- TICKER: {company_name}
+- QUANTITY: [number of shares, or "N/A" for HOLD]
+- ORDER_TYPE: MARKET / LIMIT
+- LIMIT_PRICE: [price if LIMIT, or "N/A"]
+- STOP_LOSS: [price, or "N/A"]
+- TAKE_PROFIT: [price target, or "N/A"]
+- TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks", "swing trade"]
+- CONFIDENCE: HIGH / MEDIUM / LOW
+- RATIONALE: [one-sentence summary]
+---
+
+IMPORTANT RULES:
+- If you have ZERO position and the analysis is bearish, recommend HOLD (pass), NOT SELL.
+- SELL is only valid if you currently hold shares.
+- Size your QUANTITY based on available cash/buying power (suggest 5-15% of portfolio for medium confidence, up to 20% for high confidence).
+- Always specify concrete numbers, not vague suggestions.""",
             },
             context,
         ]

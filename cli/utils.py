@@ -129,8 +129,8 @@ def select_shallow_thinking_agent(provider) -> str:
     SHALLOW_AGENT_OPTIONS = {
         "qwen3-cn": [
             ("Qwen-Plus (Latest)", "qwen-plus-latest"),
-            ("Qwen-Plus (2025-12-01)", "qwen-plus-2025-12-01"),
-            ("Qwen-Plus (2025-09-11)", "qwen-plus-2025-09-11"),
+            ("Qwen-Plus (2025-07-28)", "qwen-plus-2025-07-28"),
+            ("Qwen-Plus (2025-07-14)", "qwen-plus-2025-07-14"),
             ("Qwen3-32B - Strong general model", "qwen3-32b"),
             ("Qwen-Flash (2025-07-28) - Versioned fast model", "qwen-flash-2025-07-28"),
             ("Qwen-Turbo cost-effective faster model", "qwen-turbo"),

@@ -18,6 +18,7 @@ from tradingagents.execution import AlpacaExecutor
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import FinancialSituationMemory
+from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
@@ -394,27 +395,22 @@ class TradingAgentsGraph:
             ),
         }
 
+    def extract_structured_decision(self, full_signal: str) -> dict:
+        """Extract structured trading decision from signal text."""
+        return self.signal_processor.extract_structured_decision(full_signal)
+
     def propagate_and_execute(
         self,
         company_name: str,
         trade_date: str,
         executor: Optional[AlpacaExecutor] = None,
-        execute: bool = False
+        execute: bool = False,
+        portfolio_context: str = None,
     ):
-        """
-        Run the trading agents graph and optionally execute the signal.
-
-        Args:
-            company_name: Ticker symbol to analyze
-            trade_date: Date for analysis
-            executor: AlpacaExecutor instance (required if execute=True)
-            execute: Whether to execute the signal via Alpaca
-
-        Returns:
-            Tuple of (final_state, decision, execution_result)
-        """
-        # Run normal propagation
-        final_state, decision = self.propagate(company_name, trade_date)
+        # Run normal propagation with portfolio awareness
+        final_state, decision = self.propagate(
+            company_name, trade_date, portfolio_context=portfolio_context
+        )
 
         execution_result = None
 
@@ -432,15 +428,18 @@ class TradingAgentsGraph:
 
         return final_state, decision, execution_result
 
-    def propagate(self, company_name, trade_date):
+    def propagate(self, company_name, trade_date, portfolio_context: str = None):
         """Run the trading agents graph for a company on a specific date."""
-
         self.ticker = company_name
 
-        # Initialize state
+        # Fetch portfolio context from brokerage if not provided
+        if portfolio_context is None:
+            portfolio_context = fetch_portfolio_context(company_name)
+
         init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date
+            company_name, trade_date, portfolio_context=portfolio_context
         )
+
         args = self.propagator.get_graph_args()
 
         if self.debug:
