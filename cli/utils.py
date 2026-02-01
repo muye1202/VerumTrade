@@ -137,6 +137,9 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Qwen-Flash (2025-07-28) - Versioned fast model", "qwen-flash-2025-07-28"),
             ("Qwen3-30B-A3B Thinking (2507) - Reasoning-tuned variant", "qwen3-30b-a3b-thinking-2507"),
         ],
+        "deepseek": [
+            ("DeepSeek Chat", "deepseek-chat"),
+        ],
         "openai": [
             ("Gemini-3-Flash", "gemini-3-flash"),
             ("Gemini-2.5-Flash", "gemini-2.5-flash"),
@@ -180,6 +183,9 @@ def select_deep_thinking_agent(provider) -> str:
             ("Qwen3-235B-A22B - Large MoE model", "qwen3-235b-a22b"),
             ("Qwen3-235B-A22B Thinking (2507) - Reasoning-tuned variant", "qwen3-235b-a22b-thinking-2507"),
         ],
+        "deepseek": [
+            ("DeepSeek Reasoner", "deepseek-reasoner"),
+        ],
         "openai": [
             ("Gemini-3-Pro-Low", "gemini-3-pro-low"),
             ("Gemini-3-Pro-High", "gemini-3-pro-high"),
@@ -219,6 +225,7 @@ def select_llm_provider() -> tuple[str, str]:
     BASE_URLS = [
         ("Google", "openai", "http://192.168.123.81:8045/v1"),   # NOTE: Hankun's Antigravity Tool
         ("Qwen3-CN (DashScope)", "qwen3-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
     ]
 
     choice = questionary.select(

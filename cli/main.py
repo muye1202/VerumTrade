@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 import datetime
 import typer
@@ -18,15 +19,15 @@ from rich.text import Text
 from rich.live import Live
 from rich.table import Table
 from collections import deque
-import time
-from rich.tree import Tree
 from rich import box
 from rich.align import Align
 from rich.rule import Rule
 
+from tradingagents.agents.discovery.stock_screener import create_discovery_agent
+from tradingagents.graph.batch_analysis import BatchAnalyzer
+from tradingagents.execution import AlpacaExecutor
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
-from cli.models import AnalystType
 from cli.utils import *
 
 console = Console()
@@ -172,6 +173,112 @@ class MessageBuffer:
 
 
 message_buffer = MessageBuffer()
+
+def _validate_pct_text(val: str) -> bool | str:
+    s = (val or "").strip()
+    try:
+        pct = float(s)
+    except Exception:
+        return "Must be a number"
+    if pct <= 0 or pct > 100:
+        return "Must be between 0 and 100"
+    return True
+
+
+def select_execution_settings() -> dict:
+    """Select optional execution settings shown on the main (pre-run) page."""
+    choice = questionary.select(
+        "Select [Execution Mode]:",
+        choices=[
+            questionary.Choice("Analysis only (no trade execution)", value="none"),
+            questionary.Choice("Alpaca paper trading (execute BUY/SELL signals)", value="alpaca_paper"),
+        ],
+        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+        style=questionary.Style(
+            [
+                ("selected", "fg:yellow noinherit"),
+                ("highlighted", "fg:yellow noinherit"),
+                ("pointer", "fg:yellow noinherit"),
+            ]
+        ),
+    ).ask()
+
+    if choice is None:
+        console.print("\n[red]No execution mode selected. Exiting...[/red]")
+        raise typer.Exit(code=1)
+
+    if choice == "none":
+        return {"enabled": False}
+
+    position_pct = questionary.text(
+        "Position size as % of portfolio (default 10%):",
+        default="10",
+        validate=_validate_pct_text,
+    ).ask()
+    position_size_pct = float(position_pct) / 100.0
+
+    order_type = questionary.select(
+        "Order type:",
+        choices=[
+            questionary.Choice("Market", value="market"),
+            questionary.Choice("Limit (uses a small offset)", value="limit"),
+        ],
+        default="market",
+        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+        style=questionary.Style(
+            [
+                ("selected", "fg:yellow noinherit"),
+                ("highlighted", "fg:yellow noinherit"),
+                ("pointer", "fg:yellow noinherit"),
+            ]
+        ),
+    ).ask()
+
+    return {
+        "enabled": True,
+        "provider": "alpaca",
+        "paper": True,
+        "position_size_pct": position_size_pct,
+        "order_type": order_type or "market",
+    }
+
+
+def setup_executor(execution_settings: dict, log_dir: Optional[Path] = None) -> Optional[AlpacaExecutor]:
+    """Setup optional trade executor based on pre-run selections."""
+    if not execution_settings or not execution_settings.get("enabled"):
+        return None
+
+    if execution_settings.get("provider") != "alpaca":
+        return None
+
+    console.print("\n[yellow]Setting up Alpaca executor...[/yellow]")
+
+    has_creds = (
+        (os.getenv("APCA_API_KEY_ID") and os.getenv("APCA_API_SECRET_KEY"))
+        or (os.getenv("ALPACA_API_KEY") and os.getenv("ALPACA_SECRET_KEY"))
+    )
+    if not has_creds:
+        console.print("[yellow]WARNING: Alpaca credentials not found; continuing without execution.[/yellow]")
+        console.print("Set APCA_API_KEY_ID + APCA_API_SECRET_KEY (or ALPACA_API_KEY + ALPACA_SECRET_KEY).")
+        return None
+
+    try:
+        executor = AlpacaExecutor(
+            paper=bool(execution_settings.get("paper", True)),
+            position_size_pct=float(execution_settings.get("position_size_pct", 0.10)),
+            order_type=str(execution_settings.get("order_type", "market")),
+            log_dir=str(log_dir) if log_dir else None,
+        )
+
+        summary = executor.get_portfolio_summary()
+        console.print(f"\n[green]Portfolio Value: ${summary['account_value']:,.2f}[/green]")
+        console.print(f"[green]Cash Available: ${summary['cash']:,.2f}[/green]")
+        console.print(f"[green]Open Positions: {summary['positions_count']}[/green]\n")
+
+        return executor
+    except Exception as e:
+        console.print(f"[yellow]WARNING: Failed to set up Alpaca executor ({e}); continuing without execution.[/yellow]")
+        return None
 
 
 def create_layout():
@@ -484,6 +591,16 @@ def get_user_selections():
     selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider)
     selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
 
+    # Step 7: Optional execution
+    console.print(
+        create_question_box(
+            "Step 7: Execution",
+            "Optionally execute the final BUY/SELL signal (paper trading).",
+            "Analysis only",
+        )
+    )
+    execution_settings = select_execution_settings()
+
     return {
         "ticker": selected_ticker,
         "analysis_date": analysis_date,
@@ -493,6 +610,7 @@ def get_user_selections():
         "backend_url": backend_url,
         "shallow_thinker": selected_shallow_thinker,
         "deep_thinker": selected_deep_thinker,
+        "execution": execution_settings,
     }
 
 
@@ -750,6 +868,17 @@ def run_analysis():
     config["backend_url"] = selections["backend_url"]
     config["llm_provider"] = selections["llm_provider"].lower()
 
+    # Persist execution preferences into config (graph/other components may read this).
+    if "alpaca_execution" in config:
+        exec_sel = selections.get("execution") or {}
+        config["alpaca_execution"] = {
+            **config.get("alpaca_execution", {}),
+            "enabled": bool(exec_sel.get("enabled", False)),
+            "paper_trading": bool(exec_sel.get("paper", True)),
+            "position_size_pct": float(exec_sel.get("position_size_pct", config.get("alpaca_execution", {}).get("position_size_pct", 0.10) or 0.10)),
+            "order_type": str(exec_sel.get("order_type", config.get("alpaca_execution", {}).get("order_type", "market"))),
+        }
+
     # Initialize the graph
     graph = TradingAgentsGraph(
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
@@ -762,6 +891,10 @@ def run_analysis():
     report_dir.mkdir(parents=True, exist_ok=True)
     log_file = results_dir / "message_tool.log"
     log_file.touch(exist_ok=True)
+
+    # Add Alpaca executor (logs next to run results)
+    execution_log_dir = results_dir / "execution_logs"
+    executor = setup_executor(selections.get("execution", {}), log_dir=execution_log_dir)
 
     def save_message_decorator(obj, func_name):
         func = getattr(obj, func_name)
@@ -850,6 +983,7 @@ def run_analysis():
 
         # Stream the analysis
         trace = []
+        final_state = None
         for chunk in graph.graph.stream(init_agent_state, **args):
             if len(chunk["messages"]) > 0:
                 # Get the last message from the chunk
@@ -1079,8 +1213,95 @@ def run_analysis():
                 update_display(layout)
 
             trace.append(chunk)
+            final_state = chunk
 
         # Get final state and decision
+        if final_state:
+            decision = graph.process_signal(final_state["final_trade_decision"])
+
+            # Execute trade if executor is configured
+            if executor:
+                try:
+                    console.print("\n")
+                    console.print(Rule("[bold yellow]Executing Trade[/bold yellow]"))
+                    console.print()
+
+                    # Execute the signal
+                    execution_result = executor.execute_signal(
+                        ticker=selections["ticker"],
+                        signal=decision,
+                        analysis_state=final_state,
+                        trade_date=selections["analysis_date"]
+                    )
+
+                    # Display execution results
+                    if execution_result.get("executed"):
+                        # Successful execution
+                        exec_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
+                        exec_table.add_column("Field", style="cyan")
+                        exec_table.add_column("Value", style="white")
+
+                        exec_table.add_row("Action", f"[bold green]{execution_result['side']}[/bold green]")
+                        exec_table.add_row("Quantity", f"{execution_result['qty']} shares")
+                        exec_table.add_row("Price", f"${execution_result['price']:.2f}")
+                        exec_table.add_row("Total Value", f"${execution_result['qty'] * execution_result['price']:,.2f}")
+
+                        if execution_result.get('order'):
+                            exec_table.add_row("Order ID", execution_result['order']['id'][:8] + "...")
+                            exec_table.add_row("Status", execution_result['order']['status'])
+
+                        console.print(Panel(
+                            exec_table,
+                            title="[bold green]✓ Trade Executed Successfully[/bold green]",
+                            border_style="green",
+                            padding=(1, 2)
+                        ))
+
+                        # Show updated portfolio
+                        summary = executor.get_portfolio_summary()
+                        portfolio_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
+                        portfolio_table.add_column("Metric", style="cyan")
+                        portfolio_table.add_column("Value", style="green")
+
+                        portfolio_table.add_row("Portfolio Value", f"${summary['account_value']:,.2f}")
+                        portfolio_table.add_row("Cash", f"${summary['cash']:,.2f}")
+                        portfolio_table.add_row("Positions", str(summary['positions_count']))
+
+                        console.print(Panel(
+                            portfolio_table,
+                            title="Updated Portfolio",
+                            border_style="cyan",
+                            padding=(1, 2)
+                        ))
+
+                    else:
+                        # Trade not executed (HOLD or error)
+                        message = execution_result.get('message', 'No action taken')
+                        error = execution_result.get('error')
+
+                        if error:
+                            console.print(Panel(
+                                f"[red]{error}[/red]",
+                                title="[bold red]Execution Error[/bold red]",
+                                border_style="red",
+                                padding=(1, 2)
+                            ))
+                        else:
+                            console.print(Panel(
+                                f"[yellow]{message}[/yellow]",
+                                title="[bold yellow]No Trade Executed[/bold yellow]",
+                                border_style="yellow",
+                                padding=(1, 2)
+                            ))
+
+                except Exception as e:
+                    console.print(Panel(
+                        f"[red]Execution failed: {str(e)}[/red]",
+                        title="[bold red]Execution Error[/bold red]",
+                        border_style="red",
+                        padding=(1, 2)
+                    ))
+
         final_state = trace[-1]
         decision = graph.process_signal(final_state["final_trade_decision"])
 

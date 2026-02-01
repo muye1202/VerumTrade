@@ -3,6 +3,7 @@ langchain-openai
 langchain-experimental
 pandas
 yfinance
+alpaca-py
 praw
 feedparser
 stockstats

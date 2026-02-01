@@ -200,7 +200,8 @@ def _get_stock_stats_bulk(
     import os
     
     config = get_config()
-    online = config["data_vendors"]["technical_indicators"] != "local"
+    vendor = config["data_vendors"]["technical_indicators"]
+    online = vendor != "local"
     
     if not online:
         # Local data path
@@ -226,24 +227,49 @@ def _get_stock_stats_bulk(
         
         os.makedirs(config["data_cache_dir"], exist_ok=True)
         
+        cache_prefix = "YFin" if vendor != "alpaca" else "Alpaca"
         data_file = os.path.join(
             config["data_cache_dir"],
-            f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
+            f"{symbol}-{cache_prefix}-data-{start_date_str}-{end_date_str}.csv",
         )
         
         if os.path.exists(data_file):
             data = pd.read_csv(data_file)
             data["Date"] = pd.to_datetime(data["Date"])
         else:
-            data = yf.download(
-                symbol,
-                start=start_date_str,
-                end=end_date_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
-            )
-            data = data.reset_index()
+            if vendor == "alpaca":
+                from .alpaca import AlpacaConnectionError, fetch_stock_bars_df_alpaca
+
+                try:
+                    bars_df = fetch_stock_bars_df_alpaca(symbol, start_date_str, end_date_str)
+                except AlpacaConnectionError as e:
+                    print(f"WARNING: Alpaca indicator data unavailable ({e}); falling back to yfinance")
+                    bars_df = None
+
+                if bars_df is None or getattr(bars_df, "empty", False):
+                    data = yf.download(
+                        symbol,
+                        start=start_date_str,
+                        end=end_date_str,
+                        multi_level_index=False,
+                        progress=False,
+                        auto_adjust=True,
+                    )
+                    data = data.reset_index()
+                else:
+                    data = bars_df.reset_index()
+                    data["Date"] = pd.to_datetime(data["Date"])
+            else:
+                data = yf.download(
+                    symbol,
+                    start=start_date_str,
+                    end=end_date_str,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                data = data.reset_index()
+
             data.to_csv(data_file, index=False)
         
         df = wrap(data)

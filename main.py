@@ -12,10 +12,10 @@ config["deep_think_llm"] = "gpt-4o-mini"  # Use a different model
 config["quick_think_llm"] = "gpt-4o-mini"  # Use a different model
 config["max_debate_rounds"] = 1  # Increase debate rounds
 
-# Configure data vendors (default uses yfinance and alpha_vantage)
+# Configure data vendors (default prefers alpaca, with fallback to yfinance/etc.)
 config["data_vendors"] = {
-    "core_stock_apis": "yfinance",           # Options: yfinance, alpha_vantage, local
-    "technical_indicators": "yfinance",      # Options: yfinance, alpha_vantage, local
+    "core_stock_apis": "alpaca",             # Options: alpaca, yfinance, alpha_vantage, local
+    "technical_indicators": "alpaca",        # Options: alpaca, yfinance, alpha_vantage, local
     "fundamental_data": "alpha_vantage",     # Options: openai, alpha_vantage, local
     "news_data": "alpha_vantage",            # Options: openai, alpha_vantage, google, local
 }

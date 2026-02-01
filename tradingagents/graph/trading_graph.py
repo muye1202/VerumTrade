@@ -13,6 +13,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langgraph.prebuilt import ToolNode
 
+from typing import Optional
+from tradingagents.execution import AlpacaExecutor
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import FinancialSituationMemory
@@ -99,6 +101,29 @@ class StreamCompatibleChatOpenAI(ChatOpenAI):
         return response_dict
 
 
+class DeepSeekCompatibleChatOpenAI(ChatOpenAI):
+    """Sanitize DeepSeek-specific fields (e.g., reasoning_content) for older langchain_openai parsers."""
+
+    def _create_chat_result(self, response, generation_info=None):
+        # Convert to a plain dict so we can safely mutate before LangChain parses it.
+        response_dict = None
+        if isinstance(response, dict):
+            response_dict = response
+        else:
+            try:
+                response_dict = response.model_dump()
+            except Exception:
+                response_dict = None
+
+        if response_dict and isinstance(response_dict, dict):
+            for choice in response_dict.get("choices", []) or []:
+                msg = choice.get("message") or {}
+                # DeepSeek can include reasoning_content alongside content.
+                if isinstance(msg, dict) and "reasoning_content" in msg:
+                    msg.pop("reasoning_content", None)
+        return super()._create_chat_result(response_dict or response, generation_info=generation_info)
+
+
 class TradingAgentsGraph:
     """Main class that orchestrates the trading agents framework."""
 
@@ -128,10 +153,12 @@ class TradingAgentsGraph:
         )
 
         # Initialize LLMs
-        if self.config["llm_provider"].lower() in {"openai", "ollama", "openrouter", "qwen3-cn"}:
+        if self.config["llm_provider"].lower() in {"openai", "ollama", "openrouter", "qwen3-cn", "deepseek"}:
             openai_kwargs = {"base_url": self.config["backend_url"]}
             if self.config["llm_provider"].lower() == "qwen3-cn":
                 openai_kwargs["api_key"] = os.getenv("DASHSCOPE_API_KEY")
+            if self.config["llm_provider"].lower() == "deepseek":
+                openai_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
 
             # Provider-specific parameters for OpenAI-compatible backends.
             # DashScope supports "enable_thinking" (reasoning mode) for select Qwen models.
@@ -222,7 +249,12 @@ class TradingAgentsGraph:
                 )
             )
 
-            ChatLLM = StreamCompatibleChatOpenAI if self.config["llm_provider"].lower() == "qwen3-cn" else ChatOpenAI
+            if self.config["llm_provider"].lower() == "qwen3-cn":
+                ChatLLM = StreamCompatibleChatOpenAI
+            elif self.config["llm_provider"].lower() == "deepseek":
+                ChatLLM = DeepSeekCompatibleChatOpenAI
+            else:
+                ChatLLM = ChatOpenAI
             self.deep_thinking_llm = ChatLLM(
                 model=self.config["deep_think_llm"],
                 **_with_streaming(_with_extra_params(openai_kwargs.copy(), qwen_extra), deep_streaming),
@@ -350,6 +382,44 @@ class TradingAgentsGraph:
                 ]
             ),
         }
+
+    def propagate_and_execute(
+        self,
+        company_name: str,
+        trade_date: str,
+        executor: Optional[AlpacaExecutor] = None,
+        execute: bool = False
+    ):
+        """
+        Run the trading agents graph and optionally execute the signal.
+
+        Args:
+            company_name: Ticker symbol to analyze
+            trade_date: Date for analysis
+            executor: AlpacaExecutor instance (required if execute=True)
+            execute: Whether to execute the signal via Alpaca
+
+        Returns:
+            Tuple of (final_state, decision, execution_result)
+        """
+        # Run normal propagation
+        final_state, decision = self.propagate(company_name, trade_date)
+
+        execution_result = None
+
+        # Execute if requested
+        if execute:
+            if not executor:
+                raise ValueError("Executor required when execute=True")
+
+            execution_result = executor.execute_signal(
+                ticker=company_name,
+                signal=decision,
+                analysis_state=final_state,
+                trade_date=trade_date
+            )
+
+        return final_state, decision, execution_result
 
     def propagate(self, company_name, trade_date):
         """Run the trading agents graph for a company on a specific date."""
