@@ -131,11 +131,14 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Qwen-Plus (Latest)", "qwen-plus-latest"),
             ("Qwen-Plus (2025-12-01)", "qwen-plus-2025-12-01"),
             ("Qwen-Plus (2025-09-11)", "qwen-plus-2025-09-11"),
-            ("QwQ-Plus - Reasoning-focused model", "qwq-plus"),
-            ("QwQ-Plus (Latest) - Latest reasoning-focused model", "qwq-plus-latest"),
             ("Qwen3-32B - Strong general model", "qwen3-32b"),
             ("Qwen-Flash (2025-07-28) - Versioned fast model", "qwen-flash-2025-07-28"),
-            ("Qwen3-30B-A3B Thinking (2507) - Reasoning-tuned variant", "qwen3-30b-a3b-thinking-2507"),
+            ("Qwen-Turbo cost-effective faster model", "qwen-turbo"),
+            ("QwQ-Plus - Reasoning-focused model", "qwq-plus"),
+            ("QwQ-Plus (Latest) - Latest reasoning-focused model", "qwq-plus-latest"),
+            ("Ali provided Deepseek-v3.2", "deepseek-v3.2"),
+            ("Ali provided Deepseek-v3.1", "deepseek-v3.1"),
+            ("Ali provided Deepseek-R1", "deepseek-r1"),
         ],
         "deepseek": [
             ("DeepSeek Chat", "deepseek-chat"),
@@ -181,6 +184,7 @@ def select_deep_thinking_agent(provider) -> str:
             ("Qwen3-Max (2026-01-23) - Versioned flagship model", "qwen3-max-2026-01-23"),
             ("Qwen3-Max (2025-09-23) - Versioned flagship model", "qwen3-max-2025-09-23"),
             ("Qwen3-235B-A22B - Large MoE model", "qwen3-235b-a22b"),
+            ("Qwen Max", "qwen-max"),
             ("Qwen3-235B-A22B Thinking (2507) - Reasoning-tuned variant", "qwen3-235b-a22b-thinking-2507"),
         ],
         "deepseek": [
@@ -196,7 +200,7 @@ def select_deep_thinking_agent(provider) -> str:
             ("Deepseek - latest iteration of the flagship chat model family from the DeepSeek team.", "deepseek/deepseek-chat-v3-0324:free"),
         ],
     }
-    
+
     choice = questionary.select(
         "Select Your [Deep-Thinking LLM Engine]:",
         choices=[

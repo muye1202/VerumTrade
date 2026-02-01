@@ -1,9 +1,12 @@
 import time
 import json
 
+from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.llm_rate_limit import invoke_with_backoff
 
 def create_risk_manager(llm, memory):
     def risk_manager_node(state) -> dict:
+        config = get_config()
 
         company_name = state["company_of_interest"]
 
@@ -43,7 +46,15 @@ Deliverables:
 
 Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes."""
 
-        response = llm.invoke(prompt)
+        response = invoke_with_backoff(
+            llm,
+            prompt,
+            key="risk_manager",
+            min_interval_s=float(config.get("risk_manager_min_delay_s", 0.0) or 0.0),
+            max_retries=int(config.get("risk_manager_max_retries", 6) or 6),
+            base_backoff_s=float(config.get("risk_manager_backoff_base_s", 1.0) or 1.0),
+            max_backoff_s=float(config.get("risk_manager_backoff_max_s", 30.0) or 30.0),
+        )
 
         new_risk_debate_state = {
             "judge_decision": response.content,

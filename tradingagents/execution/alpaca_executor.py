@@ -31,6 +31,68 @@ from pathlib import Path
 import json
 
 
+def _clean_url(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    # Normalize common "endpoint" vars that include the /v2 suffix.
+    if v.endswith("/v2"):
+        v = v[: -len("/v2")]
+    return v
+
+
+def _message_for_log(msg: Any) -> Dict[str, Any]:
+    """
+    Best-effort conversion of LangChain/LangGraph message objects to JSON-safe dicts.
+
+    Avoid importing provider-specific message classes; use duck typing.
+    """
+    if isinstance(msg, tuple) and len(msg) == 2:
+        role, content = msg
+        return {"role": str(role), "type": "tuple", "content": str(content)}
+
+    if isinstance(msg, dict):
+        role = msg.get("role") or msg.get("type") or "dict"
+        content = msg.get("content", msg)
+        tool_calls = msg.get("tool_calls")
+        out: Dict[str, Any] = {"role": str(role), "type": "dict", "content": str(content)}
+        if tool_calls is not None:
+            out["tool_calls"] = tool_calls
+        return out
+
+    msg_type = getattr(msg, "type", None) or msg.__class__.__name__
+    content = getattr(msg, "content", msg)
+    out = {"type": str(msg_type), "content": str(content)}
+
+    tool_calls = getattr(msg, "tool_calls", None)
+    if tool_calls:
+        try:
+            out["tool_calls"] = tool_calls
+        except Exception:
+            out["tool_calls"] = str(tool_calls)
+
+    return out
+
+
+def _analysis_state_for_log(state: Optional[Dict[str, Any]]) -> Any:
+    """Convert analysis_state to something JSON-serializable (especially messages)."""
+    if state is None:
+        return None
+
+    if not isinstance(state, dict):
+        return str(state)
+
+    out: Dict[str, Any] = {}
+    for k, v in state.items():
+        if k == "messages" and isinstance(v, list):
+            out[k] = [_message_for_log(m) for m in v]
+        else:
+            out[k] = v
+    return out
+
+
 class AlpacaExecutor:
     """
     Executes trading signals from TradingAgents framework on Alpaca paper trading.
@@ -89,17 +151,45 @@ class AlpacaExecutor:
                 "(or ALPACA_API_KEY and ALPACA_SECRET_KEY) environment variables, or pass them directly."
             )
 
-        # Initialize clients
-        self.trading_client = TradingClient(
-            api_key=self.api_key,
-            secret_key=self.secret_key,
-            paper=paper
+        # Endpoint overrides (optional; useful for explicitly targeting paper/live environments)
+        # Repo root .env currently defines APCA_API_BASE_URL / APCA_ENDPOINT for paper trading.
+        self.trading_base_url = _clean_url(
+            os.getenv("APCA_API_BASE_URL")
+            or os.getenv("ALPACA_API_BASE_URL")
+            or os.getenv("APCA_ENDPOINT")
+            or os.getenv("ALPACA_ENDPOINT")
+        )
+        self.data_base_url = _clean_url(
+            os.getenv("APCA_API_DATA_URL")
+            or os.getenv("ALPACA_DATA_URL")
         )
 
-        self.data_client = StockHistoricalDataClient(
-            api_key=self.api_key,
-            secret_key=self.secret_key
-        )
+        # Initialize clients
+        if self.trading_base_url:
+            self.trading_client = TradingClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key,
+                paper=paper,
+                url_override=self.trading_base_url,
+            )
+        else:
+            self.trading_client = TradingClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key,
+                paper=paper,
+            )
+
+        if self.data_base_url:
+            self.data_client = StockHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key,
+                url_override=self.data_base_url,
+            )
+        else:
+            self.data_client = StockHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key,
+            )
 
         # Trading parameters
         self.position_size_pct = position_size_pct
@@ -113,6 +203,10 @@ class AlpacaExecutor:
 
         self.logger = self._setup_logger()
         self.logger.info(f"AlpacaExecutor initialized (paper={paper})")
+        if self.trading_base_url:
+            self.logger.info(f"Alpaca trading base URL override: {self.trading_base_url}")
+        if self.data_base_url:
+            self.logger.info(f"Alpaca data base URL override: {self.data_base_url}")
 
     def _setup_logger(self) -> logging.Logger:
         """Setup execution logger."""
@@ -225,10 +319,13 @@ class AlpacaExecutor:
             target_value = min(target_value, self.max_position_size_usd)
 
         # Get current price
-        current_price = self._get_current_price(ticker)
+        quote = self._get_latest_quote(ticker)
+        if not quote:
+            return {"executed": False, "error": "Could not get latest quote"}
 
+        current_price = quote.get("ask_price") or quote.get("bid_price")
         if not current_price:
-            return {"executed": False, "error": "Could not get current price"}
+            return {"executed": False, "error": "Quote missing ask/bid price"}
 
         # Calculate shares to buy
         qty = int(target_value / current_price)
@@ -241,7 +338,7 @@ class AlpacaExecutor:
             }
 
         # Place order
-        order = self._place_order(ticker, qty, OrderSide.BUY, current_price)
+        order, requested_limit_price = self._place_order(ticker, qty, OrderSide.BUY, current_price)
 
         self.logger.info(
             f"{ticker}: BUY order placed - {qty} shares at ~${current_price:.2f}"
@@ -252,7 +349,9 @@ class AlpacaExecutor:
             "order": self._order_to_dict(order),
             "qty": qty,
             "price": current_price,
-            "side": "BUY"
+            "side": "BUY",
+            "quote": quote,
+            "requested_limit_price": requested_limit_price,
         }
 
     def _execute_sell(
@@ -271,13 +370,16 @@ class AlpacaExecutor:
             }
 
         qty = abs(int(float(current_position.qty)))
-        current_price = self._get_current_price(ticker)
+        quote = self._get_latest_quote(ticker)
+        if not quote:
+            return {"executed": False, "error": "Could not get latest quote"}
 
+        current_price = quote.get("bid_price") or quote.get("ask_price")
         if not current_price:
-            return {"executed": False, "error": "Could not get current price"}
+            return {"executed": False, "error": "Quote missing bid/ask price"}
 
         # Place sell order
-        order = self._place_order(ticker, qty, OrderSide.SELL, current_price)
+        order, requested_limit_price = self._place_order(ticker, qty, OrderSide.SELL, current_price)
 
         self.logger.info(
             f"{ticker}: SELL order placed - {qty} shares at ~${current_price:.2f}"
@@ -288,7 +390,9 @@ class AlpacaExecutor:
             "order": self._order_to_dict(order),
             "qty": qty,
             "price": current_price,
-            "side": "SELL"
+            "side": "SELL",
+            "quote": quote,
+            "requested_limit_price": requested_limit_price,
         }
 
     def _place_order(
@@ -297,8 +401,9 @@ class AlpacaExecutor:
         qty: int,
         side: OrderSide,
         current_price: float
-    ) -> Any:
+    ) -> tuple[Any, Optional[float]]:
         """Place order with Alpaca."""
+        requested_limit_price: Optional[float] = None
         if self.order_type == "market":
             request = MarketOrderRequest(
                 symbol=ticker,
@@ -313,15 +418,16 @@ class AlpacaExecutor:
             else:
                 limit_price = current_price * (1 - self.limit_price_offset_pct)
 
+            requested_limit_price = round(limit_price, 2)
             request = LimitOrderRequest(
                 symbol=ticker,
                 qty=qty,
                 side=side,
                 time_in_force=TimeInForce.DAY,
-                limit_price=round(limit_price, 2)
+                limit_price=requested_limit_price
             )
 
-        return self.trading_client.submit_order(request)
+        return self.trading_client.submit_order(request), requested_limit_price
 
     def _get_position(self, ticker: str) -> Optional[Any]:
         """Get current position for ticker."""
@@ -330,17 +436,37 @@ class AlpacaExecutor:
         except Exception:
             return None
 
-    def _get_current_price(self, ticker: str) -> Optional[float]:
-        """Get current market price for ticker."""
+    def _get_latest_quote(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Get latest quote for ticker (bid/ask)."""
         try:
             request = StockLatestQuoteRequest(symbol_or_symbols=ticker)
             quote = self.data_client.get_stock_latest_quote(request)
 
             if ticker in quote:
-                return float(quote[ticker].ask_price)
+                q = quote[ticker]
+                bid_price = getattr(q, "bid_price", None)
+                ask_price = getattr(q, "ask_price", None)
+                bid_size = getattr(q, "bid_size", None)
+                ask_size = getattr(q, "ask_size", None)
+                ts = getattr(q, "timestamp", None)
+
+                def _to_float(v):
+                    try:
+                        return float(v) if v is not None else None
+                    except Exception:
+                        return None
+
+                return {
+                    "bid_price": _to_float(bid_price),
+                    "ask_price": _to_float(ask_price),
+                    "bid_size": _to_float(bid_size),
+                    "ask_size": _to_float(ask_size),
+                    "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts) if ts is not None else None,
+                }
+
             return None
         except Exception as e:
-            self.logger.error(f"Error getting price for {ticker}: {e}")
+            self.logger.error(f"Error getting quote for {ticker}: {e}")
             return None
 
     def _order_to_dict(self, order: Any) -> Dict[str, Any]:
@@ -361,15 +487,19 @@ class AlpacaExecutor:
         analysis_state: Optional[Dict[str, Any]] = None
     ):
         """Log execution details to file."""
-        log_entry = {
-            **result,
-            "analysis_state": analysis_state
-        }
+        log_entry = {**result, "analysis_state": _analysis_state_for_log(analysis_state)}
 
         log_file = self.log_dir / f"executions_{datetime.now().strftime('%Y%m')}.jsonl"
 
-        with open(log_file, 'a') as f:
-            f.write(json.dumps(log_entry) + '\n')
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False, default=str) + "\n")
+        except Exception as e:
+            # Never break execution due to logging issues.
+            try:
+                self.logger.warning(f"Failed to write execution log: {e}")
+            except Exception:
+                pass
 
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """Get current portfolio summary."""

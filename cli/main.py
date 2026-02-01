@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 import datetime
+import json
 import typer
 from pathlib import Path
 from functools import wraps
@@ -74,6 +75,7 @@ class MessageBuffer:
             "investment_plan": None,
             "trader_investment_plan": None,
             "final_trade_decision": None,
+            "execution_report": None,
         }
 
     def add_message(self, message_type, content):
@@ -115,6 +117,7 @@ class MessageBuffer:
                 "investment_plan": "Research Team Decision",
                 "trader_investment_plan": "Trading Team Plan",
                 "final_trade_decision": "Portfolio Management Decision",
+                "execution_report": "Execution",
             }
             self.current_report = (
                 f"### {section_titles[latest_section]}\n{latest_content}"
@@ -168,6 +171,11 @@ class MessageBuffer:
         if self.report_sections["final_trade_decision"]:
             report_parts.append("## Portfolio Management Decision")
             report_parts.append(f"{self.report_sections['final_trade_decision']}")
+
+        # Execution
+        if self.report_sections.get("execution_report"):
+            report_parts.append("## Execution")
+            report_parts.append(f"{self.report_sections['execution_report']}")
 
         self.final_report = "\n\n".join(report_parts) if report_parts else None
 
@@ -271,6 +279,10 @@ def setup_executor(execution_settings: dict, log_dir: Optional[Path] = None) -> 
         )
 
         summary = executor.get_portfolio_summary()
+        if getattr(executor, "trading_base_url", None):
+            console.print(f"[green]Alpaca Trading URL: {executor.trading_base_url}[/green]")
+        if getattr(executor, "data_base_url", None):
+            console.print(f"[green]Alpaca Data URL: {executor.data_base_url}[/green]")
         console.print(f"\n[green]Portfolio Value: ${summary['account_value']:,.2f}[/green]")
         console.print(f"[green]Cash Available: ${summary['cash']:,.2f}[/green]")
         console.print(f"[green]Open Positions: {summary['positions_count']}[/green]\n")
@@ -854,6 +866,7 @@ def extract_content_string(content):
         return str(content)
 
 def run_analysis():
+    run_started_at = datetime.datetime.now()
     # First get all user selections
     selections = get_user_selections()
 
@@ -914,7 +927,10 @@ def run_analysis():
         def wrapper(*args, **kwargs):
             func(*args, **kwargs)
             timestamp, tool_name, args = obj.tool_calls[-1]
-            args_str = ", ".join(f"{k}={v}" for k, v in args.items())
+            if isinstance(args, dict):
+                args_str = ", ".join(f"{k}={v}" for k, v in args.items())
+            else:
+                args_str = str(args)
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
         return wrapper
@@ -984,32 +1000,119 @@ def run_analysis():
         # Stream the analysis
         trace = []
         final_state = None
+        execution_result = None
+        execution_error: Optional[str] = None
+        execution_portfolio_summary: Optional[dict] = None
+        seen_messages = 0
         for chunk in graph.graph.stream(init_agent_state, **args):
-            if len(chunk["messages"]) > 0:
-                # Get the last message from the chunk
-                last_message = chunk["messages"][-1]
+            messages = chunk.get("messages") or []
+            # Always process each streamed chunk. Some providers/steps mutate state without
+            # appending messages, and we still want the UI to update.
+            new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
+            seen_messages = len(messages)
+            if True:
 
-                # Extract message content and type
-                if hasattr(last_message, "content"):
-                    content = extract_content_string(last_message.content)  # Use the helper function
-                    msg_type = "Reasoning"
-                else:
-                    content = str(last_message)
-                    msg_type = "System"
+                def _msg_type_and_content(msg):
+                    # LangGraph can emit tuples, message objects, or dicts depending on provider/runtime.
+                    if isinstance(msg, tuple) and len(msg) == 2:
+                        role, content = msg
+                        role = str(role).lower()
+                        if role in ("human", "user"):
+                            return "User", extract_content_string(content)
+                        if role in ("ai", "assistant"):
+                            return "Reasoning", extract_content_string(content)
+                        if role == "tool":
+                            return "ToolResult", extract_content_string(content)
+                        return "System", extract_content_string(content)
 
-                # Add message to buffer
-                message_buffer.add_message(msg_type, content)                
+                    if isinstance(msg, dict):
+                        role = str(msg.get("role", "")).lower()
+                        content = msg.get("content", msg)
+                        if role in ("assistant", "ai"):
+                            return "Reasoning", extract_content_string(content)
+                        if role in ("user", "human"):
+                            return "User", extract_content_string(content)
+                        if role == "tool":
+                            return "ToolResult", extract_content_string(content)
+                        return "System", extract_content_string(content)
 
-                # If it's a tool call, add it to tool calls
-                if hasattr(last_message, "tool_calls"):
-                    for tool_call in last_message.tool_calls:
-                        # Handle both dictionary and object tool calls
-                        if isinstance(tool_call, dict):
-                            message_buffer.add_tool_call(
-                                tool_call["name"], tool_call["args"]
-                            )
-                        else:
-                            message_buffer.add_tool_call(tool_call.name, tool_call.args)
+                    msg_kind = getattr(msg, "type", None)
+                    content = getattr(msg, "content", msg)
+                    if msg_kind == "ai":
+                        return "Reasoning", extract_content_string(content)
+                    if msg_kind in ("human", "user"):
+                        return "User", extract_content_string(content)
+                    if msg_kind == "tool":
+                        return "ToolResult", extract_content_string(content)
+                    if msg_kind == "system":
+                        return "System", extract_content_string(content)
+                    if hasattr(msg, "content"):
+                        return "Reasoning", extract_content_string(content)
+                    return "System", str(msg)
+
+                def _extract_tool_calls(msg):
+                    # Returns list of (name, args) pairs.
+                    calls = []
+
+                    # LangChain-style tool_calls (already parsed).
+                    tool_calls = getattr(msg, "tool_calls", None)
+                    if tool_calls:
+                        for tc in tool_calls:
+                            if isinstance(tc, dict):
+                                name = tc.get("name") or tc.get("function", {}).get("name")
+                                args = tc.get("args") or tc.get("function", {}).get("arguments")
+                                if name:
+                                    calls.append((name, args))
+                            else:
+                                name = getattr(tc, "name", None)
+                                args = getattr(tc, "args", None)
+                                if name:
+                                    calls.append((name, args))
+                        return calls
+
+                    # OpenAI-compatible shape sometimes stored under additional_kwargs.
+                    additional = getattr(msg, "additional_kwargs", None)
+                    if isinstance(additional, dict) and additional.get("tool_calls"):
+                        for tc in additional.get("tool_calls") or []:
+                            if not isinstance(tc, dict):
+                                continue
+                            fn = tc.get("function") or {}
+                            name = fn.get("name")
+                            args = fn.get("arguments")
+                            if name:
+                                # Best-effort: parse JSON args if possible, otherwise log raw string.
+                                if isinstance(args, str):
+                                    try:
+                                        args = json.loads(args)
+                                    except Exception:
+                                        pass
+                                calls.append((name, args))
+                        return calls
+
+                    # Dict messages with tool_calls.
+                    if isinstance(msg, dict) and msg.get("tool_calls"):
+                        for tc in msg.get("tool_calls") or []:
+                            if not isinstance(tc, dict):
+                                continue
+                            fn = tc.get("function") or {}
+                            name = fn.get("name") or tc.get("name")
+                            args = fn.get("arguments") or tc.get("args")
+                            if name:
+                                if isinstance(args, str):
+                                    try:
+                                        args = json.loads(args)
+                                    except Exception:
+                                        pass
+                                calls.append((name, args))
+
+                    return calls
+
+                for msg in new_messages:
+                    msg_type, content = _msg_type_and_content(msg)
+                    message_buffer.add_message(msg_type, content)
+
+                    for tool_name, tool_args in _extract_tool_calls(msg):
+                        message_buffer.add_tool_call(tool_name, tool_args)
 
                 # Update reports and agent status based on chunk content
                 # Analyst Team Reports
@@ -1240,12 +1343,28 @@ def run_analysis():
                         exec_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
                         exec_table.add_column("Field", style="cyan")
                         exec_table.add_column("Value", style="white")
-
+                        
                         exec_table.add_row("Action", f"[bold green]{execution_result['side']}[/bold green]")
                         exec_table.add_row("Quantity", f"{execution_result['qty']} shares")
                         exec_table.add_row("Price", f"${execution_result['price']:.2f}")
                         exec_table.add_row("Total Value", f"${execution_result['qty'] * execution_result['price']:,.2f}")
 
+                        quote = execution_result.get("quote") or {}
+                        bid = quote.get("bid_price")
+                        ask = quote.get("ask_price")
+                        if bid is not None and ask is not None:
+                            exec_table.add_row("Bid / Ask", f"${bid:.2f} / ${ask:.2f}")
+                            exec_table.add_row("Spread", f"${(ask - bid):.4f}")
+                        elif bid is not None or ask is not None:
+                            px = bid if bid is not None else ask
+                            label = "Bid" if bid is not None else "Ask"
+                            exec_table.add_row(label, f"${px:.2f}")
+                        if quote.get("timestamp"):
+                            exec_table.add_row("Quote Time", str(quote["timestamp"]))
+
+                        if execution_result.get("requested_limit_price") is not None:
+                            exec_table.add_row("Requested Limit", f"${float(execution_result['requested_limit_price']):.2f}")
+                        
                         if execution_result.get('order'):
                             exec_table.add_row("Order ID", execution_result['order']['id'][:8] + "...")
                             exec_table.add_row("Status", execution_result['order']['status'])
@@ -1273,11 +1392,17 @@ def run_analysis():
                             border_style="cyan",
                             padding=(1, 2)
                         ))
+                        execution_portfolio_summary = summary
 
                     else:
                         # Trade not executed (HOLD or error)
                         message = execution_result.get('message', 'No action taken')
                         error = execution_result.get('error')
+                        execution_error = error
+                        try:
+                            execution_portfolio_summary = executor.get_portfolio_summary()
+                        except Exception:
+                            execution_portfolio_summary = None
 
                         if error:
                             console.print(Panel(
@@ -1295,12 +1420,72 @@ def run_analysis():
                             ))
 
                 except Exception as e:
+                    execution_error = str(e)
                     console.print(Panel(
                         f"[red]Execution failed: {str(e)}[/red]",
                         title="[bold red]Execution Error[/bold red]",
                         border_style="red",
                         padding=(1, 2)
                     ))
+
+            # Always surface execution details in the main UI (Live output can hide console.print panels).
+            exec_sel = selections.get("execution") or {}
+            exec_enabled = bool(exec_sel.get("enabled", False))
+            exec_lines = []
+            exec_lines.append(f"- Enabled: `{exec_enabled}`")
+            exec_lines.append(f"- Final decision: `{decision}`")
+
+            if not exec_enabled:
+                exec_lines.append("- Result: `skipped (execution disabled)`")
+            elif not executor:
+                exec_lines.append("- Result: `skipped (executor not configured)`")
+            elif execution_result is None:
+                exec_lines.append("- Result: `not attempted`")
+                if execution_error:
+                    exec_lines.append(f"- Error: `{execution_error}`")
+            else:
+                exec_lines.append(f"- Executed: `{bool(execution_result.get('executed'))}`")
+                if execution_result.get("message"):
+                    exec_lines.append(f"- Message: {execution_result.get('message')}")
+                if execution_result.get("error"):
+                    exec_lines.append(f"- Error: `{execution_result.get('error')}`")
+                if execution_result.get("side"):
+                    exec_lines.append(f"- Side: `{execution_result.get('side')}`")
+                if execution_result.get("qty") is not None:
+                    exec_lines.append(f"- Qty: `{execution_result.get('qty')}`")
+                if execution_result.get("price") is not None:
+                    exec_lines.append(f"- Price: `{execution_result.get('price')}`")
+                if execution_result.get("requested_limit_price") is not None:
+                    exec_lines.append(f"- Requested limit: `{execution_result.get('requested_limit_price')}`")
+
+                quote = execution_result.get("quote") or {}
+                if quote.get("bid_price") is not None or quote.get("ask_price") is not None:
+                    exec_lines.append("")
+                    exec_lines.append("**Quote**")
+                    if quote.get("bid_price") is not None:
+                        exec_lines.append(f"- Bid: `{quote.get('bid_price')}`")
+                    if quote.get("ask_price") is not None:
+                        exec_lines.append(f"- Ask: `{quote.get('ask_price')}`")
+                    if quote.get("timestamp"):
+                        exec_lines.append(f"- Time: `{quote.get('timestamp')}`")
+
+                order = execution_result.get("order") or {}
+                if order:
+                    exec_lines.append("")
+                    exec_lines.append("**Order**")
+                    for k in ("id", "status", "type", "submitted_at"):
+                        if order.get(k) is not None:
+                            exec_lines.append(f"- {k}: `{order.get(k)}`")
+
+            if execution_portfolio_summary:
+                exec_lines.append("")
+                exec_lines.append("**Portfolio**")
+                exec_lines.append(f"- Account value: `${execution_portfolio_summary.get('account_value', 0):,.2f}`")
+                exec_lines.append(f"- Cash: `${execution_portfolio_summary.get('cash', 0):,.2f}`")
+                exec_lines.append(f"- Positions: `{execution_portfolio_summary.get('positions_count', 0)}`")
+
+            message_buffer.update_report_section("execution_report", "\n".join(exec_lines))
+            update_display(layout)
 
         final_state = trace[-1]
         decision = graph.process_signal(final_state["final_trade_decision"])
@@ -1323,6 +1508,120 @@ def run_analysis():
         if message_buffer.final_report:
             with open(final_report_path, "w", encoding="utf-8") as f:
                 f.write(message_buffer.final_report)
+
+        # Persist a separate execution report (includes "no action" / disabled).
+        try:
+            run_finished_at = datetime.datetime.now()
+            elapsed_s = (run_finished_at - run_started_at).total_seconds()
+
+            tool_calls_count = len(message_buffer.tool_calls)
+            llm_calls_count = sum(
+                1 for _, msg_type, _ in message_buffer.messages if msg_type == "Reasoning"
+            )
+            reports_count = sum(
+                1 for content in message_buffer.report_sections.values() if content is not None
+            )
+
+            exec_sel = selections.get("execution") or {}
+            exec_enabled = bool(exec_sel.get("enabled", False))
+
+            lines = []
+            lines.append("# Execution Report")
+            lines.append("")
+            lines.append(f"- Ticker: `{selections['ticker']}`")
+            lines.append(f"- Analysis date: `{selections['analysis_date']}`")
+            lines.append(f"- Final decision: `{decision}`")
+            lines.append(f"- Execution enabled: `{exec_enabled}`")
+            lines.append("")
+
+            if executor:
+                lines.append("## Alpaca Executor")
+                lines.append("")
+                if getattr(executor, "trading_base_url", None):
+                    lines.append(f"- Trading URL: `{executor.trading_base_url}`")
+                if getattr(executor, "data_base_url", None):
+                    lines.append(f"- Data URL: `{executor.data_base_url}`")
+                lines.append(f"- Paper trading: `{exec_sel.get('paper', True)}`")
+                lines.append(f"- Order type: `{exec_sel.get('order_type', 'market')}`")
+                lines.append(f"- Position size pct: `{exec_sel.get('position_size_pct', 0.10)}`")
+                lines.append("")
+
+                lines.append("## Execution Result")
+                lines.append("")
+                if execution_result is None:
+                    lines.append("- Result: `not attempted`")
+                    if execution_error:
+                        lines.append(f"- Error: `{execution_error}`")
+                else:
+                    lines.append(f"- Executed: `{bool(execution_result.get('executed'))}`")
+                    if execution_result.get("message"):
+                        lines.append(f"- Message: {execution_result.get('message')}")
+                    if execution_result.get("error"):
+                        lines.append(f"- Error: `{execution_result.get('error')}`")
+                    if execution_result.get("side"):
+                        lines.append(f"- Side: `{execution_result.get('side')}`")
+                    if execution_result.get("qty") is not None:
+                        lines.append(f"- Qty: `{execution_result.get('qty')}`")
+                    if execution_result.get("price") is not None:
+                        try:
+                            lines.append(f"- Price: `${float(execution_result.get('price')):.4f}`")
+                        except Exception:
+                            lines.append(f"- Price: `{execution_result.get('price')}`")
+                    if execution_result.get("requested_limit_price") is not None:
+                        try:
+                            lines.append(f"- Requested limit: `${float(execution_result.get('requested_limit_price')):.4f}`")
+                        except Exception:
+                            lines.append(f"- Requested limit: `{execution_result.get('requested_limit_price')}`")
+
+                    quote = execution_result.get("quote") or {}
+                    if quote:
+                        lines.append("")
+                        lines.append("### Quote")
+                        lines.append("")
+                        for k in ("bid_price", "ask_price", "bid_size", "ask_size", "timestamp"):
+                            if k in quote and quote.get(k) is not None:
+                                lines.append(f"- {k}: `{quote.get(k)}`")
+
+                    order = execution_result.get("order") or {}
+                    if order:
+                        lines.append("")
+                        lines.append("### Order")
+                        lines.append("")
+                        for k in ("id", "symbol", "qty", "side", "type", "status", "submitted_at"):
+                            if k in order and order.get(k) is not None:
+                                lines.append(f"- {k}: `{order.get(k)}`")
+
+                if execution_portfolio_summary:
+                    lines.append("")
+                    lines.append("## Portfolio Summary")
+                    lines.append("")
+                    lines.append(f"- Account value: `${execution_portfolio_summary.get('account_value', 0):,.2f}`")
+                    lines.append(f"- Cash: `${execution_portfolio_summary.get('cash', 0):,.2f}`")
+                    lines.append(f"- Buying power: `${execution_portfolio_summary.get('buying_power', 0):,.2f}`")
+                    lines.append(f"- Positions: `{execution_portfolio_summary.get('positions_count', 0)}`")
+
+            else:
+                lines.append("## Alpaca Executor")
+                lines.append("")
+                lines.append("- Status: `not configured`")
+                if exec_enabled:
+                    lines.append("- Note: execution was enabled but executor setup failed (missing creds/deps or initialization error).")
+                lines.append("")
+
+            lines.append("## Analysis Stats")
+            lines.append("")
+            lines.append(f"- Duration (s): `{elapsed_s:.2f}`")
+            lines.append(f"- Stream chunks: `{len(trace)}`")
+            lines.append(f"- Tool calls: `{tool_calls_count}`")
+            lines.append(f"- LLM calls: `{llm_calls_count}`")
+            lines.append(f"- Reports generated: `{reports_count}`")
+            lines.append("")
+
+            execution_report_path = report_dir / "execution_report.md"
+            with open(execution_report_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception as e:
+            message_buffer.add_message("System", f"Warning: failed to write execution_report.md: {e}")
 
         final_state_path = results_dir / "final_state.json"
         try:

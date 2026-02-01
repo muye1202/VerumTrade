@@ -44,15 +44,28 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
-
+from .openai_compat import sanitize_openai_compatible_response_dict
 
 class StreamCompatibleChatOpenAI(ChatOpenAI):
     """Handle OpenAI SDK Stream responses by aggregating them into a single ChatCompletion-like dict."""
 
     def _create_chat_result(self, response, generation_info=None):
+        # Convert to a plain dict so we can safely normalize provider quirks before LangChain parses it.
+        response_dict = None
         if response is not None and response.__class__.__name__ == "Stream":
             response_dict = self._stream_to_response_dict(response)
+        elif isinstance(response, dict):
+            response_dict = response
+        else:
+            try:
+                response_dict = response.model_dump()
+            except Exception:
+                response_dict = None
+
+        if isinstance(response_dict, dict):
+            sanitize_openai_compatible_response_dict(response_dict)
             return super()._create_chat_result(response_dict, generation_info=generation_info)
+
         return super()._create_chat_result(response, generation_info=generation_info)
 
     @staticmethod
@@ -116,12 +129,10 @@ class DeepSeekCompatibleChatOpenAI(ChatOpenAI):
                 response_dict = None
 
         if response_dict and isinstance(response_dict, dict):
-            for choice in response_dict.get("choices", []) or []:
-                msg = choice.get("message") or {}
-                # DeepSeek can include reasoning_content alongside content.
-                if isinstance(msg, dict) and "reasoning_content" in msg:
-                    msg.pop("reasoning_content", None)
-        return super()._create_chat_result(response_dict or response, generation_info=generation_info)
+            sanitize_openai_compatible_response_dict(response_dict)
+            return super()._create_chat_result(response_dict, generation_info=generation_info)
+
+        return super()._create_chat_result(response, generation_info=generation_info)
 
 
 class TradingAgentsGraph:

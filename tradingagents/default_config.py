@@ -48,6 +48,18 @@ DEFAULT_CONFIG = {
     "max_tool_calls_per_analyst": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_PER_ANALYST", "8")),
     "max_tool_calls_total": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_TOTAL", "50")),
 
+    # LLM burst/rate-limit mitigation for "manager" (deep-think) nodes.
+    # These are particularly likely to hit HTTP 429 when the backend enforces RPM/TPM limits.
+    "research_manager_min_delay_s": float(os.getenv("TRADINGAGENTS_RESEARCH_MANAGER_MIN_DELAY_S", "2.0")),
+    "research_manager_max_retries": int(os.getenv("TRADINGAGENTS_RESEARCH_MANAGER_MAX_RETRIES", "6")),
+    "research_manager_backoff_base_s": float(os.getenv("TRADINGAGENTS_RESEARCH_MANAGER_BACKOFF_BASE_S", "1.0")),
+    "research_manager_backoff_max_s": float(os.getenv("TRADINGAGENTS_RESEARCH_MANAGER_BACKOFF_MAX_S", "30.0")),
+
+    "risk_manager_min_delay_s": float(os.getenv("TRADINGAGENTS_RISK_MANAGER_MIN_DELAY_S", "2.0")),
+    "risk_manager_max_retries": int(os.getenv("TRADINGAGENTS_RISK_MANAGER_MAX_RETRIES", "6")),
+    "risk_manager_backoff_base_s": float(os.getenv("TRADINGAGENTS_RISK_MANAGER_BACKOFF_BASE_S", "1.0")),
+    "risk_manager_backoff_max_s": float(os.getenv("TRADINGAGENTS_RISK_MANAGER_BACKOFF_MAX_S", "30.0")),
+
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
