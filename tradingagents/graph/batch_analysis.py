@@ -154,26 +154,26 @@ class BatchAnalyzer:
             return []
         
         execution_results = []
-        
+
         for pick in top_picks:
             try:
+                structured = self.graph.extract_structured_decision(
+                    pick.get("final_decision")
+                    or pick.get("final_state", {}).get("final_trade_decision", "")
+                )
                 result = self.executor.execute_signal(
                     ticker=pick["ticker"],
                     signal=pick["decision"],
                     analysis_state=pick["final_state"],
-                    trade_date=trade_date
+                    trade_date=trade_date,
+                    agent_quantity=structured.get("quantity"),
+                    agent_limit_price=structured.get("limit_price"),
                 )
-                
-                execution_results.append({
-                    **pick,
-                    "execution": result
-                })
-                
+
+                execution_results.append({**pick, "execution": result})
+
             except Exception as e:
                 self.logger.error(f"Execution failed for {pick['ticker']}: {e}")
-                execution_results.append({
-                    **pick,
-                    "execution": {"error": str(e)}
-                })
+                execution_results.append({**pick, "execution": {"error": str(e)}})
         
         return execution_results

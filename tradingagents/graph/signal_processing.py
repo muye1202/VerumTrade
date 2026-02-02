@@ -1,14 +1,16 @@
 # TradingAgents/graph/signal_processing.py
 
 import re
-from typing import Dict, Any, Optional
-from langchain_openai import ChatOpenAI
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from langchain_openai import ChatOpenAI
 
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
 
-    def __init__(self, quick_thinking_llm: ChatOpenAI):
+    def __init__(self, quick_thinking_llm: "ChatOpenAI"):
         """Initialize with an LLM for processing."""
         self.quick_thinking_llm = quick_thinking_llm
 
@@ -113,8 +115,10 @@ class SignalProcessor:
 
                 # Parse numeric values for specific fields
                 if result_key == "quantity" and value:
-                    num_match = re.search(r"(\d+)", value)
-                    value = int(num_match.group(1)) if num_match else None
+                    # Prefer the last integer in the field to avoid mis-parsing
+                    # strings like "10% of portfolio (~37 shares)".
+                    nums = re.findall(r"(\d+)", value)
+                    value = int(nums[-1]) if nums else None
 
                 if result_key in ("limit_price", "stop_loss", "take_profit") and value:
                     price_match = re.search(r"\$?([\d,.]+)", value)

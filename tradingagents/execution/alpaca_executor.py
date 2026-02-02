@@ -274,19 +274,25 @@ class AlpacaExecutor:
         }
 
         try:
-            if signal == "BUY":
-                result.update(self._execute_buy(
-                    ticker, current_position, account,
-                    agent_quantity=agent_quantity,
-                    agent_limit_price=agent_limit_price,
-                ))
-            elif signal == "SELL":
-                result.update(self._execute_sell(ticker, current_position, account))
-            elif signal == "HOLD":
-                self.logger.info(f"{ticker}: HOLD - No action taken")
-                result["executed"] = False
-                result["message"] = "HOLD signal - no action"
-            else:
+              if signal == "BUY":
+                  result.update(self._execute_buy(
+                      ticker, current_position, account,
+                      agent_quantity=agent_quantity,
+                      agent_limit_price=agent_limit_price,
+                  ))
+              elif signal == "SELL":
+                  result.update(self._execute_sell(
+                      ticker,
+                      current_position,
+                      account,
+                      agent_quantity=agent_quantity,
+                      agent_limit_price=agent_limit_price,
+                  ))
+              elif signal == "HOLD":
+                  self.logger.info(f"{ticker}: HOLD - No action taken")
+                  result["executed"] = False
+                  result["message"] = "HOLD signal - no action"
+              else:
                 self.logger.warning(f"Unknown signal for {ticker}: {signal}")
                 result["error"] = f"Unknown signal: {signal}"
 
@@ -374,7 +380,9 @@ class AlpacaExecutor:
         self,
         ticker: str,
         current_position: Optional[Dict],
-        account: Any
+        account: Any,
+        agent_quantity: Optional[int] = None,
+        agent_limit_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute SELL signal."""
         # Check if we have a position to sell
@@ -385,7 +393,21 @@ class AlpacaExecutor:
                 "message": "No position to sell"
             }
 
-        qty = abs(int(float(current_position.qty)))
+        held_qty = abs(int(float(current_position.qty)))
+
+        # Use agent-specified quantity if provided, otherwise default to full position
+        if agent_quantity and agent_quantity > 0:
+            qty = min(agent_quantity, held_qty)
+            self.logger.info(
+                f"{ticker}: Agent requested SELL {agent_quantity} shares, "
+                f"capped to {qty} by current holdings ({held_qty} shares)"
+            )
+        else:
+            qty = held_qty
+
+        if qty <= 0:
+            return {"executed": False, "error": "Invalid SELL quantity"}
+
         quote = self._get_latest_quote(ticker)
         if not quote:
             return {"executed": False, "error": "Could not get latest quote"}

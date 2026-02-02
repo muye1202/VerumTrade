@@ -71,20 +71,24 @@ Focus on actionable insights and continuous improvement.
 YOUR OUTPUT MUST END WITH a structured decision:
 
 ---
-FINAL TRADING DECISION:
-- ACTION: BUY / SELL / HOLD
-- TICKER: [symbol]
-- QUANTITY: [shares based on portfolio cash/buying power, or "N/A" for HOLD]
-- ORDER_TYPE: MARKET / LIMIT
-- LIMIT_PRICE: [target price if LIMIT, otherwise "N/A"]
-- STOP_LOSS: [stop-loss price or "N/A"]
-- TAKE_PROFIT: [profit target or "N/A"]
-- POSITION_SIZE_PCT: [% of portfolio]
-- TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks"]
-- CONFIDENCE: HIGH / MEDIUM / LOW
-- RATIONALE: [2-3 sentence summary]
----
-"""
+  FINAL TRADING DECISION:
+  - ACTION: BUY / SELL / HOLD
+  - TICKER: [symbol]
+  - QUANTITY: [INTEGER number of shares, or "N/A" for HOLD]
+  - ORDER_TYPE: MARKET / LIMIT
+  - LIMIT_PRICE: [target price if LIMIT, otherwise "N/A"]
+  - STOP_LOSS: [stop-loss price or "N/A"]
+  - TAKE_PROFIT: [profit target or "N/A"]
+  - POSITION_SIZE_PCT: [% of portfolio]
+  - TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks"]
+  - CONFIDENCE: HIGH / MEDIUM / LOW
+  - RATIONALE: [2-3 sentence summary]
+  ---
+
+  QUANTITY RULES:
+  - QUANTITY must be a single integer on that line (e.g., "37"). Do NOT include any other numbers (no %s, no ranges, no "10% (~37 shares)").
+  - SELL must not default to liquidating the whole position unless explicitly intended; if fully exiting, set QUANTITY equal to the exact number of shares currently held.
+  """
 
         response = invoke_with_backoff(
             llm,

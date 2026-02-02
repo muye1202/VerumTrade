@@ -8,6 +8,7 @@ from rich import box
 from rich.panel import Panel
 from rich.live import Live
 from rich.table import Table
+from rich.rule import Rule
 
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -546,7 +547,9 @@ def run_analysis():
             structured = graph.extract_structured_decision(
                 final_state["final_trade_decision"]
             )
-            decision = graph.process_signal(final_state["final_trade_decision"])
+            decision = structured.get("action") or graph.process_signal(
+                final_state["final_trade_decision"]
+            )
 
             # Execute trade if executor is configured
             if executor:

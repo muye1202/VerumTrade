@@ -2,6 +2,7 @@ import os
 from typing import Optional
 import datetime
 import typer
+import questionary
 from pathlib import Path
 from rich.console import Console
 from dotenv import load_dotenv

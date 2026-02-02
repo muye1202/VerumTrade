@@ -419,11 +419,17 @@ class TradingAgentsGraph:
             if not executor:
                 raise ValueError("Executor required when execute=True")
 
+            structured = self.extract_structured_decision(
+                final_state.get("final_trade_decision", "")
+            )
+
             execution_result = executor.execute_signal(
                 ticker=company_name,
                 signal=decision,
                 analysis_state=final_state,
-                trade_date=trade_date
+                trade_date=trade_date,
+                agent_quantity=structured.get("quantity"),
+                agent_limit_price=structured.get("limit_price"),
             )
 
         return final_state, decision, execution_result
@@ -463,8 +469,15 @@ class TradingAgentsGraph:
         # Log state
         self._log_state(trade_date, final_state)
 
-        # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        # Prefer structured action if present; otherwise fall back to fast LLM extraction.
+        structured = self.extract_structured_decision(
+            final_state.get("final_trade_decision", "")
+        )
+        decision = structured.get("action") or self.process_signal(
+            final_state.get("final_trade_decision", "")
+        )
+
+        return final_state, decision
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""

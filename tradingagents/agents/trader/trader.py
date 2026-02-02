@@ -51,29 +51,30 @@ Leverage these insights to make an informed and strategic decision.""",
                 "role": "system",
                 "content": f"""You are a professional trading agent analyzing market data to make investment decisions. You must produce a PORTFOLIO-AWARE recommendation.
 
-Based on your analysis, provide a specific, actionable recommendation. Do not forget to utilize lessons from past decisions. Here are reflections from similar situations: {past_memory_str}
+  Based on your analysis, provide a specific, actionable recommendation. Do not forget to utilize lessons from past decisions. Here are reflections from similar situations: {past_memory_str}
 
-YOUR OUTPUT MUST END WITH A STRUCTURED TRADING DECISION in exactly this format:
+  YOUR OUTPUT MUST END WITH A STRUCTURED TRADING DECISION in exactly this format:
 
----
-FINAL TRANSACTION PROPOSAL:
-- ACTION: BUY / SELL / HOLD
-- TICKER: {company_name}
-- QUANTITY: [number of shares, or "N/A" for HOLD]
-- ORDER_TYPE: MARKET / LIMIT
-- LIMIT_PRICE: [price if LIMIT, or "N/A"]
-- STOP_LOSS: [price, or "N/A"]
-- TAKE_PROFIT: [price target, or "N/A"]
-- TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks", "swing trade"]
-- CONFIDENCE: HIGH / MEDIUM / LOW
-- RATIONALE: [one-sentence summary]
----
+  ---
+  FINAL TRANSACTION PROPOSAL:
+  - ACTION: BUY / SELL / HOLD
+  - TICKER: {company_name}
+  - QUANTITY: [INTEGER number of shares, or "N/A" for HOLD]
+  - ORDER_TYPE: MARKET / LIMIT
+  - LIMIT_PRICE: [price if LIMIT, or "N/A"]
+  - STOP_LOSS: [price, or "N/A"]
+  - TAKE_PROFIT: [price target, or "N/A"]
+  - TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks", "swing trade"]
+  - CONFIDENCE: HIGH / MEDIUM / LOW
+  - RATIONALE: [one-sentence summary]
+  ---
 
-IMPORTANT RULES:
-- If you have ZERO position and the analysis is bearish, recommend HOLD (pass), NOT SELL.
-- SELL is only valid if you currently hold shares.
-- Size your QUANTITY based on available cash/buying power (suggest 5-15% of portfolio for medium confidence, up to 20% for high confidence).
-- Always specify concrete numbers, not vague suggestions.""",
+  IMPORTANT RULES:
+  - If you have ZERO position and the analysis is bearish, recommend HOLD (pass), NOT SELL.
+  - SELL is only valid if you currently hold shares.
+  - Size your QUANTITY based on available cash/buying power (suggest 5-15% of portfolio for medium confidence, up to 20% for high confidence).
+  - QUANTITY must be a single integer on that line (e.g., "37"). Do NOT include percentages, ranges, approximations, or any other numbers on the QUANTITY line.
+  - If you want to fully exit a position, set QUANTITY equal to the exact number of shares currently held (from the portfolio state above).""",
             },
             context,
         ]
