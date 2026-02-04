@@ -1,6 +1,11 @@
 """
 Portfolio-level analysis and rebalancing engine.
 Analyzes all positions, generates recommendations, and provides strategic insights.
+
+Refactored to include a **triage step**: before running expensive multi-agent
+analysis on every position, a PortfolioTriageAgent screens the portfolio and
+selects the N most analysis-worthy stocks.  The remaining positions receive a
+lightweight "HOLD — not triaged" recommendation.
 """
 
 from typing import List, Dict, Any, Optional
@@ -9,6 +14,7 @@ import logging
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.execution import AlpacaExecutor
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
+from tradingagents.agents.portfolio.triage_agent import PortfolioTriageAgent
 
 
 class PortfolioAnalyzer:
@@ -20,7 +26,7 @@ class PortfolioAnalyzer:
         self,
         graph: TradingAgentsGraph,
         executor: AlpacaExecutor,
-        analysis_date: Optional[str] = None
+        analysis_date: Optional[str] = None,
     ):
         self.graph = graph
         self.executor = executor
@@ -30,7 +36,8 @@ class PortfolioAnalyzer:
     def analyze_portfolio(
         self,
         execute_trades: bool = False,
-        min_conviction: float = 60.0
+        min_conviction: float = 60.0,
+        n_stocks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Analyze all portfolio positions and generate recommendations.
@@ -38,6 +45,9 @@ class PortfolioAnalyzer:
         Args:
             execute_trades: Whether to execute recommended trades
             min_conviction: Minimum conviction score (0-100) to execute trades
+            n_stocks: If set, triage the portfolio down to this many stocks
+                      before running full analysis.  ``None`` means analyze all
+                      positions (legacy behaviour).
 
         Returns:
             Dict with analysis results, recommendations, and insights
@@ -46,48 +56,174 @@ class PortfolioAnalyzer:
 
         # Step 1: Fetch current portfolio
         portfolio = self._fetch_portfolio()
-        if not portfolio or portfolio['positions_count'] == 0:
+        if not portfolio or portfolio["positions_count"] == 0:
             return {
                 "error": "No positions found in portfolio",
-                "portfolio": portfolio
+                "portfolio": portfolio,
             }
 
         self.logger.info(f"Analyzing {portfolio['positions_count']} positions")
 
-        # Step 2: Analyze each position
-        position_analyses = self._analyze_positions(portfolio['positions'])
+        # Step 2: Triage — select the top N if requested
+        triage_result = None
+        positions_to_analyze = portfolio["positions"]
 
-        # Step 3: Perform portfolio-level analysis
+        if n_stocks is not None and n_stocks > 0:
+            triage_result = self._triage_positions(
+                portfolio["positions"],
+                n_stocks,
+                portfolio,
+            )
+            selected_tickers = {
+                s["ticker"].upper() for s in triage_result.get("selected", [])
+            }
+            positions_to_analyze = [
+                p
+                for p in portfolio["positions"]
+                if p["symbol"].upper() in selected_tickers
+            ]
+            self.logger.info(
+                "Triage complete: %d/%d positions selected for deep analysis.",
+                len(positions_to_analyze),
+                portfolio["positions_count"],
+            )
+
+        # Step 3: Run full multi-agent analysis on selected positions
+        position_analyses = self._analyze_positions(positions_to_analyze)
+
+        # Step 3b: Add lightweight stub entries for skipped positions
+        if triage_result:
+            position_analyses = self._merge_skipped_positions(
+                position_analyses,
+                portfolio["positions"],
+                triage_result,
+            )
+
+        # Step 4: Perform portfolio-level analysis
         portfolio_metrics = self._calculate_portfolio_metrics(
             portfolio, position_analyses
         )
 
-        # Step 4: Generate recommendations
+        # Step 5: Generate recommendations
         recommendations = self._generate_recommendations(
             portfolio, position_analyses, portfolio_metrics
         )
 
-        # Step 5: Execute trades if requested
+        # Step 6: Execute trades if requested
         execution_results = []
         if execute_trades:
             execution_results = self._execute_recommendations(
                 recommendations, min_conviction
             )
 
-        # Step 6: Generate strategic insights
+        # Step 7: Generate strategic insights
         strategic_insights = self._generate_strategic_insights(
             portfolio, position_analyses, portfolio_metrics, recommendations
         )
 
-        return {
+        result = {
             "analysis_date": self.analysis_date,
             "portfolio_summary": portfolio,
             "portfolio_metrics": portfolio_metrics,
             "position_analyses": position_analyses,
             "recommendations": recommendations,
             "execution_results": execution_results,
-            "strategic_insights": strategic_insights
+            "strategic_insights": strategic_insights,
         }
+
+        if triage_result:
+            result["triage"] = triage_result
+
+        return result
+
+    # ================================================================
+    # Triage
+    # ================================================================
+
+    def _triage_positions(
+        self,
+        positions: List[Dict[str, Any]],
+        n_stocks: int,
+        portfolio_summary: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Use the deep-think LLM to pre-screen positions.
+
+        Creates a ``PortfolioTriageAgent`` with the same deep-think LLM that
+        powers the debate judges, binds it to the lightweight data tools
+        (news, stock data), and asks it to pick the N most important positions.
+        """
+        self.logger.info(
+            "Running portfolio triage: selecting %d of %d positions.",
+            n_stocks,
+            len(positions),
+        )
+
+        agent = PortfolioTriageAgent(
+            llm=self.graph.deep_thinking_llm,
+            # Default tools are already wired (get_news, get_global_news,
+            # get_stock_data).  To add a dedicated web-search tool, append it:
+            #   tools=[*PortfolioTriageAgent.DEFAULT_TOOLS, my_web_search_tool],
+            max_tool_rounds=self.graph.config.get("triage_max_tool_rounds", 6),
+            config=self.graph.config,
+        )
+
+        return agent.triage(
+            positions=positions,
+            n_select=n_stocks,
+            portfolio_summary=portfolio_summary,
+            trade_date=self.analysis_date,
+        )
+
+    @staticmethod
+    def _merge_skipped_positions(
+        deep_analyses: List[Dict[str, Any]],
+        all_positions: List[Dict[str, Any]],
+        triage_result: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """
+        Merge deep-analyzed positions with lightweight stubs for skipped ones.
+
+        Skipped positions get a default HOLD recommendation with zero
+        conviction so they still appear in the final report but don't trigger
+        any trades.
+        """
+        analyzed_tickers = {a["ticker"].upper() for a in deep_analyses}
+
+        # Build a lookup from the skip list for rationale
+        skip_rationale: Dict[str, str] = {}
+        for s in triage_result.get("skipped", []):
+            skip_rationale[s.get("ticker", "").upper()] = s.get("rationale", "")
+
+        for p in all_positions:
+            sym = p["symbol"].upper()
+            if sym in analyzed_tickers:
+                continue
+
+            deep_analyses.append(
+                {
+                    "ticker": sym,
+                    "current_qty": p.get("qty", 0),
+                    "current_value": p.get("market_value", 0),
+                    "unrealized_pl": p.get("unrealized_pl", 0),
+                    "unrealized_plpc": p.get("unrealized_plpc", 0),
+                    "decision": "HOLD",
+                    "structured_decision": {},
+                    "conviction_score": 0,
+                    "final_state": None,
+                    "analysis_summary": (
+                        f"Skipped during triage. "
+                        f"Reason: {skip_rationale.get(sym, 'Not prioritised.')}"
+                    ),
+                    "triaged_out": True,
+                }
+            )
+
+        return deep_analyses
+
+    # ================================================================
+    # Full analysis (unchanged from original)
+    # ================================================================
 
     def _fetch_portfolio(self) -> Dict[str, Any]:
         """Fetch current portfolio state from Alpaca."""
@@ -104,7 +240,7 @@ class PortfolioAnalyzer:
         analyses = []
 
         for position in positions:
-            ticker = position['symbol']
+            ticker = position["symbol"]
             self.logger.info(f"Analyzing position: {ticker}")
 
             try:
@@ -116,7 +252,7 @@ class PortfolioAnalyzer:
 
                 # Extract structured decision
                 structured = self.graph.extract_structured_decision(
-                    final_state['final_trade_decision']
+                    final_state["final_trade_decision"]
                 )
 
                 # Calculate conviction score
@@ -124,65 +260,68 @@ class PortfolioAnalyzer:
                     final_state, decision
                 )
 
-                analyses.append({
-                    "ticker": ticker,
-                    "current_qty": position['qty'],
-                    "current_value": position['market_value'],
-                    "unrealized_pl": position['unrealized_pl'],
-                    "unrealized_plpc": position['unrealized_plpc'],
-                    "decision": decision,
-                    "structured_decision": structured,
-                    "conviction_score": conviction,
-                    "final_state": final_state,
-                    "analysis_summary": self._extract_summary(final_state)
-                })
+                analyses.append(
+                    {
+                        "ticker": ticker,
+                        "current_qty": position["qty"],
+                        "current_value": position["market_value"],
+                        "unrealized_pl": position["unrealized_pl"],
+                        "unrealized_plpc": position["unrealized_plpc"],
+                        "decision": decision,
+                        "structured_decision": structured,
+                        "conviction_score": conviction,
+                        "final_state": final_state,
+                        "analysis_summary": self._extract_summary(final_state),
+                    }
+                )
 
             except Exception as e:
                 self.logger.error(f"Error analyzing {ticker}: {e}")
-                analyses.append({
-                    "ticker": ticker,
-                    "error": str(e),
-                    "decision": "HOLD",
-                    "conviction_score": 0
-                })
+                analyses.append(
+                    {
+                        "ticker": ticker,
+                        "error": str(e),
+                        "decision": "HOLD",
+                        "conviction_score": 0,
+                    }
+                )
 
         return analyses
 
     def _calculate_portfolio_metrics(
         self,
         portfolio: Dict[str, Any],
-        analyses: List[Dict[str, Any]]
+        analyses: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Calculate portfolio-level metrics."""
-        total_value = portfolio['account_value']
-        positions = portfolio['positions']
+        total_value = portfolio["account_value"]
+        positions = portfolio["positions"]
 
         # Position concentration
-        max_position_pct = max(
-            (p['market_value'] / total_value * 100) for p in positions
-        ) if positions else 0
+        max_position_pct = (
+            max((p["market_value"] / total_value * 100) for p in positions)
+            if positions
+            else 0
+        )
 
-        # Sector allocation (simplified - would need sector data in practice)
-        # This is a placeholder
         sector_allocation = self._estimate_sector_allocation(positions)
 
-        # Win/loss ratio
-        winners = sum(1 for p in positions if float(p['unrealized_pl']) > 0)
-        losers = sum(1 for p in positions if float(p['unrealized_pl']) < 0)
+        winners = sum(1 for p in positions if float(p["unrealized_pl"]) > 0)
+        losers = sum(1 for p in positions if float(p["unrealized_pl"]) < 0)
 
-        # Average conviction across portfolio
-        avg_conviction = sum(
-            a.get('conviction_score', 0) for a in analyses
-        ) / len(analyses) if analyses else 0
+        avg_conviction = (
+            sum(a.get("conviction_score", 0) for a in analyses) / len(analyses)
+            if analyses
+            else 0
+        )
 
-        # Risk indicators
-        sell_signals = sum(1 for a in analyses if a.get('decision') == 'SELL')
-        buy_signals = sum(1 for a in analyses if a.get('decision') == 'BUY')
+        sell_signals = sum(1 for a in analyses if a.get("decision") == "SELL")
+        buy_signals = sum(1 for a in analyses if a.get("decision") == "BUY")
 
         return {
             "total_value": total_value,
-            "cash": portfolio['cash'],
-            "buying_power": portfolio['buying_power'],
+            "cash": portfolio["cash"],
+            "buying_power": portfolio["buying_power"],
             "position_count": len(positions),
             "max_position_pct": round(max_position_pct, 2),
             "sector_allocation": sector_allocation,
@@ -192,58 +331,69 @@ class PortfolioAnalyzer:
             "buy_signals": buy_signals,
             "portfolio_health": self._assess_portfolio_health(
                 max_position_pct, avg_conviction, winners, losers
-            )
+            ),
         }
 
     def _generate_recommendations(
         self,
         portfolio: Dict[str, Any],
         analyses: List[Dict[str, Any]],
-        metrics: Dict[str, Any]
+        metrics: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """Generate actionable recommendations for portfolio rebalancing."""
         recommendations = []
 
         for analysis in analyses:
-            if 'error' in analysis:
+            if "error" in analysis:
                 continue
 
-            ticker = analysis['ticker']
-            decision = analysis['decision']
-            conviction = analysis['conviction_score']
-            current_value = analysis['current_value']
+            ticker = analysis["ticker"]
+            decision = analysis["decision"]
+            conviction = analysis["conviction_score"]
+            current_value = analysis.get("current_value", 0)
 
-            # Portfolio-aware recommendation
-            position_pct = (current_value / portfolio['account_value']) * 100
+            position_pct = (current_value / portfolio["account_value"]) * 100
 
-            rec = {
+            rec: Dict[str, Any] = {
                 "ticker": ticker,
                 "action": decision,
                 "conviction": conviction,
                 "current_position_pct": round(position_pct, 2),
                 "rationale": self._build_rationale(analysis, metrics),
-                "priority": self._calculate_priority(decision, conviction, position_pct),
+                "priority": self._calculate_priority(
+                    decision, conviction, position_pct
+                ),
                 "suggested_action": None,
                 "decision_summary": None,
+                "triaged_out": analysis.get("triaged_out", False),
             }
 
-            # Specific action suggestions
             if decision == "SELL":
+                qty = analysis.get("current_qty", 0)
                 if conviction > 70:
-                    rec["suggested_action"] = f"SELL ALL ({analysis['current_qty']} shares)"
+                    rec["suggested_action"] = (
+                        f"SELL ALL ({qty} shares)"
+                    )
                 elif conviction > 50:
-                    rec["suggested_action"] = f"SELL 50% ({int(analysis['current_qty'] * 0.5)} shares)"
+                    rec["suggested_action"] = (
+                        f"SELL 50% ({int(float(qty) * 0.5)} shares)"
+                    )
                 else:
-                    rec["suggested_action"] = f"SELL 25% ({int(analysis['current_qty'] * 0.25)} shares)"
+                    rec["suggested_action"] = (
+                        f"SELL 25% ({int(float(qty) * 0.25)} shares)"
+                    )
 
             elif decision == "BUY":
-                # Don't recommend buying more if position is already large
                 if position_pct > 15:
                     rec["suggested_action"] = "HOLD - Position already large"
                     rec["action"] = "HOLD"
-                elif conviction > 70 and portfolio['cash'] > 1000:
-                    add_pct = min(5, portfolio['cash'] / portfolio['account_value'] * 100)
-                    rec["suggested_action"] = f"ADD {add_pct:.1f}% more to position"
+                elif conviction > 70 and portfolio["cash"] > 1000:
+                    add_pct = min(
+                        5, portfolio["cash"] / portfolio["account_value"] * 100
+                    )
+                    rec["suggested_action"] = (
+                        f"ADD {add_pct:.1f}% more to position"
+                    )
                 else:
                     rec["suggested_action"] = "HOLD - Maintain position"
                     rec["action"] = "HOLD"
@@ -254,13 +404,10 @@ class PortfolioAnalyzer:
             rec["decision_summary"] = self._summarize_recommendation(rec)
             recommendations.append(rec)
 
-        # Sort by priority
-        recommendations.sort(key=lambda x: x['priority'], reverse=True)
-
+        recommendations.sort(key=lambda x: x["priority"], reverse=True)
         return recommendations
 
     def _summarize_recommendation(self, rec: Dict[str, Any]) -> str:
-        """Create a 1-2 sentence summary suitable for reports."""
         rationale = (rec.get("rationale") or "").strip()
         suggested = (rec.get("suggested_action") or "").strip()
         parts = []
@@ -271,14 +418,11 @@ class PortfolioAnalyzer:
         return self._to_sentence_summary(" ".join(parts).strip(), max_sentences=2)
 
     def _to_sentence_summary(self, text: str, max_sentences: int = 2) -> str:
-        """Keep only the first N sentence-like chunks."""
         s = (text or "").strip()
         if not s:
             return ""
-
-        # Simple sentence splitter (good enough for report summaries).
-        out = []
-        buf = []
+        out: list[str] = []
+        buf: list[str] = []
         for ch in s:
             buf.append(ch)
             if ch in ".!?":
@@ -292,61 +436,54 @@ class PortfolioAnalyzer:
             tail = "".join(buf).strip()
             if tail:
                 out.append(tail)
-
-        summary = " ".join(out).strip()
-        return summary
+        return " ".join(out).strip()
 
     def _execute_recommendations(
         self,
         recommendations: List[Dict[str, Any]],
-        min_conviction: float
+        min_conviction: float,
     ) -> List[Dict[str, Any]]:
-        """Execute high-conviction recommendations."""
         results = []
-
         for rec in recommendations:
-            if rec['action'] == 'HOLD':
+            if rec["action"] == "HOLD":
                 continue
-
-            if rec['conviction'] < min_conviction:
+            if rec["conviction"] < min_conviction:
                 self.logger.info(
-                    f"Skipping {rec['ticker']} - conviction {rec['conviction']} "
-                    f"below threshold {min_conviction}"
+                    "Skipping %s — conviction %s below threshold %s",
+                    rec["ticker"],
+                    rec["conviction"],
+                    min_conviction,
                 )
                 continue
+            # Never execute on positions that were triaged out
+            if rec.get("triaged_out"):
+                continue
 
-            ticker = rec['ticker']
-            action = rec['action']
-
+            ticker = rec["ticker"]
+            action = rec["action"]
             self.logger.info(
-                f"Executing {action} for {ticker} (conviction: {rec['conviction']})"
+                "Executing %s for %s (conviction: %s)", action, ticker, rec["conviction"]
             )
-
             try:
-                # For portfolio rebalancing, we need to handle partial sells
-                # and position additions differently than the standard executor
                 result = self.executor.execute_signal(
                     ticker=ticker,
                     signal=action,
-                    analysis_state=None,  # Could pass full state if needed
-                    trade_date=self.analysis_date
+                    analysis_state=None,
+                    trade_date=self.analysis_date,
                 )
-
-                results.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "conviction": rec['conviction'],
-                    "execution_result": result
-                })
-
+                results.append(
+                    {
+                        "ticker": ticker,
+                        "action": action,
+                        "conviction": rec["conviction"],
+                        "execution_result": result,
+                    }
+                )
             except Exception as e:
                 self.logger.error(f"Execution failed for {ticker}: {e}")
-                results.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "error": str(e)
-                })
-
+                results.append(
+                    {"ticker": ticker, "action": action, "error": str(e)}
+                )
         return results
 
     def _generate_strategic_insights(
@@ -354,240 +491,201 @@ class PortfolioAnalyzer:
         portfolio: Dict[str, Any],
         analyses: List[Dict[str, Any]],
         metrics: Dict[str, Any],
-        recommendations: List[Dict[str, Any]]
+        recommendations: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Generate forward-looking strategic insights."""
-        insights = {
+        return {
             "portfolio_assessment": self._assess_overall_portfolio(metrics),
             "key_risks": self._identify_key_risks(analyses, metrics),
             "opportunities": self._identify_opportunities(analyses, portfolio),
-            "rebalancing_needs": self._assess_rebalancing_needs(metrics, recommendations),
-            "future_actions": self._suggest_future_actions(analyses, metrics, portfolio)
+            "rebalancing_needs": self._assess_rebalancing_needs(
+                metrics, recommendations
+            ),
+            "future_actions": self._suggest_future_actions(
+                analyses, metrics, portfolio
+            ),
         }
 
-        return insights
-
-    # ======== Helper methods ======== #
+    # ================================================================
+    # Helpers
+    # ================================================================
 
     def _calculate_position_conviction(
         self, final_state: Dict[str, Any], decision: str
     ) -> float:
-        """Calculate conviction score for a position (reuse from batch_analysis.py)."""
-        score = 0.0
-
-        if decision == "BUY":
-            score = 60
-        elif decision == "SELL":
-            score = 60  # SELL signals also indicate conviction
-        else:
-            score = 40  # HOLD is neutral
-
+        score = 60.0 if decision in ("BUY", "SELL") else 40.0
         final_text = final_state.get("final_trade_decision", "").lower()
-
-        # Positive conviction markers
-        if any(word in final_text for word in ["strong", "compelling", "excellent"]):
+        if any(w in final_text for w in ("strong", "compelling", "excellent")):
             score += 10
-        if any(word in final_text for word in ["high confidence", "strongly recommend"]):
+        if any(w in final_text for w in ("high confidence", "strongly recommend")):
             score += 10
-
-        # Negative conviction markers
-        if any(word in final_text for word in ["uncertain", "mixed", "unclear"]):
+        if any(w in final_text for w in ("uncertain", "mixed", "unclear")):
             score -= 10
-
         return max(0, min(100, score))
 
     def _extract_summary(self, final_state: Dict[str, Any]) -> str:
-        """Extract key summary from analysis."""
-        decision = final_state.get('final_trade_decision', '')
-        # Extract first 200 chars as summary
+        decision = final_state.get("final_trade_decision", "")
         return decision[:200] + "..." if len(decision) > 200 else decision
 
     def _estimate_sector_allocation(self, positions: List[Dict]) -> Dict[str, float]:
-        """Estimate sector allocation (placeholder - needs real sector data)."""
-        # In production, you'd fetch sector data from a provider
         return {
             "Technology": 40.0,
             "Finance": 25.0,
             "Healthcare": 20.0,
-            "Other": 15.0
+            "Other": 15.0,
         }
 
     def _assess_portfolio_health(
-        self, max_position_pct: float, avg_conviction: float, 
-        winners: int, losers: int
+        self,
+        max_position_pct: float,
+        avg_conviction: float,
+        winners: int,
+        losers: int,
     ) -> str:
-        """Assess overall portfolio health."""
         if max_position_pct > 20:
             return "ATTENTION: Over-concentrated"
-        elif avg_conviction < 50:
+        if avg_conviction < 50:
             return "CAUTION: Low average conviction"
-        elif winners < losers:
+        if winners < losers:
             return "CAUTION: More losers than winners"
-        elif avg_conviction > 70 and winners > losers:
+        if avg_conviction > 70 and winners > losers:
             return "HEALTHY: Strong positions"
-        else:
-            return "FAIR: Mixed signals"
+        return "FAIR: Mixed signals"
 
     def _build_rationale(
         self, analysis: Dict[str, Any], metrics: Dict[str, Any]
     ) -> str:
-        """Build rationale for recommendation."""
-        decision = analysis['decision']
-        conviction = analysis['conviction_score']
-        pl_pct = analysis.get('unrealized_plpc', 0) * 100
+        decision = analysis["decision"]
+        conviction = analysis["conviction_score"]
+        pl_pct = analysis.get("unrealized_plpc", 0) * 100
+        parts: list[str] = []
 
-        rationale_parts = []
-
-        if decision == "SELL":
-            rationale_parts.append(f"Agent recommends SELL with {conviction}% conviction.")
+        if analysis.get("triaged_out"):
+            parts.append(
+                f"Skipped during triage (HOLD by default). "
+                f"Triage note: {analysis.get('analysis_summary', '')}"
+            )
+        elif decision == "SELL":
+            parts.append(f"Agent recommends SELL with {conviction}% conviction.")
             if pl_pct < -10:
-                rationale_parts.append(f"Position down {abs(pl_pct):.1f}%, cutting losses.")
+                parts.append(f"Position down {abs(pl_pct):.1f}%, cutting losses.")
             elif pl_pct > 20:
-                rationale_parts.append(f"Position up {pl_pct:.1f}%, taking profits.")
-
+                parts.append(f"Position up {pl_pct:.1f}%, taking profits.")
         elif decision == "BUY":
-            rationale_parts.append(f"Agent recommends BUY with {conviction}% conviction.")
+            parts.append(f"Agent recommends BUY with {conviction}% conviction.")
             if pl_pct > 0:
-                rationale_parts.append(f"Position up {pl_pct:.1f}%, adding to winner.")
+                parts.append(f"Position up {pl_pct:.1f}%, adding to winner.")
             else:
-                rationale_parts.append("Opportunity to average up position.")
-
+                parts.append("Opportunity to average up position.")
         else:
-            rationale_parts.append(f"Agent recommends HOLD ({conviction}% conviction).")
+            parts.append(f"Agent recommends HOLD ({conviction}% conviction).")
 
-        return " ".join(rationale_parts)
+        return " ".join(parts)
 
     def _calculate_priority(
         self, decision: str, conviction: float, position_pct: float
     ) -> float:
-        """Calculate priority score for recommendation."""
         priority = conviction
-
-        # High priority for large positions that need attention
         if decision == "SELL" and position_pct > 15:
             priority += 20
-
-        # Lower priority for small positions
         if position_pct < 5:
             priority -= 10
-
         return max(0, min(100, priority))
 
     def _assess_overall_portfolio(self, metrics: Dict[str, Any]) -> str:
-        """Assess overall portfolio state."""
-        health = metrics['portfolio_health']
-        sell_signals = metrics['sell_signals']
-        
+        health = metrics["portfolio_health"]
+        sell_signals = metrics["sell_signals"]
         if "HEALTHY" in health:
             return "Portfolio is in good shape with strong positions."
-        elif sell_signals > metrics['position_count'] / 2:
-            return f"CAUTION: {sell_signals} positions showing SELL signals - consider rebalancing."
-        else:
-            return f"Portfolio status: {health}. Monitor positions closely."
+        if sell_signals > metrics["position_count"] / 2:
+            return (
+                f"CAUTION: {sell_signals} positions showing SELL signals — "
+                "consider rebalancing."
+            )
+        return f"Portfolio status: {health}. Monitor positions closely."
 
     def _identify_key_risks(
         self, analyses: List[Dict], metrics: Dict[str, Any]
     ) -> List[str]:
-        """Identify key portfolio risks."""
-        risks = []
-
-        if metrics['max_position_pct'] > 20:
+        risks: list[str] = []
+        if metrics["max_position_pct"] > 20:
             risks.append(
-                f"Over-concentration: Largest position is {metrics['max_position_pct']:.1f}% "
-                "of portfolio (>20% threshold)"
+                f"Over-concentration: Largest position is "
+                f"{metrics['max_position_pct']:.1f}% of portfolio (>20% threshold)"
             )
-
-        high_loss_positions = [
-            a for a in analyses 
-            if a.get('unrealized_plpc', 0) < -0.15  # Down 15%+
-        ]
-        if high_loss_positions:
-            tickers = [a['ticker'] for a in high_loss_positions]
+        high_loss = [a for a in analyses if a.get("unrealized_plpc", 0) < -0.15]
+        if high_loss:
+            tickers = [a["ticker"] for a in high_loss]
             risks.append(
                 f"Significant losses in {len(tickers)} positions: {', '.join(tickers)}"
             )
-
-        if metrics['avg_conviction'] < 50:
+        if metrics["avg_conviction"] < 50:
             risks.append(
                 f"Low average conviction ({metrics['avg_conviction']:.1f}) "
                 "suggests weak portfolio positioning"
             )
-
-        return risks if risks else ["No major risks identified"]
+        return risks or ["No major risks identified"]
 
     def _identify_opportunities(
         self, analyses: List[Dict], portfolio: Dict[str, Any]
     ) -> List[str]:
-        """Identify opportunities in the portfolio."""
-        opportunities = []
-
-        # High conviction BUY signals
+        opportunities: list[str] = []
         strong_buys = [
-            a for a in analyses 
-            if a.get('decision') == 'BUY' and a.get('conviction_score', 0) > 70
+            a
+            for a in analyses
+            if a.get("decision") == "BUY" and a.get("conviction_score", 0) > 70
         ]
         if strong_buys:
-            tickers = [a['ticker'] for a in strong_buys]
+            tickers = [a["ticker"] for a in strong_buys]
             opportunities.append(
                 f"Strong BUY signals in existing positions: {', '.join(tickers)}"
             )
-
-        # Underperforming positions with turnaround potential
         turnarounds = [
-            a for a in analyses
-            if (a.get('unrealized_plpc', 0) < 0 and 
-                a.get('decision') == 'BUY' and 
-                a.get('conviction_score', 0) > 60)
+            a
+            for a in analyses
+            if (
+                a.get("unrealized_plpc", 0) < 0
+                and a.get("decision") == "BUY"
+                and a.get("conviction_score", 0) > 60
+            )
         ]
         if turnarounds:
-            tickers = [a['ticker'] for a in turnarounds]
+            tickers = [a["ticker"] for a in turnarounds]
             opportunities.append(
                 f"Potential turnaround opportunities: {', '.join(tickers)}"
             )
-
-        # Cash deployment
-        cash_pct = (portfolio['cash'] / portfolio['account_value']) * 100
+        cash_pct = (portfolio["cash"] / portfolio["account_value"]) * 100
         if cash_pct > 10:
             opportunities.append(
                 f"{cash_pct:.1f}% cash available for deployment in high-conviction ideas"
             )
-
-        return opportunities if opportunities else ["No immediate opportunities identified"]
+        return opportunities or ["No immediate opportunities identified"]
 
     def _assess_rebalancing_needs(
         self, metrics: Dict[str, Any], recommendations: List[Dict]
     ) -> str:
-        """Assess whether portfolio needs rebalancing."""
-        high_priority = sum(1 for r in recommendations if r['priority'] > 70)
-
+        high_priority = sum(1 for r in recommendations if r["priority"] > 70)
         if high_priority >= 3:
             return f"URGENT: {high_priority} high-priority actions needed"
-        elif metrics['sell_signals'] > 2:
+        if metrics["sell_signals"] > 2:
             return f"MODERATE: {metrics['sell_signals']} positions need attention"
-        else:
-            return "MINIMAL: Portfolio is relatively well-balanced"
+        return "MINIMAL: Portfolio is relatively well-balanced"
 
     def _suggest_future_actions(
-        self, analyses: List[Dict], metrics: Dict[str, Any], 
-        portfolio: Dict[str, Any]
+        self,
+        analyses: List[Dict],
+        metrics: Dict[str, Any],
+        portfolio: Dict[str, Any],
     ) -> List[str]:
-        """Suggest future strategic actions."""
-        suggestions = []
-
-        # Diversification suggestions
-        if metrics['position_count'] < 8:
+        suggestions: list[str] = []
+        if metrics["position_count"] < 8:
             suggestions.append(
                 "Consider adding 2-3 new positions to improve diversification"
             )
-
-        # Sector allocation
-        if metrics['max_position_pct'] > 20:
+        if metrics["max_position_pct"] > 20:
             suggestions.append(
                 "Reduce largest position to improve risk distribution"
             )
-
-        # Cash management
-        cash_pct = (portfolio['cash'] / portfolio['account_value']) * 100
+        cash_pct = (portfolio["cash"] / portfolio["account_value"]) * 100
         if cash_pct < 5:
             suggestions.append(
                 "Consider raising cash (currently <5%) for flexibility"
@@ -596,20 +694,15 @@ class PortfolioAnalyzer:
             suggestions.append(
                 f"Deploy excess cash ({cash_pct:.1f}%) into high-conviction opportunities"
             )
-
-        # Performance monitoring
         low_conviction = [
-            a for a in analyses if a.get('conviction_score', 0) < 40
+            a for a in analyses if a.get("conviction_score", 0) < 40
         ]
         if low_conviction:
-            tickers = [a['ticker'] for a in low_conviction]
+            tickers = [a["ticker"] for a in low_conviction]
             suggestions.append(
                 f"Monitor low-conviction positions closely: {', '.join(tickers)}"
             )
-
-        # Regular rebalancing
         suggestions.append(
             "Schedule monthly portfolio review to maintain optimal allocation"
         )
-
         return suggestions

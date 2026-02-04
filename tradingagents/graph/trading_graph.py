@@ -5,6 +5,7 @@ import inspect
 from pathlib import Path
 import json
 from datetime import date
+from contextlib import nullcontext
 from typing import Dict, Any, Tuple, List, Optional
 
 from langchain_openai import ChatOpenAI
@@ -163,12 +164,30 @@ class GLMCompatibleChatOpenAI(ChatOpenAI):
 class GLMFlashSerialChatOpenAI(GLMCompatibleChatOpenAI):
     """Serialize in-flight requests for GLM-4.7-Flash (no parallelism)."""
 
-    def invoke(self, input, config=None, **kwargs):
+    def _ta_concurrency_slot(self):
         key = getattr(self, "_ta_llm_concurrency_key", None)
         if not key:
-            return super().invoke(input, config=config, **kwargs)
-        with llm_inflight_slot(key, 1):
-            return super().invoke(input, config=config, **kwargs)
+            return nullcontext()
+        return llm_inflight_slot(key, 1)
+
+    # Guard the internal generation methods instead of `.invoke()` so that *all*
+    # LangChain execution paths (invoke/batch/tool-binding/stream) are serialized.
+    def _generate(self, *args, **kwargs):
+        with self._ta_concurrency_slot():
+            return super()._generate(*args, **kwargs)
+
+    async def _agenerate(self, *args, **kwargs):
+        with self._ta_concurrency_slot():
+            return await super()._agenerate(*args, **kwargs)
+
+    def _stream(self, *args, **kwargs):
+        with self._ta_concurrency_slot():
+            yield from super()._stream(*args, **kwargs)
+
+    async def _astream(self, *args, **kwargs):
+        with self._ta_concurrency_slot():
+            async for chunk in super()._astream(*args, **kwargs):
+                yield chunk
 
 
 class TradingAgentsGraph:
@@ -329,7 +348,7 @@ class TradingAgentsGraph:
             )
             if provider == "glm" and deep_llm_cls is GLMFlashSerialChatOpenAI:
                 self.deep_thinking_llm._ta_llm_concurrency_key = (
-                    f"llm:{provider}:{self.config['backend_url']}:{self.config.get('deep_think_llm')}".lower()
+                    f"llm:{provider}:{str(self.config.get('backend_url') or '').rstrip('/')}:{self.config.get('deep_think_llm')}".lower()
                 )
 
             quick_streaming = bool(
@@ -368,7 +387,7 @@ class TradingAgentsGraph:
             )
             if provider == "glm" and quick_llm_cls is GLMFlashSerialChatOpenAI:
                 self.quick_thinking_llm._ta_llm_concurrency_key = (
-                    f"llm:{provider}:{self.config['backend_url']}:{self.config.get('quick_think_llm')}".lower()
+                    f"llm:{provider}:{str(self.config.get('backend_url') or '').rstrip('/')}:{self.config.get('quick_think_llm')}".lower()
                 )
         elif self.config["llm_provider"].lower() == "anthropic":
             self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])

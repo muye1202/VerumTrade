@@ -651,6 +651,45 @@ def get_user_selections():
             raise typer.Exit(code=1)
         min_conviction = float(entered)
 
+    # --- Portfolio triage: pick N stocks ---
+    n_stocks = None
+    if analysis_mode == "portfolio":
+        triage_step = exec_step + 1
+        console.print(
+            create_question_box(
+                f"Step {triage_step}: Portfolio Triage",
+                "Let the deep-think AI pre-screen positions to select the "
+                "N most analysis-worthy stocks.  Saves time & cost.",
+                "3",
+            )
+        )
+        triage_choice = questionary.select(
+            "Enable portfolio triage?",
+            choices=[
+                questionary.Choice("Yes — AI picks the most important stocks", value="yes"),
+                questionary.Choice("No  — analyze every position", value="no"),
+            ],
+            instruction="\\n- Use arrow keys to navigate\\n- Press Enter to select",
+            style=questionary.Style(
+                [
+                    ("selected", "fg:yellow noinherit"),
+                    ("highlighted", "fg:yellow noinherit"),
+                    ("pointer", "fg:yellow noinherit"),
+                ]
+            ),
+        ).ask()
+        if triage_choice is None:
+            console.print("\\n[red]No triage selection. Exiting...[/red]")
+            raise typer.Exit(code=1)
+        if triage_choice == "yes":
+            n_input = questionary.text(
+                "How many stocks should the AI select for deep analysis?",
+                default="3",
+                validate=lambda x: (x.strip().isdigit() and int(x.strip()) > 0)
+                    or "Enter a positive integer.",
+            ).ask()
+            n_stocks = int(n_input) if n_input else None
+
     return {
         "analysis_mode": analysis_mode,
         "ticker": selected_ticker,
@@ -664,6 +703,7 @@ def get_user_selections():
         "execution": execution_settings,
         # Used by portfolio analysis; ignored for single ticker.
         "min_conviction": min_conviction,
+        "n_stocks": n_stocks,
     }
 
 
@@ -912,9 +952,14 @@ def analyze_portfolio(
         "--date",
         help="Analysis date (YYYY-MM-DD), defaults to today",
     ),
+    n_stocks: Optional[int] = typer.Option(
+        None,
+        "--n-stocks",
+        help="Triage: AI selects this many positions for deep analysis (default: all)",
+    ),
 ):
     init_portfolio_context(console=console, setup_executor=setup_executor)
-    _analyze_portfolio_impl(execute_trades, min_conviction, analysis_date)
+    _analyze_portfolio_impl(execute_trades, min_conviction, analysis_date, n_stocks=n_stocks)
 
 
 if __name__ == "__main__":
