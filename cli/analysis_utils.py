@@ -11,6 +11,7 @@ from rich.table import Table
 from rich.rule import Rule
 
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
+from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
@@ -580,6 +581,7 @@ def run_analysis():
                         trade_date=selections["analysis_date"],
                         agent_quantity=structured.get("quantity"),
                         agent_limit_price=structured.get("limit_price"),
+                        **executor_kwargs_from_structured(structured),
                     )
 
                     # Display execution results
@@ -816,6 +818,9 @@ def run_analysis():
                             lines.append(f"- Requested limit: `${float(execution_result.get('requested_limit_price')):.4f}`")
                         except Exception:
                             lines.append(f"- Requested limit: `{execution_result.get('requested_limit_price')}`")
+                    spec = execution_result.get("order_spec") or {}
+                    if isinstance(spec, dict) and spec.get("order_type"):
+                        lines.append(f"- Requested order type: `{spec.get('order_type')}`")
 
                     quote = execution_result.get("quote") or {}
                     if quote:

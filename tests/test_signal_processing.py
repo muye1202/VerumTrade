@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from tradingagents.graph.signal_processing import SignalProcessor
 
@@ -154,6 +155,18 @@ FINAL TRADING DECISION:
         self.assertEqual(structured["order_type"], "TRAILING_STOP")
         self.assertIsNone(structured["trail_percent"])
         self.assertIsNone(structured["trail_price"])
+
+    def test_parses_final_trade_decision_md_file_order_type_limit(self):
+        processor = SignalProcessor(quick_thinking_llm=None)
+
+        text = Path("results/AMC/2026-02-04/reports/final_trade_decision.md").read_text(encoding="utf-8")
+        structured = processor.extract_structured_decision(text)
+
+        self.assertEqual(structured["ticker"], "AMC")
+        self.assertEqual(structured["order_type"], "LIMIT")
+        self.assertEqual(structured["time_in_force"], "DAY")
+        self.assertEqual(structured["limit_price"], 1.35)
+        self.assertEqual(structured["stop_price"], 1.25)
 
 
 if __name__ == "__main__":

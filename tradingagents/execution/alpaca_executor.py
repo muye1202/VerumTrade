@@ -64,14 +64,18 @@ def _normalize_order_type(value: Optional[str]) -> Optional[str]:
     mapping = {
         "MKT": "MARKET",
         "MARKET": "MARKET",
+        "MARKET_ORDER": "MARKET",
         "LMT": "LIMIT",
         "LIMIT": "LIMIT",
+        "LIMIT_ORDER": "LIMIT",
         "STOP": "STOP",
+        "STOP_ORDER": "STOP",
         "STOPLIMIT": "STOP_LIMIT",
         "STOP_LIMIT": "STOP_LIMIT",
         "STOP_LIMIT_ORDER": "STOP_LIMIT",
         "TRAILINGSTOP": "TRAILING_STOP",
         "TRAILING_STOP": "TRAILING_STOP",
+        "TRAILING_STOP_ORDER": "TRAILING_STOP",
         "TRAIL_STOP": "TRAILING_STOP",
         "TRAILING": "TRAILING_STOP",
     }

@@ -125,8 +125,8 @@ class SignalProcessor:
     def _parse_structured_block(self, text: str) -> Optional[Dict[str, Any]]:
         """Parse the FINAL TRADING DECISION / FINAL TRANSACTION PROPOSAL block."""
         patterns = [
-            r"FINAL TRADING DECISION:(.*?)(?:---|$)",
-            r"FINAL TRANSACTION PROPOSAL:(.*?)(?:---|$)",
+            r"(?:^|\n)\s*(?:#+\s*)?FINAL TRADING DECISION\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
+            r"(?:^|\n)\s*(?:#+\s*)?FINAL TRANSACTION PROPOSAL\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
         ]
 
         block = None
