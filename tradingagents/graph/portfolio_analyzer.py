@@ -8,9 +8,10 @@ selects the N most analysis-worthy stocks.  The remaining positions receive a
 lightweight "HOLD — not triaged" recommendation.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 import logging
+import time
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.execution import AlpacaExecutor
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
@@ -32,12 +33,21 @@ class PortfolioAnalyzer:
         self.executor = executor
         self.analysis_date = analysis_date or datetime.now().strftime("%Y-%m-%d")
         self.logger = logging.getLogger("PortfolioAnalyzer")
+        self.config = graph.config if hasattr(graph, 'config') else {}
 
     def analyze_portfolio(
         self,
         execute_trades: bool = False,
         min_conviction: float = 60.0,
         n_stocks: Optional[int] = None,
+        # Progress callbacks for Live GUI integration
+        on_triage_start: Optional[Callable[[], None]] = None,
+        on_triage_complete: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_stock_start: Optional[Callable[[str, int, int], None]] = None,
+        on_stock_chunk: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        on_stock_complete: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        on_execution_start: Optional[Callable[[], None]] = None,
+        on_execution_complete: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Analyze all portfolio positions and generate recommendations.
@@ -48,6 +58,13 @@ class PortfolioAnalyzer:
             n_stocks: If set, triage the portfolio down to this many stocks
                       before running full analysis.  ``None`` means analyze all
                       positions (legacy behaviour).
+            on_triage_start: Callback when triage phase begins
+            on_triage_complete: Callback when triage phase ends (receives triage result)
+            on_stock_start: Callback when stock analysis begins (ticker, index, total)
+            on_stock_chunk: Callback for each streaming chunk during stock analysis
+            on_stock_complete: Callback when stock analysis ends (ticker, analysis)
+            on_execution_start: Callback when trade execution begins
+            on_execution_complete: Callback when trade execution ends (receives results)
 
         Returns:
             Dict with analysis results, recommendations, and insights
@@ -69,6 +86,9 @@ class PortfolioAnalyzer:
         positions_to_analyze = portfolio["positions"]
 
         if n_stocks is not None and n_stocks > 0:
+            if on_triage_start:
+                on_triage_start()
+
             triage_result = self._triage_positions(
                 portfolio["positions"],
                 n_stocks,
@@ -88,8 +108,22 @@ class PortfolioAnalyzer:
                 portfolio["positions_count"],
             )
 
+            if on_triage_complete:
+                on_triage_complete(triage_result)
+
+            # Delay after triage to allow API rate limits to recover
+            triage_delay = self.config.get("post_triage_delay_s", 10.0)
+            if triage_delay > 0:
+                self.logger.info(f"Waiting {triage_delay}s after triage before deep analysis...")
+                time.sleep(triage_delay)
+
         # Step 3: Run full multi-agent analysis on selected positions
-        position_analyses = self._analyze_positions(positions_to_analyze)
+        position_analyses = self._analyze_positions(
+            positions_to_analyze,
+            on_stock_start=on_stock_start,
+            on_stock_chunk=on_stock_chunk,
+            on_stock_complete=on_stock_complete,
+        )
 
         # Step 3b: Add lightweight stub entries for skipped positions
         if triage_result:
@@ -112,9 +146,15 @@ class PortfolioAnalyzer:
         # Step 6: Execute trades if requested
         execution_results = []
         if execute_trades:
+            if on_execution_start:
+                on_execution_start()
+
             execution_results = self._execute_recommendations(
                 recommendations, min_conviction
             )
+
+            if on_execution_complete:
+                on_execution_complete(execution_results)
 
         # Step 7: Generate strategic insights
         strategic_insights = self._generate_strategic_insights(
@@ -234,20 +274,36 @@ class PortfolioAnalyzer:
             return {}
 
     def _analyze_positions(
-        self, positions: List[Dict[str, Any]]
+        self,
+        positions: List[Dict[str, Any]],
+        on_stock_start: Optional[Callable[[str, int, int], None]] = None,
+        on_stock_chunk: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        on_stock_complete: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> List[Dict[str, Any]]:
-        """Analyze each position using the trading agents framework."""
-        analyses = []
+        """Analyze each position using the trading agents framework.
 
-        for position in positions:
+        Args:
+            positions: List of position dicts to analyze
+            on_stock_start: Callback(ticker, idx, total) when stock analysis begins
+            on_stock_chunk: Callback(ticker, chunk) for each streaming chunk
+            on_stock_complete: Callback(ticker, analysis) when stock analysis ends
+        """
+        analyses = []
+        total_positions = len(positions)
+        stock_delay = self.config.get("stock_analysis_delay_s", 5.0)
+
+        for idx, position in enumerate(positions):
             ticker = position["symbol"]
-            self.logger.info(f"Analyzing position: {ticker}")
+            self.logger.info(f"Analyzing position {idx + 1}/{total_positions}: {ticker}")
+
+            if on_stock_start:
+                on_stock_start(ticker, idx, total_positions)
 
             try:
-                # Run full analysis with portfolio context
+                # Run full analysis with portfolio context and streaming for UI updates
                 portfolio_ctx = fetch_portfolio_context(ticker)
-                final_state, decision = self.graph.propagate(
-                    ticker, self.analysis_date, portfolio_context=portfolio_ctx
+                final_state, decision = self._analyze_single_position_with_streaming(
+                    ticker, portfolio_ctx, on_stock_chunk
                 )
 
                 # Extract structured decision
@@ -260,33 +316,87 @@ class PortfolioAnalyzer:
                     final_state, decision
                 )
 
-                analyses.append(
-                    {
-                        "ticker": ticker,
-                        "current_qty": position["qty"],
-                        "current_value": position["market_value"],
-                        "unrealized_pl": position["unrealized_pl"],
-                        "unrealized_plpc": position["unrealized_plpc"],
-                        "decision": decision,
-                        "structured_decision": structured,
-                        "conviction_score": conviction,
-                        "final_state": final_state,
-                        "analysis_summary": self._extract_summary(final_state),
-                    }
-                )
+                analysis = {
+                    "ticker": ticker,
+                    "current_qty": position["qty"],
+                    "current_value": position["market_value"],
+                    "unrealized_pl": position["unrealized_pl"],
+                    "unrealized_plpc": position["unrealized_plpc"],
+                    "decision": decision,
+                    "structured_decision": structured,
+                    "conviction_score": conviction,
+                    "final_state": final_state,
+                    "analysis_summary": self._extract_summary(final_state),
+                }
+                analyses.append(analysis)
+
+                if on_stock_complete:
+                    on_stock_complete(ticker, analysis)
 
             except Exception as e:
                 self.logger.error(f"Error analyzing {ticker}: {e}")
-                analyses.append(
-                    {
-                        "ticker": ticker,
-                        "error": str(e),
-                        "decision": "HOLD",
-                        "conviction_score": 0,
-                    }
-                )
+                error_analysis = {
+                    "ticker": ticker,
+                    "error": str(e),
+                    "decision": "HOLD",
+                    "conviction_score": 0,
+                }
+                analyses.append(error_analysis)
+
+                if on_stock_complete:
+                    on_stock_complete(ticker, error_analysis)
+
+            # Add delay between stock analyses to respect API rate limits
+            if idx < total_positions - 1 and stock_delay > 0:
+                self.logger.info(f"Waiting {stock_delay}s before next stock to respect rate limits...")
+                time.sleep(stock_delay)
 
         return analyses
+
+    def _analyze_single_position_with_streaming(
+        self,
+        ticker: str,
+        portfolio_ctx: str,
+        on_chunk: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+    ) -> tuple:
+        """Analyze a single position with streaming support for UI updates.
+
+        This method uses graph.stream() to get incremental updates that can be
+        passed to the UI callback for real-time progress display.
+        """
+        self.graph.ticker = ticker
+
+        init_agent_state = self.graph.propagator.create_initial_state(
+            ticker, self.analysis_date, portfolio_context=portfolio_ctx
+        )
+        args = self.graph.propagator.get_graph_args()
+
+        # Stream the graph execution to get incremental updates
+        trace = []
+        for chunk in self.graph.graph.stream(init_agent_state, **args):
+            trace.append(chunk)
+
+            # Call the chunk callback if provided (for UI updates)
+            if on_chunk:
+                on_chunk(ticker, chunk)
+
+        if not trace:
+            raise RuntimeError(f"No chunks received from graph for {ticker}")
+
+        final_state = trace[-1]
+
+        # Store current state for reflection
+        self.graph.curr_state = final_state
+
+        # Extract decision
+        structured = self.graph.extract_structured_decision(
+            final_state.get("final_trade_decision", "")
+        )
+        decision = structured.get("action") or self.graph.process_signal(
+            final_state.get("final_trade_decision", "")
+        )
+
+        return final_state, decision
 
     def _calculate_portfolio_metrics(
         self,

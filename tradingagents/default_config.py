@@ -80,6 +80,14 @@ DEFAULT_CONFIG = {
         # Example: "get_news": "openai",               # Override category default
     },
 
+    # Portfolio analysis rate-limiting delays
+    # These delays help prevent 429 errors when analyzing multiple stocks
+    "stock_analysis_delay_s": float(os.getenv("TRADINGAGENTS_STOCK_ANALYSIS_DELAY_S", "5.0")),
+    "post_triage_delay_s": float(os.getenv("TRADINGAGENTS_POST_TRIAGE_DELAY_S", "10.0")),
+
+    # Portfolio triage settings
+    "triage_max_tool_rounds": int(os.getenv("TRADINGAGENTS_TRIAGE_MAX_TOOL_ROUNDS", "6")),
+
     # Alpaca execution settings
     "alpaca_execution": {
         "enabled": False,
