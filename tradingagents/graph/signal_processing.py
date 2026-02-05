@@ -51,6 +51,7 @@ class SignalProcessor:
             "quantity": None,
             "order_type": "MARKET",
             "time_in_force": None,
+            "extended_hours": None,
             "limit_price": None,
             "stop_price": None,
             "trail_percent": None,
@@ -146,6 +147,7 @@ class SignalProcessor:
             "QUANTITY": "quantity",
             "ORDER_TYPE": "order_type",
             "TIME_IN_FORCE": "time_in_force",
+            "EXTENDED_HOURS": "extended_hours",
             "LIMIT_PRICE": "limit_price",
             "STOP_PRICE": "stop_price",
             "TRAIL_PERCENT": "trail_percent",
@@ -197,12 +199,30 @@ class SignalProcessor:
                         value = "HOLD"
 
                 if result_key == "order_type":
+                    if value is None:
+                        result[result_key] = None
+                        continue
                     normalized = self._normalize_order_type(value)
                     value = normalized if normalized is not None else str(value).strip().upper()
 
                 if result_key == "time_in_force":
+                    if value is None:
+                        result[result_key] = None
+                        continue
                     normalized = self._normalize_time_in_force(value)
                     value = normalized if normalized is not None else str(value).strip().upper()
+
+                if result_key == "extended_hours":
+                    if value is None:
+                        value = None
+                    else:
+                        v = str(value).strip().lower()
+                        if v in ("true", "t", "yes", "y", "1"):
+                            value = True
+                        elif v in ("false", "f", "no", "n", "0"):
+                            value = False
+                        else:
+                            value = None
 
                 result[result_key] = value
 

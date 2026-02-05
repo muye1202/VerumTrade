@@ -96,6 +96,14 @@ def run_analysis():
         run_portfolio_analysis_from_selections(selections)
         return
 
+    # Discovery mode: run AI stock discovery
+    if selections.get("analysis_mode") == "discovery":
+        from cli.discovery_utils import init_discovery_context, run_discovery_flow
+
+        init_discovery_context(console_ref=console, setup_executor_ref=setup_executor)
+        run_discovery_flow(selections)
+        return
+
     # Create config with selected research depth
     config = DEFAULT_CONFIG.copy()
     config["max_debate_rounds"] = selections["research_depth"]

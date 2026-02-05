@@ -13,6 +13,7 @@ def create_market_analyst(llm):
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
+        market_session_context = state.get("market_session_context", "")
 
         tools = [
             get_stock_data,
@@ -76,6 +77,9 @@ Report requirements (keep it to-the-point, but specific):
                 + str(portfolio_context)
                 + "\n\nExecution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP) that may execute later. Provide levels/triggers compatible with those order types.\n---"
             )
+
+        if market_session_context:
+            system_message += "\n\n---\n" + str(market_session_context).strip() + "\n---"
 
         prompt = ChatPromptTemplate.from_messages(
             [

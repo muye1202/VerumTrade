@@ -1,10 +1,12 @@
-from typing import Annotated, Sequence
-from datetime import date, timedelta, datetime
-from typing_extensions import TypedDict, Optional
-from langchain_openai import ChatOpenAI
-from tradingagents.agents import *
-from langgraph.prebuilt import ToolNode
-from langgraph.graph import END, StateGraph, START, MessagesState
+from __future__ import annotations
+
+from typing import Annotated, Any, Optional, Sequence, TypedDict
+
+try:  # Optional dependency
+    from langgraph.graph import MessagesState as _MessagesState  # type: ignore
+except Exception:  # pragma: no cover
+    class _MessagesState(TypedDict, total=False):
+        messages: Sequence[Any]
 
 
 # Researcher team state
@@ -47,7 +49,7 @@ class RiskDebateState(TypedDict):
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
 
 
-class AgentState(MessagesState):
+class AgentState(_MessagesState):
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
 
@@ -81,3 +83,7 @@ class AgentState(MessagesState):
 
     # Portfolio awareness (injected at graph init from brokerage API)
     portfolio_context: Annotated[str, "Current portfolio state from brokerage (positions, cash, buying power)"]
+
+    # Market-session context (computed at graph init; baseline ET windows only)
+    market_session: Annotated[dict, "Current US market session metadata"]
+    market_session_context: Annotated[str, "Human-readable market-session context injected into prompts"]

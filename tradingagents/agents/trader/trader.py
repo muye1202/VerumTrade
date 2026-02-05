@@ -12,6 +12,7 @@ def create_trader(llm, memory):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
         portfolio_context = state.get("portfolio_context", "")
+        market_session_context = state.get("market_session_context", "")
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -46,12 +47,18 @@ Proposed Investment Plan: {investment_plan}
 Leverage these insights to make an informed and strategic decision.""",
         }
 
+        market_session_block = ""
+        if market_session_context:
+            market_session_block = f"\n\n{market_session_context}\n"
+
         messages = [
             {
                 "role": "system",
                 "content": f"""You are a professional trading agent analyzing market data to make investment decisions. You must produce a PORTFOLIO-AWARE recommendation.
 
   Based on your analysis, provide a specific, actionable recommendation. Do not forget to utilize lessons from past decisions. Here are reflections from similar situations: {past_memory_str}
+
+  {market_session_block}
 
   YOUR OUTPUT MUST END WITH A STRUCTURED TRADING DECISION in exactly this format:
 
@@ -75,6 +82,7 @@ Leverage these insights to make an informed and strategic decision.""",
 
   IMPORTANT RULES:
   - MARKET means execute now (immediate attempt). LIMIT/STOP/STOP_LIMIT/TRAILING_STOP may execute later if triggered/filled.
+  - If the regular market is CLOSED (pre-market/after-market/overnight/weekend), do NOT use MARKET; use LIMIT + TIME_IN_FORCE=DAY and provide a concrete LIMIT_PRICE.
   - For TRAILING_STOP you MUST set exactly ONE of TRAIL_PERCENT or TRAIL_PRICE (the other must be N/A).
   - For STOP you MUST set STOP_PRICE. For STOP_LIMIT you MUST set both STOP_PRICE and LIMIT_PRICE. For LIMIT you MUST set LIMIT_PRICE.
   - If you are unsure about conditional order parameters, use MARKET or LIMIT with a clear LIMIT_PRICE.

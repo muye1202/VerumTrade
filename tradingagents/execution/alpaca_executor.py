@@ -46,6 +46,7 @@ import re
 class OrderSpec:
     order_type: str
     time_in_force: str
+    extended_hours: bool = False
     limit_price: Optional[float] = None
     stop_price: Optional[float] = None
     trail_percent: Optional[float] = None
@@ -128,6 +129,7 @@ def normalize_order_inputs(
     limit_price_offset_pct: float,
     agent_order_type: Optional[str] = None,
     agent_time_in_force: Optional[str] = None,
+    agent_extended_hours: Optional[bool] = None,
     agent_limit_price: Optional[float] = None,
     agent_stop_price: Optional[float] = None,
     agent_trail_percent: Optional[float] = None,
@@ -151,6 +153,13 @@ def normalize_order_inputs(
     tif = agent_tif or _normalize_time_in_force(default_time_in_force) or "DAY"
     side_u = str(side).strip().upper()
 
+    extended_hours = bool(agent_extended_hours) if agent_extended_hours is not None else False
+    if extended_hours:
+        if order_type != "LIMIT":
+            return None, "EXTENDED_HOURS requires ORDER_TYPE=LIMIT (MARKET/STOP types are not allowed)."
+        if tif != "DAY":
+            return None, "EXTENDED_HOURS requires TIME_IN_FORCE=DAY."
+
     limit_price = _parse_floatish(agent_limit_price)
     stop_price = _parse_floatish(agent_stop_price)
     trail_percent = _parse_floatish(agent_trail_percent)
@@ -160,7 +169,7 @@ def normalize_order_inputs(
         return None, "Current price must be positive."
 
     if order_type == "MARKET":
-        return OrderSpec(order_type=order_type, time_in_force=tif), None
+        return OrderSpec(order_type=order_type, time_in_force=tif, extended_hours=extended_hours), None
 
     if order_type == "LIMIT":
         requested_limit_price: Optional[float] = None
@@ -180,6 +189,7 @@ def normalize_order_inputs(
             OrderSpec(
                 order_type=order_type,
                 time_in_force=tif,
+                extended_hours=extended_hours,
                 limit_price=limit_price,
                 requested_limit_price=requested_limit_price,
             ),
@@ -189,7 +199,15 @@ def normalize_order_inputs(
     if order_type == "STOP":
         if stop_price is None or stop_price <= 0:
             return None, "STOP_PRICE is required and must be positive for STOP orders."
-        return OrderSpec(order_type=order_type, time_in_force=tif, stop_price=round(float(stop_price), 2)), None
+        return (
+            OrderSpec(
+                order_type=order_type,
+                time_in_force=tif,
+                extended_hours=extended_hours,
+                stop_price=round(float(stop_price), 2),
+            ),
+            None,
+        )
 
     if order_type == "STOP_LIMIT":
         if stop_price is None or stop_price <= 0:
@@ -200,6 +218,7 @@ def normalize_order_inputs(
             OrderSpec(
                 order_type=order_type,
                 time_in_force=tif,
+                extended_hours=extended_hours,
                 stop_price=round(float(stop_price), 2),
                 limit_price=round(float(limit_price), 2),
                 requested_limit_price=round(float(limit_price), 2),
@@ -214,14 +233,24 @@ def normalize_order_inputs(
             if trail_percent <= 0:
                 return None, "TRAIL_PERCENT must be positive."
             return (
-                OrderSpec(order_type=order_type, time_in_force=tif, trail_percent=float(trail_percent)),
+                OrderSpec(
+                    order_type=order_type,
+                    time_in_force=tif,
+                    extended_hours=extended_hours,
+                    trail_percent=float(trail_percent),
+                ),
                 None,
             )
         if trail_price is not None:
             if trail_price <= 0:
                 return None, "TRAIL_PRICE must be positive."
             return (
-                OrderSpec(order_type=order_type, time_in_force=tif, trail_price=round(float(trail_price), 2)),
+                OrderSpec(
+                    order_type=order_type,
+                    time_in_force=tif,
+                    extended_hours=extended_hours,
+                    trail_price=round(float(trail_price), 2),
+                ),
                 None,
             )
 
@@ -290,6 +319,10 @@ def _analysis_state_for_log(state: Optional[Dict[str, Any]]) -> Any:
     return out
 
 
+class ExtendedHoursSubmissionError(RuntimeError):
+    """Raised when an extended-hours order request/submission fails and must not be retried without the flag."""
+
+
 class AlpacaExecutor:
     """
     Executes trading signals from TradingAgents framework on Alpaca paper trading.
@@ -331,6 +364,7 @@ class AlpacaExecutor:
             limit_price_offset_pct: Offset percentage for limit orders
             log_dir: Directory for execution logs
         """
+
         if TradingClient is None or StockHistoricalDataClient is None:
             raise RuntimeError(
                 "Alpaca execution requires the 'alpaca-py' package. Install it to enable paper trading execution."
@@ -440,6 +474,37 @@ class AlpacaExecutor:
 
         return logger
 
+    def _regular_market_is_open(self) -> Optional[bool]:
+        """
+        Best-effort check for whether the regular market is open.
+
+        Prefers Alpaca clock when available; falls back to a US/Eastern time-window heuristic.
+        """
+        get_clock = getattr(self.trading_client, "get_clock", None)
+        if callable(get_clock):
+            try:
+                clock = get_clock()
+                is_open = getattr(clock, "is_open", None)
+                if is_open is not None:
+                    return bool(is_open)
+            except Exception:
+                pass
+
+        try:
+            from tradingagents.utils.market_session import describe_us_market_session
+
+            return bool(describe_us_market_session().get("is_regular_open"))
+        except Exception:
+            return None
+
+    def _resolve_extended_hours(self, agent_extended_hours: Optional[bool]) -> bool:
+        if agent_extended_hours is not None:
+            return bool(agent_extended_hours)
+        is_open = self._regular_market_is_open()
+        if is_open is None:
+            return False
+        return not bool(is_open)
+
     def execute_signal(
         self,
         ticker: str,
@@ -450,6 +515,7 @@ class AlpacaExecutor:
         agent_limit_price: Optional[float] = None,
         agent_order_type: Optional[str] = None,
         agent_time_in_force: Optional[str] = None,
+        agent_extended_hours: Optional[bool] = None,
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
@@ -492,6 +558,7 @@ class AlpacaExecutor:
                       agent_limit_price=agent_limit_price,
                       agent_order_type=agent_order_type,
                       agent_time_in_force=agent_time_in_force,
+                      agent_extended_hours=agent_extended_hours,
                       agent_stop_price=agent_stop_price,
                       agent_trail_percent=agent_trail_percent,
                       agent_trail_price=agent_trail_price,
@@ -505,6 +572,7 @@ class AlpacaExecutor:
                       agent_limit_price=agent_limit_price,
                       agent_order_type=agent_order_type,
                       agent_time_in_force=agent_time_in_force,
+                      agent_extended_hours=agent_extended_hours,
                       agent_stop_price=agent_stop_price,
                       agent_trail_percent=agent_trail_percent,
                       agent_trail_price=agent_trail_price,
@@ -535,6 +603,7 @@ class AlpacaExecutor:
         agent_limit_price: Optional[float] = None,
         agent_order_type: Optional[str] = None,
         agent_time_in_force: Optional[str] = None,
+        agent_extended_hours: Optional[bool] = None,
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
@@ -626,12 +695,19 @@ class AlpacaExecutor:
                 current_price=current_price,
                 agent_order_type=agent_order_type,
                 agent_time_in_force=agent_time_in_force,
+                agent_extended_hours=agent_extended_hours,
                 agent_limit_price=agent_limit_price,
                 agent_stop_price=agent_stop_price,
                 agent_trail_percent=agent_trail_percent,
                 agent_trail_price=agent_trail_price,
             )
         except Exception as e:
+            if isinstance(e, ExtendedHoursSubmissionError):
+                return {
+                    "executed": False,
+                    "error": str(e),
+                    "message": "Extended-hours order submission failed; aborting without retry.",
+                }
             return {"executed": False, "error": str(e)}
 
         self.logger.info(
@@ -658,6 +734,7 @@ class AlpacaExecutor:
         agent_limit_price: Optional[float] = None,
         agent_order_type: Optional[str] = None,
         agent_time_in_force: Optional[str] = None,
+        agent_extended_hours: Optional[bool] = None,
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
@@ -713,12 +790,19 @@ class AlpacaExecutor:
                 current_price=current_price,
                 agent_order_type=agent_order_type,
                 agent_time_in_force=agent_time_in_force,
+                agent_extended_hours=agent_extended_hours,
                 agent_limit_price=agent_limit_price,
                 agent_stop_price=agent_stop_price,
                 agent_trail_percent=agent_trail_percent,
                 agent_trail_price=agent_trail_price,
             )
         except Exception as e:
+            if isinstance(e, ExtendedHoursSubmissionError):
+                return {
+                    "executed": False,
+                    "error": str(e),
+                    "message": "Extended-hours order submission failed; aborting without retry.",
+                }
             return {"executed": False, "error": str(e)}
 
         self.logger.info(
@@ -744,6 +828,7 @@ class AlpacaExecutor:
         current_price: float,
         agent_order_type: Optional[str] = None,
         agent_time_in_force: Optional[str] = None,
+        agent_extended_hours: Optional[bool] = None,
         agent_limit_price: Optional[float] = None,
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
@@ -755,6 +840,7 @@ class AlpacaExecutor:
                 "Alpaca execution requires the 'alpaca-py' package. Install it to enable execution."
             ) from _ALPACA_IMPORT_ERROR
 
+        resolved_extended_hours = self._resolve_extended_hours(agent_extended_hours)
         spec, err = normalize_order_inputs(
             default_order_type=self.order_type,
             default_time_in_force=self.time_in_force,
@@ -763,6 +849,7 @@ class AlpacaExecutor:
             limit_price_offset_pct=float(self.limit_price_offset_pct),
             agent_order_type=agent_order_type,
             agent_time_in_force=agent_time_in_force,
+            agent_extended_hours=resolved_extended_hours,
             agent_limit_price=agent_limit_price,
             agent_stop_price=agent_stop_price,
             agent_trail_percent=agent_trail_percent,
@@ -784,13 +871,28 @@ class AlpacaExecutor:
         if spec.order_type == "MARKET":
             request = MarketOrderRequest(symbol=ticker, qty=qty, side=side, time_in_force=tif)
         elif spec.order_type == "LIMIT":
-            request = LimitOrderRequest(
-                symbol=ticker,
-                qty=qty,
-                side=side,
-                time_in_force=tif,
-                limit_price=spec.limit_price,
-            )
+            try:
+                request_kwargs: Dict[str, Any] = {
+                    "symbol": ticker,
+                    "qty": qty,
+                    "side": side,
+                    "time_in_force": tif,
+                    "limit_price": spec.limit_price,
+                }
+                if spec.extended_hours:
+                    request_kwargs["extended_hours"] = True
+                request = LimitOrderRequest(**request_kwargs)
+            except TypeError as e:
+                if spec.extended_hours:
+                    self.logger.error(
+                        "Extended-hours LIMIT order request rejected for %s (%s %s): %s",
+                        ticker,
+                        getattr(side, "value", str(side)),
+                        qty,
+                        str(e),
+                    )
+                    raise ExtendedHoursSubmissionError(str(e)) from e
+                raise
         elif spec.order_type == "STOP":
             if StopOrderRequest is None:
                 raise RuntimeError("Stop orders require alpaca-py StopOrderRequest.")
@@ -829,7 +931,20 @@ class AlpacaExecutor:
         else:
             raise ValueError(f"Unsupported ORDER_TYPE '{spec.order_type}'.")
 
-        order = self.trading_client.submit_order(request)
+        try:
+            order = self.trading_client.submit_order(request)
+        except Exception as e:
+            if getattr(spec, "extended_hours", False):
+                self.logger.error(
+                    "Extended-hours order submission failed for %s (%s %s): %s",
+                    ticker,
+                    getattr(side, "value", str(side)),
+                    qty,
+                    str(e),
+                    exc_info=True,
+                )
+                raise ExtendedHoursSubmissionError(str(e)) from e
+            raise
         return order, spec.requested_limit_price, spec
 
     def _get_position(self, ticker: str) -> Optional[Any]:

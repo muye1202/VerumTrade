@@ -14,8 +14,8 @@ def executor_kwargs_from_structured(structured: Mapping[str, Any] | None) -> dic
     return {
         "agent_order_type": structured.get("order_type"),
         "agent_time_in_force": structured.get("time_in_force"),
+        "agent_extended_hours": structured.get("extended_hours"),
         "agent_stop_price": structured.get("stop_price"),
         "agent_trail_percent": structured.get("trail_percent"),
         "agent_trail_price": structured.get("trail_price"),
     }
-

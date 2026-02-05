@@ -29,6 +29,7 @@ from tradingagents.execution import AlpacaExecutor
 from cli.utils import *
 from cli.analysis_utils import init_analysis_context, run_analysis
 from cli.portfolio_analysis_utils import init_portfolio_context, analyze_portfolio as _analyze_portfolio_impl
+from cli.discovery_utils import init_discovery_context, run_discovery_flow
 
 console = Console()
 
@@ -548,7 +549,7 @@ def get_user_selections():
     console.print(
         create_question_box(
             "Step 1: Analysis Mode",
-            "Choose between single-ticker analysis or full portfolio analysis",
+            "Choose between single-ticker analysis, portfolio analysis, or AI stock discovery",
             "Single ticker",
         )
     )
@@ -557,6 +558,7 @@ def get_user_selections():
         choices=[
             questionary.Choice("Single ticker (one symbol)", value="single"),
             questionary.Choice("Portfolio (analyze all positions)", value="portfolio"),
+            questionary.Choice("Stock Discovery (AI finds promising stocks)", value="discovery"),
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -574,6 +576,49 @@ def get_user_selections():
 
     selected_ticker = None
     analysis_date = default_date
+
+    # Discovery mode: only needs LLM config, date is today
+    if analysis_mode == "discovery":
+        console.print(
+            create_question_box(
+                "Step 2: Analysis Date",
+                "Enter the date for stock discovery (defaults to today)",
+                default_date,
+            )
+        )
+        analysis_date = get_analysis_date()
+
+        # Skip to LLM provider selection for discovery mode
+        console.print(create_question_box("Step 3: LLM Provider", "Select which service to talk to"))
+        selected_llm_provider, backend_url = select_llm_provider()
+
+        console.print(create_question_box("Step 4: Deep Thinking Agent", "Select the model for stock discovery"))
+        selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
+
+        # Optional execution settings
+        console.print(
+            create_question_box(
+                "Step 5: Execution",
+                "Optionally execute BUY/SELL signals after deep analysis.",
+                "Analysis only",
+            )
+        )
+        execution_settings = select_execution_settings()
+
+        return {
+            "analysis_mode": "discovery",
+            "ticker": None,
+            "analysis_date": analysis_date,
+            "analysts": [],
+            "research_depth": 1,
+            "llm_provider": selected_llm_provider.lower(),
+            "backend_url": backend_url,
+            "shallow_thinker": selected_deep_thinker,  # Use same for simplicity
+            "deep_thinker": selected_deep_thinker,
+            "execution": execution_settings,
+            "min_conviction": 70.0,
+            "n_stocks": None,
+        }
 
     # Single ticker path: ask for ticker + date
     if analysis_mode == "single":

@@ -9,6 +9,7 @@ def create_risk_manager(llm, memory):
         config = get_config()
 
         company_name = state["company_of_interest"]
+        market_session_context = state.get("market_session_context", "")
 
         history = state["risk_debate_state"]["history"]
         risk_debate_state = state["risk_debate_state"]
@@ -47,6 +48,9 @@ CRITICAL PORTFOLIO RULES:
 Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
 
 CRITICAL: Your decision must be PORTFOLIO-AWARE and result in a clear, actionable recommendation.
+
+CURRENT MARKET SESSION CONTEXT:
+{market_session_context}
 {portfolio_block}
 
 Guidelines for Decision-Making:
@@ -91,6 +95,7 @@ YOUR OUTPUT MUST END WITH a structured decision:
 
   QUANTITY RULES:
   - MARKET means execute now (immediate attempt). LIMIT/STOP/STOP_LIMIT/TRAILING_STOP may execute later if triggered/filled.
+  - If the regular market is CLOSED (pre-market/after-market/overnight/weekend), do NOT use MARKET; use LIMIT + TIME_IN_FORCE=DAY and provide a concrete LIMIT_PRICE.
   - For TRAILING_STOP you MUST set exactly ONE of TRAIL_PERCENT or TRAIL_PRICE (the other must be N/A).
   - For STOP you MUST set STOP_PRICE. For STOP_LIMIT you MUST set both STOP_PRICE and LIMIT_PRICE. For LIMIT you MUST set LIMIT_PRICE.
   - QUANTITY must be a single integer on that line (e.g., "37"). Do NOT include any other numbers (no %s, no ranges, no "10% (~37 shares)").

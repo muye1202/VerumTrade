@@ -1,10 +1,9 @@
 # TradingAgents/graph/propagation.py
 
 from typing import Dict, Any
-from tradingagents.agents.utils.agent_states import (
-    AgentState,
-    InvestDebateState,
-    RiskDebateState,
+from tradingagents.utils.market_session import (
+    describe_us_market_session,
+    format_market_session_context,
 )
 
 
@@ -19,25 +18,24 @@ class Propagator:
         self, company_name: str, trade_date: str, portfolio_context: str = ""
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
+        market_session = describe_us_market_session()
         return {
             "messages": [("human", company_name)],
             "portfolio_context": portfolio_context,
             "company_of_interest": company_name,
             "trade_date": str(trade_date),
+            "market_session": market_session,
+            "market_session_context": format_market_session_context(market_session),
             "tool_call_counts": {},
             "tool_call_total": 0,
-            "investment_debate_state": InvestDebateState(
-                {"history": "", "current_response": "", "count": 0}
-            ),
-            "risk_debate_state": RiskDebateState(
-                {
-                    "history": "",
-                    "current_risky_response": "",
-                    "current_safe_response": "",
-                    "current_neutral_response": "",
-                    "count": 0,
-                }
-            ),
+            "investment_debate_state": {"history": "", "current_response": "", "count": 0},
+            "risk_debate_state": {
+                "history": "",
+                "current_risky_response": "",
+                "current_safe_response": "",
+                "current_neutral_response": "",
+                "count": 0,
+            },
             "market_report": "",
             "fundamentals_report": "",
             "sentiment_report": "",
