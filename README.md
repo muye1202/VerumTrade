@@ -1,8 +1,7 @@
 <div align="center">
-  <!-- TODO: replace the src below with your hosted logo URL once available -->
-  <img src="YOUR_LOGO_URL_HERE" alt="Neural Bull — TradingAgents" width="200">
+  <img src="assets/bull_line_art.svg" alt="Neural Bull — AIStockTrader" width="200">
 
-  <h1>TradingAgents</h1>
+  <!-- <h1>AI Stock Trader</h1> -->
   <p><em>A multi-agent AI system where teams of specialised LLM agents research, debate, and decide on stock trades — end to end.</em></p>
 
   <p>
