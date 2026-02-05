@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/bull_line_art.svg" alt="Neural Bull — AIStockTrader" width="300">
+  <img src="assets/bool_trader.svg" alt="Neural Bull — AIStockTrader" width="300">
 
-  <!-- <h1>AI Stock Trader</h1> -->
+  <h1>Boolean Trader</h1>
   <p><em>A multi-agent AI system where teams of specialised LLM agents research, debate, and decide on stock trades — end to end.</em></p>
 
   <p>
