@@ -28,10 +28,12 @@ class PortfolioAnalyzer:
         graph: TradingAgentsGraph,
         executor: AlpacaExecutor,
         analysis_date: Optional[str] = None,
+        time_horizon: Optional[str] = None,
     ):
         self.graph = graph
         self.executor = executor
         self.analysis_date = analysis_date or datetime.now().strftime("%Y-%m-%d")
+        self.time_horizon = time_horizon
         self.logger = logging.getLogger("PortfolioAnalyzer")
         self.config = graph.config if hasattr(graph, 'config') else {}
 
@@ -367,7 +369,10 @@ class PortfolioAnalyzer:
         self.graph.ticker = ticker
 
         init_agent_state = self.graph.propagator.create_initial_state(
-            ticker, self.analysis_date, portfolio_context=portfolio_ctx
+            ticker,
+            self.analysis_date,
+            portfolio_context=portfolio_ctx,
+            time_horizon=self.time_horizon,
         )
         args = self.graph.propagator.get_graph_args()
 

@@ -1,4 +1,5 @@
 from typing import Annotated
+import json
 
 # Import from vendor-specific modules
 from .local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
@@ -66,6 +67,43 @@ VENDOR_LIST = [
 
 
 _WARN_MISSING_METHODS = {"get_stock_data", "get_indicators"}
+
+
+def _clip_middle_text(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    marker = f"\n...[TRUNCATED {len(text) - max_chars} chars]...\n"
+    keep = max_chars - len(marker)
+    if keep <= 20:
+        return text[:max_chars]
+    head = keep // 2
+    tail = keep - head
+    return text[:head] + marker + text[-tail:]
+
+
+def _compact_tool_output(method: str, value):
+    cfg = get_config()
+    global_cap = int(cfg.get("tool_response_max_chars", 12000))
+    method_cap_map = {
+        "get_news": global_cap,
+        "get_global_news": global_cap,
+        "get_fundamentals": int(global_cap * 1.2),
+        "get_balance_sheet": int(global_cap * 1.2),
+        "get_cashflow": int(global_cap * 1.2),
+        "get_income_statement": int(global_cap * 1.2),
+    }
+    max_chars = int(method_cap_map.get(method, global_cap))
+
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False)
+    else:
+        text = str(value)
+
+    if len(text) <= max_chars:
+        return value
+    return _clip_middle_text(text, max_chars)
 
 
 def _missing_value_summary(value) -> str | None:
@@ -278,9 +316,10 @@ def route_to_vendor(method: str, *args, **kwargs):
     else:
         print(f"FINAL: Method '{method}' completed with {len(results)} result(s) from {vendor_attempt_count} vendor attempt(s)")
 
-    # Return single result if only one, otherwise concatenate as string
+    # Return single result if only one, otherwise concatenate as string, then compact.
     if len(results) == 1:
-        return results[0]
+        return _compact_tool_output(method, results[0])
     else:
         # Convert all results to strings and concatenate
-        return '\n'.join(str(result) for result in results)
+        merged = '\n'.join(str(result) for result in results)
+        return _compact_tool_output(method, merged)

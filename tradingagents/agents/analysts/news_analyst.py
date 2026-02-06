@@ -2,7 +2,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
 from tradingagents.agents.utils.agent_utils import get_news, get_company_news_window, get_global_news
-from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
 
 
 def create_news_analyst(llm):
@@ -10,6 +10,9 @@ def create_news_analyst(llm):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
+        spec = get_time_horizon_spec(state.get("time_horizon"))
+        holding_text = spec.label
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
         tools = [
             get_news,
@@ -18,16 +21,16 @@ def create_news_analyst(llm):
         ]
 
         system_message = (
-            "You are a news + macro analyst supporting a short-term (1–2 month) swing trade decision. Your job is to identify *trade-relevant* catalysts and risks for the next 4–8 weeks, not to produce a long general news recap."
+            f"You are a news + macro analyst supporting a {holding_text} swing trade decision. Your job is to identify *trade-relevant* catalysts and risks for {window_text}, not to produce a long general news recap."
             "\n\nWorkflow (tool-first, then write):"
-            "\n1) Pull company-specific news/sentiment for the last ~21 days using `get_company_news_window(ticker=<ticker>, curr_date=<current_date>, look_back_days=21)` (fallback: `get_news`)."
-            "\n2) Pull macro/regime headlines using `get_global_news(curr_date=<current_date>, look_back_days=7, limit=10)`."
+            f"\n1) Pull company-specific news/sentiment for the last ~{spec.company_news_lookback_days} days using `get_company_news_window(ticker=<ticker>, curr_date=<current_date>, look_back_days={spec.company_news_lookback_days})` (fallback: `get_news`)."
+            f"\n2) Pull macro/regime headlines using `get_global_news(curr_date=<current_date>, look_back_days={spec.global_news_lookback_days}, limit=10)`."
             "\n3) After you have data, write the final report **without** further tool calls."
             "\n\nReport requirements (to-the-point, trading oriented):"
             "\n- Company catalysts: summarize key storylines; map each to likely price impact direction and time window."
             "\n- Macro/regime: risk-on/off tone, rates/inflation themes, and how they could affect the ticker/sector."
             "\n- Sentiment/positioning signals from the vendor output (e.g., Alpha Vantage news sentiment scores) if present."
-            "\n- Event-driven risk: list 3–5 plausible upcoming catalysts/risks over the next 4–8 weeks (don’t invent dates; describe them generically if unknown)."
+            f"\n- Event-driven risk: list 3–5 plausible upcoming catalysts/risks over {window_text} (don’t invent dates; describe them generically if unknown)."
             "\n- Bottom line: short-term news-driven bias (bullish/bearish/neutral) + what headline would invalidate it."
             "\n\nEnd with a compact Markdown table: theme, bullish/bearish impulse, confidence, time horizon, and key watch item."
         )
@@ -36,7 +39,7 @@ def create_news_analyst(llm):
             system_message += (
                 "\n\n---\nCURRENT PORTFOLIO CONTEXT (live brokerage snapshot):\n"
                 + str(portfolio_context)
-                + "\n\nExecution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP) that may execute later. Call out catalyst timing that favors immediate execution vs staged/conditional orders.\n---"
+                + "\n\n**CRITICAL** Execution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP). Your report MUST provide concrete numeric levels for: (1) entry/trigger, (2) stop-loss, (3) take-profit, and (4) holding horizon or time-stop for hold management. This applies to both active BUY/SELL setups and HOLD/watch scenarios. If confidence is low, still provide bounded watch levels and explicit invalidation logic instead of omitting levels.\n---"
             )
 
         prompt = ChatPromptTemplate.from_messages(

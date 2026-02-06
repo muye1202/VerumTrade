@@ -126,6 +126,40 @@ def select_research_depth() -> int:
     return choice
 
 
+def select_time_horizon() -> str:
+    """
+    Select a target holding period / time horizon for this run.
+
+    Returns the normalized key (ASCII) stored in agent state, e.g. "1-2 months".
+    """
+    # Put the default choice first to avoid relying on questionary's optional `default=` API.
+    choices = [
+        questionary.Choice("1–2 weeks (5–10 trading days) (Default)", value="1-2 weeks"),
+        questionary.Choice("2–4 weeks (10–20 trading days)", value="2-4 weeks"),
+        questionary.Choice("1–2 months (20–42 trading days)", value="1-2 months"),
+        questionary.Choice("2–3 months (42–63 trading days)", value="2-3 months"),
+    ]
+
+    choice = questionary.select(
+        "Select [Holding Period / Time Horizon]:",
+        choices=choices,
+        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+        style=questionary.Style(
+            [
+                ("selected", "fg:yellow noinherit"),
+                ("highlighted", "fg:yellow noinherit"),
+                ("pointer", "fg:yellow noinherit"),
+            ]
+        ),
+    ).ask()
+
+    if choice is None:
+        console.print("\n[red]No holding period selected. Exiting...[/red]")
+        exit(1)
+
+    return str(choice)
+
+
 def select_shallow_thinking_agent(provider) -> str:
     """Select shallow thinking llm engine using an interactive selection."""
 
@@ -135,14 +169,12 @@ def select_shallow_thinking_agent(provider) -> str:
             ("GLM-4.7-Flash - Fast, cost-effective", "glm-4.7-flash"),
         ],
         "qwen3-cn": [
-            ("Qwen-Plus (Latest)", "qwen-plus-latest"),
-            ("Qwen-Plus (2025-07-28)", "qwen-plus-2025-07-28"),
+            ("Qwen-Plus (2025-04-28)", "qwen-plus-2025-04-28"),
+            ("Qwen-Plus (2025-01-25)", "qwen-plus-2025-01-25"),
             ("Qwen-Plus (2025-07-14)", "qwen-plus-2025-07-14"),
+            ("Qwen-Plus (2025-07-28)", "qwen-plus-2025-07-28"),
+            ("Qwen3-30b-a3b-thinking", "qwen3-30b-a3b-thinking-2507"),
             ("Qwen3-32B - Strong general model", "qwen3-32b"),
-            ("Qwen-Flash (2025-07-28) - Versioned fast model", "qwen-flash-2025-07-28"),
-            ("Qwen-Turbo cost-effective faster model", "qwen-turbo"),
-            ("QwQ-Plus - Reasoning-focused model", "qwq-plus"),
-            ("QwQ-Plus (Latest) - Latest reasoning-focused model", "qwq-plus-latest"),
             ("Ali provided Deepseek-v3.2", "deepseek-v3.2"),
             ("Ali provided Deepseek-v3.1", "deepseek-v3.1"),
             ("Ali provided Deepseek-R1", "deepseek-r1"),
@@ -150,10 +182,10 @@ def select_shallow_thinking_agent(provider) -> str:
         "deepseek": [
             ("DeepSeek Chat", "deepseek-chat"),
         ],
-        "openai": [
-            ("Gemini-3-Flash", "gemini-3-flash"),
-            ("Gemini-2.5-Flash", "gemini-2.5-flash"),
-        ],
+        # "openai": [
+        #     ("Gemini-3-Flash", "gemini-3-flash"),
+        #     ("Gemini-2.5-Flash", "gemini-2.5-flash"),
+        # ],
     }
 
     choice = questionary.select(
@@ -200,11 +232,11 @@ def select_deep_thinking_agent(provider) -> str:
         "deepseek": [
             ("DeepSeek Reasoner", "deepseek-reasoner"),
         ],
-        "openai": [
-            ("Gemini-3-Pro-Low", "gemini-3-pro-low"),
-            ("Gemini-3-Pro-High", "gemini-3-pro-high"),
-            ("Gemini-2.5-Thinking", "gemini-2.5-flash-thinking"),
-        ],
+        # "openai": [
+        #     ("Gemini-3-Pro-Low", "gemini-3-pro-low"),
+        #     ("Gemini-3-Pro-High", "gemini-3-pro-high"),
+        #     ("Gemini-2.5-Thinking", "gemini-2.5-flash-thinking"),
+        # ],
         "openrouter": [
             ("DeepSeek V3 - a 685B-parameter, mixture-of-experts model", "deepseek/deepseek-chat-v3-0324:free"),
             ("Deepseek - latest iteration of the flagship chat model family from the DeepSeek team.", "deepseek/deepseek-chat-v3-0324:free"),

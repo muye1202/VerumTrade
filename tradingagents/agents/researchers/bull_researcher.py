@@ -1,6 +1,17 @@
 from langchain_core.messages import AIMessage
 import time
 import json
+import logging
+
+from tradingagents.agents.utils.context_budget import (
+    cap_section,
+    cap_sections_with_soft_token_cap,
+    get_budget_settings,
+    prompt_diagnostics,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_bull_researcher(llm, memory):
@@ -22,6 +33,54 @@ def create_bull_researcher(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
+        settings = get_budget_settings()
+        sections_before = {
+            "history_tail": cap_section(
+                "history_tail", history, settings["section_max_chars_history"]
+            ),
+            "current_response": cap_section(
+                "current_response",
+                current_response,
+                settings["section_max_chars_response"],
+            ),
+            "reports": "\n\n".join(
+                [
+                    "Market research report:\n"
+                    + cap_section(
+                        "market_report",
+                        market_research_report,
+                        settings["section_max_chars_report"],
+                    ),
+                    "Social media sentiment report:\n"
+                    + cap_section(
+                        "sentiment_report",
+                        sentiment_report,
+                        settings["section_max_chars_report"],
+                    ),
+                    "Latest world affairs news:\n"
+                    + cap_section(
+                        "news_report", news_report, settings["section_max_chars_report"]
+                    ),
+                    "Company fundamentals report:\n"
+                    + cap_section(
+                        "fundamentals_report",
+                        fundamentals_report,
+                        settings["section_max_chars_report"],
+                    ),
+                ]
+            ),
+            "memories": cap_section(
+                "memories", past_memory_str, settings["section_max_chars_memory"]
+            ),
+        }
+        sections = cap_sections_with_soft_token_cap(
+            sections_before, settings["soft_cap_tokens"]
+        )
+        clipped = sections != sections_before
+        prompt_diagnostics("bull_researcher", sections, clipped)
+        if clipped:
+            logger.debug("Bull researcher prompt sections were clipped by context budget.")
+
         prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 
 Key points to focus on:
@@ -32,13 +91,10 @@ Key points to focus on:
 - Engagement: Present your argument in a conversational style, engaging directly with the bear analyst's points and debating effectively rather than just listing data.
 
 Resources available:
-Market research report: {market_research_report}
-Social media sentiment report: {sentiment_report}
-Latest world affairs news: {news_report}
-Company fundamentals report: {fundamentals_report}
-Conversation history of the debate: {history}
-Last bear argument: {current_response}
-Reflections from similar situations and lessons learned: {past_memory_str}
+{sections["reports"]}
+Conversation history of the debate: {sections["history_tail"]}
+Last bear argument: {sections["current_response"]}
+Reflections from similar situations and lessons learned: {sections["memories"]}
 Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position. You must also address reflections and learn from lessons and mistakes you made in the past.
 """
 

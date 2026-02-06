@@ -11,6 +11,7 @@ class TestCliExecutionArgForwarding(unittest.TestCase):
             "stop_price": 256.40,
             "trail_percent": None,
             "trail_price": None,
+            "position_size_pct": 12.5,
         }
 
         kwargs = executor_kwargs_from_structured(structured)
@@ -19,6 +20,7 @@ class TestCliExecutionArgForwarding(unittest.TestCase):
         self.assertEqual(kwargs.get("agent_stop_price"), 256.40)
         self.assertIsNone(kwargs.get("agent_trail_percent"))
         self.assertIsNone(kwargs.get("agent_trail_price"))
+        self.assertEqual(kwargs.get("agent_position_size_pct"), 12.5)
 
     def test_missing_structured_fields_default_to_none(self):
         kwargs = executor_kwargs_from_structured({"order_type": "MARKET"})
@@ -27,8 +29,8 @@ class TestCliExecutionArgForwarding(unittest.TestCase):
         self.assertIsNone(kwargs.get("agent_stop_price"))
         self.assertIsNone(kwargs.get("agent_trail_percent"))
         self.assertIsNone(kwargs.get("agent_trail_price"))
+        self.assertIsNone(kwargs.get("agent_position_size_pct"))
 
 
 if __name__ == "__main__":
     unittest.main()
-

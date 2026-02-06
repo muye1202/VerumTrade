@@ -3,7 +3,7 @@ import time
 import json
 from tradingagents.agents.utils.agent_utils import get_stock_data, get_indicators
 from tradingagents.agents.utils.price_action_tools import get_price_action_summary
-from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
 
 
 def create_market_analyst(llm):
@@ -14,6 +14,12 @@ def create_market_analyst(llm):
         company_name = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
         market_session_context = state.get("market_session_context", "")
+        spec = get_time_horizon_spec(state.get("time_horizon"))
+        holding_text = spec.label
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
+        trading_days_text = (
+            f"~{spec.trading_days_range[0]}–{spec.trading_days_range[1]} trading days"
+        )
 
         tools = [
             get_stock_data,
@@ -22,16 +28,16 @@ def create_market_analyst(llm):
         ]
 
         system_message = (
-            """You are a short-term (1–2 month) swing-trade market analyst. Your goal is to produce a concise, decision-grade technical + price-action report for the target ticker using daily data.
+            f"""You are a swing-trade market analyst supporting a {holding_text} hold. Your goal is to produce a concise, decision-grade technical + price-action report for the target ticker using daily data.
 
 Operating horizon and output:
-- Target holding period: ~20–60 trading days (1–2 months).
+- Target holding period: {trading_days_text} ({holding_text}).
 - Prioritize: trend regime, momentum/mean reversion, volatility/liquidity, actionable levels, and a risk-aware trade plan.
-- Avoid: long-term investing narratives; focus on what matters for the next 4–8 weeks.
+- Avoid: long-term investing narratives; focus on what matters for {window_text}.
 
 Workflow (tool-first, then write):
 1) Call `get_price_action_summary(symbol=<ticker>, curr_date=<current_date>)` to ground the analysis (returns/vol/ATR, key levels, volume + gap risk).
-2) Select 4–6 indicators (max 6) from the allowed list below that add *non-redundant* information for a 1–2 month horizon.
+2) Select 4–6 indicators (max 6) from the allowed list below that add *non-redundant* information for a {holding_text} horizon.
 3) For each selected indicator, call `get_indicators(symbol=<ticker>, indicator=..., curr_date=<current_date>, look_back_days=90)` (use ~90 days for context). Use the exact indicator names.
    - If a vendor replies that an indicator isn't available (e.g., VWMA on Alpha Vantage), substitute another from the list and continue.
 4) After you have the data, write the final report **without** further tool calls.
@@ -65,7 +71,7 @@ Report requirements (keep it to-the-point, but specific):
 - Regime: trend vs range + evidence (levels, momentum, vol).
 - Key levels: supports/resistances, invalidation level(s), breakout/breakdown triggers.
 - Volatility/liquidity: ATR% implications for stop placement; volume + gap risk notes.
-- Setup(s) for the next 4–8 weeks: 1–2 candidate trade plans with entry zone, stop, 1–2 targets, and a time-stop.
+- Setup(s) for {window_text}: 1–2 candidate trade plans with entry zone, stop, 1–2 targets, and a time-stop.
 - Risks/catalysts: what news/earnings/macro surprises could break the setup (don’t invent dates).
 - End with a compact Markdown table summarizing: regime, bias, key levels, trigger, stop, targets, time horizon, and top risks.
 """
@@ -75,7 +81,7 @@ Report requirements (keep it to-the-point, but specific):
             system_message += (
                 "\n\n---\nCURRENT PORTFOLIO CONTEXT (live brokerage snapshot):\n"
                 + str(portfolio_context)
-                + "\n\nExecution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP) that may execute later. Provide levels/triggers compatible with those order types.\n---"
+                + "\n\n**CRITICAL** Execution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP). Your report MUST provide concrete numeric levels for: (1) entry/trigger, (2) stop-loss, (3) take-profit, and (4) holding horizon or time-stop for hold management. This applies to both active BUY/SELL setups and HOLD/watch scenarios. If confidence is low, still provide bounded watch levels and explicit invalidation logic instead of omitting levels.\n---"
             )
 
         if market_session_context:

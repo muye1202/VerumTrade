@@ -156,6 +156,35 @@ FINAL TRADING DECISION:
         self.assertIsNone(structured["trail_percent"])
         self.assertIsNone(structured["trail_price"])
 
+    def test_position_size_pct_parses_percent_or_fraction(self):
+        processor = SignalProcessor(quick_thinking_llm=None)
+
+        text_pct = """
+---
+FINAL TRADING DECISION:
+- ACTION: BUY
+- TICKER: TSLA
+- QUANTITY: N/A
+- ORDER_TYPE: MARKET
+- POSITION_SIZE_PCT: 10%
+---
+"""
+        structured = processor.extract_structured_decision(text_pct)
+        self.assertEqual(structured["position_size_pct"], 10.0)
+
+        text_fraction = """
+---
+FINAL TRADING DECISION:
+- ACTION: BUY
+- TICKER: TSLA
+- QUANTITY: N/A
+- ORDER_TYPE: MARKET
+- POSITION_SIZE_PCT: 0.1
+---
+"""
+        structured = processor.extract_structured_decision(text_fraction)
+        self.assertEqual(structured["position_size_pct"], 0.1)
+
     def test_parses_final_trade_decision_md_file_order_type_limit(self):
         processor = SignalProcessor(quick_thinking_llm=None)
 

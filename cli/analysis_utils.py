@@ -1,5 +1,6 @@
 import datetime
 import json
+import time
 from pathlib import Path
 from functools import wraps
 from typing import Optional
@@ -14,6 +15,7 @@ from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
 
 # Injected from `cli/main.py` via `init_analysis_context`
 console = None
@@ -43,11 +45,22 @@ def init_analysis_context(
     globals()["update_display"] = update_display
     globals()["display_complete_report"] = display_complete_report
 
-def update_research_team_status(status):
+    # Stash original MessageBuffer methods once so we can restore them between
+    # multi-ticker runs (prevents log-wrapper stacking).
+    if message_buffer is not None:
+        if not hasattr(message_buffer, "_orig_add_message"):
+            message_buffer._orig_add_message = message_buffer.add_message
+        if not hasattr(message_buffer, "_orig_add_tool_call"):
+            message_buffer._orig_add_tool_call = message_buffer.add_tool_call
+        if not hasattr(message_buffer, "_orig_update_report_section"):
+            message_buffer._orig_update_report_section = message_buffer.update_report_section
+
+def update_research_team_status(status, mbuf=None):
     """Update status for all research team members and trader."""
+    buf = mbuf if mbuf is not None else message_buffer
     research_team = ["Bull Researcher", "Bear Researcher", "Research Manager", "Trader"]
     for agent in research_team:
-        message_buffer.update_agent_status(agent, status)
+        buf.update_agent_status(agent, status)
 
 def extract_content_string(content):
     """Extract string content from various message formats."""
@@ -83,31 +96,351 @@ def extract_content_string(content):
     else:
         return str(content)
 
-def run_analysis():
+def _reset_message_buffer() -> None:
+    """Reset the shared MessageBuffer to a clean state (per ticker)."""
+    if message_buffer is None:
+        return
+
+    try:
+        message_buffer.messages.clear()
+    except Exception:
+        pass
+    try:
+        message_buffer.tool_calls.clear()
+    except Exception:
+        pass
+
+    try:
+        for agent in message_buffer.agent_status:
+            message_buffer.agent_status[agent] = "pending"
+        message_buffer.current_agent = None
+    except Exception:
+        pass
+
+    try:
+        for section in message_buffer.report_sections:
+            message_buffer.report_sections[section] = None
+        message_buffer.current_report = None
+        message_buffer.final_report = None
+    except Exception:
+        pass
+
+
+def _msg_type_and_content(msg):
+    """Classify a LangGraph message and extract its string content."""
+    if isinstance(msg, tuple) and len(msg) == 2:
+        role, content = msg
+        role = str(role).lower()
+        if role in ("human", "user"):
+            return "User", extract_content_string(content)
+        if role in ("ai", "assistant"):
+            return "Reasoning", extract_content_string(content)
+        if role == "tool":
+            return "ToolResult", extract_content_string(content)
+        return "System", extract_content_string(content)
+
+    if isinstance(msg, dict):
+        role = str(msg.get("role", "")).lower()
+        content = msg.get("content", msg)
+        if role in ("assistant", "ai"):
+            return "Reasoning", extract_content_string(content)
+        if role in ("user", "human"):
+            return "User", extract_content_string(content)
+        if role == "tool":
+            return "ToolResult", extract_content_string(content)
+        return "System", extract_content_string(content)
+
+    msg_kind = getattr(msg, "type", None)
+    content = getattr(msg, "content", msg)
+    if msg_kind == "ai":
+        return "Reasoning", extract_content_string(content)
+    if msg_kind in ("human", "user"):
+        return "User", extract_content_string(content)
+    if msg_kind == "tool":
+        return "ToolResult", extract_content_string(content)
+    if msg_kind == "system":
+        return "System", extract_content_string(content)
+    if hasattr(msg, "content"):
+        return "Reasoning", extract_content_string(content)
+    return "System", str(msg)
+
+
+def _extract_tool_calls(msg):
+    """Extract (name, args) pairs from a LangGraph message."""
+    calls = []
+
+    # LangChain-style tool_calls (already parsed).
+    tool_calls = getattr(msg, "tool_calls", None)
+    if tool_calls:
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                name = tc.get("name") or tc.get("function", {}).get("name")
+                args = tc.get("args") or tc.get("function", {}).get("arguments")
+                if name:
+                    calls.append((name, args))
+            else:
+                name = getattr(tc, "name", None)
+                args = getattr(tc, "args", None)
+                if name:
+                    calls.append((name, args))
+        return calls
+
+    # OpenAI-compatible shape sometimes stored under additional_kwargs.
+    additional = getattr(msg, "additional_kwargs", None)
+    if isinstance(additional, dict) and additional.get("tool_calls"):
+        for tc in additional.get("tool_calls") or []:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") or {}
+            name = fn.get("name")
+            args = fn.get("arguments")
+            if name:
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        pass
+                calls.append((name, args))
+        return calls
+
+    # Dict messages with tool_calls.
+    if isinstance(msg, dict) and msg.get("tool_calls"):
+        for tc in msg.get("tool_calls") or []:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") or {}
+            name = fn.get("name") or tc.get("name")
+            args = fn.get("arguments") or tc.get("args")
+            if name:
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        pass
+                calls.append((name, args))
+
+    return calls
+
+
+def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_fn, layout, selected_analysts):
+    """
+    Stream graph chunks and update the Live display.
+
+    Args:
+        graph: TradingAgentsGraph instance (uses graph.graph.stream)
+        init_agent_state: Initial state dict for the graph
+        args: Graph invocation args from propagator.get_graph_args()
+        mbuf: MessageBuffer instance
+        update_display_fn: Callable to refresh the Live layout
+        layout: Rich Layout object
+        selected_analysts: List of analyst name strings (e.g. ["market", "news", "fundamentals"])
+
+    Returns:
+        (trace, final_state) tuple
+    """
+    # Normalise analyst names to plain strings for comparison.
+    analyst_names = [
+        a.value if hasattr(a, "value") else str(a) for a in selected_analysts
+    ]
+
+    trace = []
+    final_state = None
+    seen_messages = 0
+
+    for chunk in graph.graph.stream(init_agent_state, **args):
+        messages = chunk.get("messages") or []
+        new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
+        seen_messages = len(messages)
+
+        for msg in new_messages:
+            msg_type, content = _msg_type_and_content(msg)
+            mbuf.add_message(msg_type, content)
+
+            for tool_name, tool_args in _extract_tool_calls(msg):
+                mbuf.add_tool_call(tool_name, tool_args)
+
+        # Update reports and agent status based on chunk content
+        # Analyst Team Reports
+        if "market_report" in chunk and chunk["market_report"]:
+            mbuf.update_report_section("market_report", chunk["market_report"])
+            mbuf.update_agent_status("Market Analyst", "completed")
+            if "social" in analyst_names:
+                mbuf.update_agent_status("Social Analyst", "in_progress")
+
+        if "sentiment_report" in chunk and chunk["sentiment_report"]:
+            mbuf.update_report_section("sentiment_report", chunk["sentiment_report"])
+            mbuf.update_agent_status("Social Analyst", "completed")
+            if "news" in analyst_names:
+                mbuf.update_agent_status("News Analyst", "in_progress")
+
+        if "news_report" in chunk and chunk["news_report"]:
+            mbuf.update_report_section("news_report", chunk["news_report"])
+            mbuf.update_agent_status("News Analyst", "completed")
+            if "fundamentals" in analyst_names:
+                mbuf.update_agent_status("Fundamentals Analyst", "in_progress")
+
+        if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
+            mbuf.update_report_section("fundamentals_report", chunk["fundamentals_report"])
+            mbuf.update_agent_status("Fundamentals Analyst", "completed")
+            update_research_team_status("in_progress", mbuf=mbuf)
+
+        # Research Team - Handle Investment Debate State
+        if "investment_debate_state" in chunk and chunk["investment_debate_state"]:
+            debate_state = chunk["investment_debate_state"]
+
+            if "bull_history" in debate_state and debate_state["bull_history"]:
+                update_research_team_status("in_progress", mbuf=mbuf)
+                bull_responses = debate_state["bull_history"].split("\n")
+                latest_bull = bull_responses[-1] if bull_responses else ""
+                if latest_bull:
+                    mbuf.add_message("Reasoning", latest_bull)
+                    mbuf.update_report_section(
+                        "investment_plan",
+                        f"### Bull Researcher Analysis\n{latest_bull}",
+                    )
+
+            if "bear_history" in debate_state and debate_state["bear_history"]:
+                update_research_team_status("in_progress", mbuf=mbuf)
+                bear_responses = debate_state["bear_history"].split("\n")
+                latest_bear = bear_responses[-1] if bear_responses else ""
+                if latest_bear:
+                    mbuf.add_message("Reasoning", latest_bear)
+                    mbuf.update_report_section(
+                        "investment_plan",
+                        f"{mbuf.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
+                    )
+
+            if "judge_decision" in debate_state and debate_state["judge_decision"]:
+                update_research_team_status("in_progress", mbuf=mbuf)
+                mbuf.add_message(
+                    "Reasoning",
+                    f"Research Manager: {debate_state['judge_decision']}",
+                )
+                mbuf.update_report_section(
+                    "investment_plan",
+                    f"{mbuf.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
+                )
+                update_research_team_status("completed", mbuf=mbuf)
+                mbuf.update_agent_status("Risky Analyst", "in_progress")
+
+        # Trading Team
+        if "trader_investment_plan" in chunk and chunk["trader_investment_plan"]:
+            mbuf.update_report_section(
+                "trader_investment_plan", chunk["trader_investment_plan"]
+            )
+            mbuf.update_agent_status("Risky Analyst", "in_progress")
+
+        # Risk Management Team - Handle Risk Debate State
+        if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
+            risk_state = chunk["risk_debate_state"]
+
+            if "current_risky_response" in risk_state and risk_state["current_risky_response"]:
+                mbuf.update_agent_status("Risky Analyst", "in_progress")
+                mbuf.add_message(
+                    "Reasoning",
+                    f"Risky Analyst: {risk_state['current_risky_response']}",
+                )
+                mbuf.update_report_section(
+                    "final_trade_decision",
+                    f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
+                )
+
+            if "current_safe_response" in risk_state and risk_state["current_safe_response"]:
+                mbuf.update_agent_status("Safe Analyst", "in_progress")
+                mbuf.add_message(
+                    "Reasoning",
+                    f"Safe Analyst: {risk_state['current_safe_response']}",
+                )
+                mbuf.update_report_section(
+                    "final_trade_decision",
+                    f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
+                )
+
+            if "current_neutral_response" in risk_state and risk_state["current_neutral_response"]:
+                mbuf.update_agent_status("Neutral Analyst", "in_progress")
+                mbuf.add_message(
+                    "Reasoning",
+                    f"Neutral Analyst: {risk_state['current_neutral_response']}",
+                )
+                mbuf.update_report_section(
+                    "final_trade_decision",
+                    f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
+                )
+
+            if "judge_decision" in risk_state and risk_state["judge_decision"]:
+                mbuf.update_agent_status("Portfolio Manager", "in_progress")
+                mbuf.add_message(
+                    "Reasoning",
+                    f"Portfolio Manager: {risk_state['judge_decision']}",
+                )
+                mbuf.update_report_section(
+                    "final_trade_decision",
+                    f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
+                )
+                mbuf.update_agent_status("Risky Analyst", "completed")
+                mbuf.update_agent_status("Safe Analyst", "completed")
+                mbuf.update_agent_status("Neutral Analyst", "completed")
+                mbuf.update_agent_status("Portfolio Manager", "completed")
+
+        # Update the display
+        update_display_fn(layout)
+
+        trace.append(chunk)
+        final_state = chunk
+
+    return trace, final_state
+
+
+def run_single_ticker_analysis(
+    selections: dict,
+    *,
+    batch_idx: int | None = None,
+    batch_total: int | None = None,
+) -> dict:
     run_started_at = datetime.datetime.now()
-    # First get all user selections
-    selections = get_user_selections()
 
-    # Portfolio analysis mode: skip single-ticker Live UI and run portfolio pipeline instead.
-    if selections.get("analysis_mode") == "portfolio":
-        from cli.portfolio_analysis_utils import init_portfolio_context, run_portfolio_analysis_from_selections
+    # Ensure we start clean for each ticker.
+    _reset_message_buffer()
 
-        init_portfolio_context(console=console, setup_executor=setup_executor)
-        run_portfolio_analysis_from_selections(selections)
-        return
+    # Restore original methods before re-wrapping (prevents wrapper stacking).
+    if message_buffer is not None:
+        if hasattr(message_buffer, "_orig_add_message"):
+            message_buffer.add_message = message_buffer._orig_add_message
+        if hasattr(message_buffer, "_orig_add_tool_call"):
+            message_buffer.add_tool_call = message_buffer._orig_add_tool_call
+        if hasattr(message_buffer, "_orig_update_report_section"):
+            message_buffer.update_report_section = message_buffer._orig_update_report_section
 
-    # Discovery mode: run AI stock discovery
-    if selections.get("analysis_mode") == "discovery":
-        from cli.discovery_utils import init_discovery_context, run_discovery_flow
+    if selections.get("analysis_mode") in ("portfolio", "discovery"):
+        raise ValueError("run_single_ticker_analysis only supports single-ticker mode selections.")
 
-        init_discovery_context(console_ref=console, setup_executor_ref=setup_executor)
-        run_discovery_flow(selections)
-        return
+    if not selections.get("ticker"):
+        raise ValueError("Missing required selection: ticker")
+
+    # Optional batch header
+    if console is not None and batch_total and batch_total > 1 and batch_idx is not None:
+        console.print()
+        console.print(Rule(f"[bold green]Batch {batch_idx + 1}/{batch_total}: {selections['ticker']}[/bold green]"))
+        console.print()
+
+    # ---- Existing single-ticker analysis flow (moved from run_analysis) ----
 
     # Create config with selected research depth
     config = DEFAULT_CONFIG.copy()
-    config["max_debate_rounds"] = selections["research_depth"]
-    config["max_risk_discuss_rounds"] = selections["research_depth"]
+    requested_depth = int(selections["research_depth"])
+    debate_cap = int(config.get("max_debate_rounds_cap", requested_depth))
+    risk_cap = int(config.get("max_risk_rounds_cap", requested_depth))
+    config["max_debate_rounds"] = min(requested_depth, debate_cap)
+    config["max_risk_discuss_rounds"] = min(requested_depth, risk_cap)
+    if console is not None and (
+        config["max_debate_rounds"] < requested_depth
+        or config["max_risk_discuss_rounds"] < requested_depth
+    ):
+        console.print(
+            "[yellow]Context guard: clamped research depth "
+            f"(requested={requested_depth}, debate={config['max_debate_rounds']}, "
+            f"risk={config['max_risk_discuss_rounds']}).[/yellow]"
+        )
     # LangGraph recursion limit needs to be higher for deeper debate/retry loops.
     config["max_recur_limit"] = max(config.get("max_recur_limit", 100), selections["research_depth"] * 120)
     config["quick_think_llm"] = selections["shallow_thinker"]
@@ -197,6 +530,8 @@ def run_analysis():
         message_buffer.add_message(
             "System", f"Analysis date: {selections['analysis_date']}"
         )
+        horizon_label = get_time_horizon_spec(selections.get("time_horizon")).label
+        message_buffer.add_message("System", f"Target holding period: {horizon_label}")
         message_buffer.add_message(
             "System",
             f"Selected analysts: {', '.join(analyst.value for analyst in selections['analysts'])}",
@@ -241,329 +576,19 @@ def run_analysis():
             selections["ticker"],
             selections["analysis_date"],
             portfolio_context=portfolio_ctx,
+            time_horizon=selections.get("time_horizon"),
         )
         args = graph.propagator.get_graph_args()
 
         # Stream the analysis
-        trace = []
-        final_state = None
         execution_result = None
         execution_error: Optional[str] = None
         execution_portfolio_summary: Optional[dict] = None
-        seen_messages = 0
-        for chunk in graph.graph.stream(init_agent_state, **args):
-            messages = chunk.get("messages") or []
-            # Always process each streamed chunk. Some providers/steps mutate state without
-            # appending messages, and we still want the UI to update.
-            new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
-            seen_messages = len(messages)
-            if True:
-
-                def _msg_type_and_content(msg):
-                    # LangGraph can emit tuples, message objects, or dicts depending on provider/runtime.
-                    if isinstance(msg, tuple) and len(msg) == 2:
-                        role, content = msg
-                        role = str(role).lower()
-                        if role in ("human", "user"):
-                            return "User", extract_content_string(content)
-                        if role in ("ai", "assistant"):
-                            return "Reasoning", extract_content_string(content)
-                        if role == "tool":
-                            return "ToolResult", extract_content_string(content)
-                        return "System", extract_content_string(content)
-
-                    if isinstance(msg, dict):
-                        role = str(msg.get("role", "")).lower()
-                        content = msg.get("content", msg)
-                        if role in ("assistant", "ai"):
-                            return "Reasoning", extract_content_string(content)
-                        if role in ("user", "human"):
-                            return "User", extract_content_string(content)
-                        if role == "tool":
-                            return "ToolResult", extract_content_string(content)
-                        return "System", extract_content_string(content)
-
-                    msg_kind = getattr(msg, "type", None)
-                    content = getattr(msg, "content", msg)
-                    if msg_kind == "ai":
-                        return "Reasoning", extract_content_string(content)
-                    if msg_kind in ("human", "user"):
-                        return "User", extract_content_string(content)
-                    if msg_kind == "tool":
-                        return "ToolResult", extract_content_string(content)
-                    if msg_kind == "system":
-                        return "System", extract_content_string(content)
-                    if hasattr(msg, "content"):
-                        return "Reasoning", extract_content_string(content)
-                    return "System", str(msg)
-
-                def _extract_tool_calls(msg):
-                    # Returns list of (name, args) pairs.
-                    calls = []
-
-                    # LangChain-style tool_calls (already parsed).
-                    tool_calls = getattr(msg, "tool_calls", None)
-                    if tool_calls:
-                        for tc in tool_calls:
-                            if isinstance(tc, dict):
-                                name = tc.get("name") or tc.get("function", {}).get("name")
-                                args = tc.get("args") or tc.get("function", {}).get("arguments")
-                                if name:
-                                    calls.append((name, args))
-                            else:
-                                name = getattr(tc, "name", None)
-                                args = getattr(tc, "args", None)
-                                if name:
-                                    calls.append((name, args))
-                        return calls
-
-                    # OpenAI-compatible shape sometimes stored under additional_kwargs.
-                    additional = getattr(msg, "additional_kwargs", None)
-                    if isinstance(additional, dict) and additional.get("tool_calls"):
-                        for tc in additional.get("tool_calls") or []:
-                            if not isinstance(tc, dict):
-                                continue
-                            fn = tc.get("function") or {}
-                            name = fn.get("name")
-                            args = fn.get("arguments")
-                            if name:
-                                # Best-effort: parse JSON args if possible, otherwise log raw string.
-                                if isinstance(args, str):
-                                    try:
-                                        args = json.loads(args)
-                                    except Exception:
-                                        pass
-                                calls.append((name, args))
-                        return calls
-
-                    # Dict messages with tool_calls.
-                    if isinstance(msg, dict) and msg.get("tool_calls"):
-                        for tc in msg.get("tool_calls") or []:
-                            if not isinstance(tc, dict):
-                                continue
-                            fn = tc.get("function") or {}
-                            name = fn.get("name") or tc.get("name")
-                            args = fn.get("arguments") or tc.get("args")
-                            if name:
-                                if isinstance(args, str):
-                                    try:
-                                        args = json.loads(args)
-                                    except Exception:
-                                        pass
-                                calls.append((name, args))
-
-                    return calls
-
-                for msg in new_messages:
-                    msg_type, content = _msg_type_and_content(msg)
-                    message_buffer.add_message(msg_type, content)
-
-                    for tool_name, tool_args in _extract_tool_calls(msg):
-                        message_buffer.add_tool_call(tool_name, tool_args)
-
-                # Update reports and agent status based on chunk content
-                # Analyst Team Reports
-                if "market_report" in chunk and chunk["market_report"]:
-                    message_buffer.update_report_section(
-                        "market_report", chunk["market_report"]
-                    )
-                    message_buffer.update_agent_status("Market Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "social" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "Social Analyst", "in_progress"
-                        )
-
-                if "sentiment_report" in chunk and chunk["sentiment_report"]:
-                    message_buffer.update_report_section(
-                        "sentiment_report", chunk["sentiment_report"]
-                    )
-                    message_buffer.update_agent_status("Social Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "news" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "News Analyst", "in_progress"
-                        )
-
-                if "news_report" in chunk and chunk["news_report"]:
-                    message_buffer.update_report_section(
-                        "news_report", chunk["news_report"]
-                    )
-                    message_buffer.update_agent_status("News Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "fundamentals" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "Fundamentals Analyst", "in_progress"
-                        )
-
-                if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
-                    message_buffer.update_report_section(
-                        "fundamentals_report", chunk["fundamentals_report"]
-                    )
-                    message_buffer.update_agent_status(
-                        "Fundamentals Analyst", "completed"
-                    )
-                    # Set all research team members to in_progress
-                    update_research_team_status("in_progress")
-
-                # Research Team - Handle Investment Debate State
-                if (
-                    "investment_debate_state" in chunk
-                    and chunk["investment_debate_state"]
-                ):
-                    debate_state = chunk["investment_debate_state"]
-
-                    # Update Bull Researcher status and report
-                    if "bull_history" in debate_state and debate_state["bull_history"]:
-                        # Keep all research team members in progress
-                        update_research_team_status("in_progress")
-                        # Extract latest bull response
-                        bull_responses = debate_state["bull_history"].split("\n")
-                        latest_bull = bull_responses[-1] if bull_responses else ""
-                        if latest_bull:
-                            message_buffer.add_message("Reasoning", latest_bull)
-                            # Update research report with bull's latest analysis
-                            message_buffer.update_report_section(
-                                "investment_plan",
-                                f"### Bull Researcher Analysis\n{latest_bull}",
-                            )
-
-                    # Update Bear Researcher status and report
-                    if "bear_history" in debate_state and debate_state["bear_history"]:
-                        # Keep all research team members in progress
-                        update_research_team_status("in_progress")
-                        # Extract latest bear response
-                        bear_responses = debate_state["bear_history"].split("\n")
-                        latest_bear = bear_responses[-1] if bear_responses else ""
-                        if latest_bear:
-                            message_buffer.add_message("Reasoning", latest_bear)
-                            # Update research report with bear's latest analysis
-                            message_buffer.update_report_section(
-                                "investment_plan",
-                                f"{message_buffer.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
-                            )
-
-                    # Update Research Manager status and final decision
-                    if (
-                        "judge_decision" in debate_state
-                        and debate_state["judge_decision"]
-                    ):
-                        # Keep all research team members in progress until final decision
-                        update_research_team_status("in_progress")
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Research Manager: {debate_state['judge_decision']}",
-                        )
-                        # Update research report with final decision
-                        message_buffer.update_report_section(
-                            "investment_plan",
-                            f"{message_buffer.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
-                        )
-                        # Mark all research team members as completed
-                        update_research_team_status("completed")
-                        # Set first risk analyst to in_progress
-                        message_buffer.update_agent_status(
-                            "Risky Analyst", "in_progress"
-                        )
-
-                # Trading Team
-                if (
-                    "trader_investment_plan" in chunk
-                    and chunk["trader_investment_plan"]
-                ):
-                    message_buffer.update_report_section(
-                        "trader_investment_plan", chunk["trader_investment_plan"]
-                    )
-                    # Set first risk analyst to in_progress
-                    message_buffer.update_agent_status("Risky Analyst", "in_progress")
-
-                # Risk Management Team - Handle Risk Debate State
-                if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
-                    risk_state = chunk["risk_debate_state"]
-
-                    # Update Risky Analyst status and report
-                    if (
-                        "current_risky_response" in risk_state
-                        and risk_state["current_risky_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Risky Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Risky Analyst: {risk_state['current_risky_response']}",
-                        )
-                        # Update risk report with risky analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
-                        )
-
-                    # Update Safe Analyst status and report
-                    if (
-                        "current_safe_response" in risk_state
-                        and risk_state["current_safe_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Safe Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Safe Analyst: {risk_state['current_safe_response']}",
-                        )
-                        # Update risk report with safe analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
-                        )
-
-                    # Update Neutral Analyst status and report
-                    if (
-                        "current_neutral_response" in risk_state
-                        and risk_state["current_neutral_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Neutral Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Neutral Analyst: {risk_state['current_neutral_response']}",
-                        )
-                        # Update risk report with neutral analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
-                        )
-
-                    # Update Portfolio Manager status and final decision
-                    if "judge_decision" in risk_state and risk_state["judge_decision"]:
-                        message_buffer.update_agent_status(
-                            "Portfolio Manager", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Portfolio Manager: {risk_state['judge_decision']}",
-                        )
-                        # Update risk report with final decision only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
-                        )
-                        # Mark risk analysts as completed
-                        message_buffer.update_agent_status("Risky Analyst", "completed")
-                        message_buffer.update_agent_status("Safe Analyst", "completed")
-                        message_buffer.update_agent_status(
-                            "Neutral Analyst", "completed"
-                        )
-                        message_buffer.update_agent_status(
-                            "Portfolio Manager", "completed"
-                        )
-
-                # Update the display
-                update_display(layout)
-
-            trace.append(chunk)
-            final_state = chunk
+        trace, final_state = process_analysis_stream(
+            graph, init_agent_state, args,
+            message_buffer, update_display, layout,
+            selections["analysts"],
+        )
 
         # Get final state and decision
         if final_state:
@@ -893,3 +918,123 @@ def run_analysis():
         display_complete_report(final_state)
 
         update_display(layout)
+
+    exec_sel = selections.get("execution") or {}
+    exec_enabled = bool(exec_sel.get("enabled", False))
+
+    return {
+        "ticker": selections.get("ticker"),
+        "analysis_date": selections.get("analysis_date"),
+        "decision": decision,
+        "results_dir": str(results_dir),
+        "final_report_path": str(final_report_path) if message_buffer and message_buffer.final_report else None,
+        "execution_enabled": exec_enabled,
+        "executed": (bool(execution_result.get("executed")) if isinstance(execution_result, dict) else None),
+        "execution_error": execution_error,
+    }
+
+
+def run_analysis():
+    # First get all user selections
+    selections = get_user_selections()
+
+    # Portfolio analysis mode: skip single-ticker Live UI and run portfolio pipeline instead.
+    if selections.get("analysis_mode") == "portfolio":
+        from cli.portfolio_analysis_utils import (
+            init_portfolio_context,
+            run_portfolio_analysis_from_selections,
+        )
+
+        init_portfolio_context(console=console, setup_executor=setup_executor)
+        run_portfolio_analysis_from_selections(selections)
+        return
+
+    # Discovery mode: run AI stock discovery
+    if selections.get("analysis_mode") == "discovery":
+        from cli.discovery_utils import init_discovery_context, run_discovery_flow
+
+        init_discovery_context(
+            console_ref=console,
+            setup_executor_ref=setup_executor,
+            message_buffer_ref=message_buffer,
+            create_layout_ref=create_layout,
+            update_display_ref=update_display,
+            display_complete_report_ref=display_complete_report,
+        )
+        run_discovery_flow(selections)
+        return
+
+    # Single ticker mode now supports multiple tickers (sequentially).
+    tickers = selections.get("tickers") or (
+        [selections["ticker"]] if selections.get("ticker") else []
+    )
+    if not tickers:
+        raise ValueError("No tickers provided for single-ticker analysis mode.")
+
+    summaries: list[dict] = []
+    for idx, ticker in enumerate(tickers):
+        per_sel = {**selections, "analysis_mode": "single", "ticker": ticker}
+        try:
+            summaries.append(
+                run_single_ticker_analysis(
+                    per_sel, batch_idx=idx, batch_total=len(tickers)
+                )
+            )
+        except Exception as e:
+            summaries.append(
+                {
+                    "ticker": ticker,
+                    "analysis_date": selections.get("analysis_date"),
+                    "decision": "ERROR",
+                    "results_dir": None,
+                    "final_report_path": None,
+                    "execution_enabled": bool(
+                        (selections.get("execution") or {}).get("enabled", False)
+                    ),
+                    "executed": None,
+                    "execution_error": str(e),
+                }
+            )
+            if console is not None:
+                console.print(
+                    Panel(
+                        f"[red]Error analyzing {ticker}:[/red] {e}",
+                        title="Ticker Failed",
+                        border_style="red",
+                        padding=(1, 2),
+                    )
+                )
+
+        # Sleep between tickers to mitigate provider rate limits / burst caps.
+        if idx < len(tickers) - 1:
+            if console is not None:
+                console.print("[dim]Waiting 10 seconds before the next ticker...[/dim]")
+            time.sleep(10)
+
+    # Batch summary table
+    if console is not None and len(summaries) > 1:
+        table = Table(title="Batch Summary", box=box.SIMPLE_HEAD, expand=True)
+        table.add_column("#", justify="right", style="dim", width=4)
+        table.add_column("Ticker", style="cyan", width=10)
+        table.add_column("Decision", style="white", width=10)
+        table.add_column("Executed", style="white", width=10)
+        table.add_column("Report", style="dim")
+        table.add_column("Error", style="red")
+
+        for i, s in enumerate(summaries):
+            executed = s.get("executed")
+            executed_str = "-" if executed is None else ("yes" if executed else "no")
+            report = s.get("final_report_path") or "-"
+            err = s.get("execution_error") or ""
+            table.add_row(
+                str(i + 1),
+                str(s.get("ticker") or "?"),
+                str(s.get("decision") or "-"),
+                executed_str,
+                report,
+                err,
+            )
+
+        console.print()
+        console.print(table)
+        console.print()

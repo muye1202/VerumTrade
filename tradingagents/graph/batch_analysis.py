@@ -23,7 +23,8 @@ class BatchAnalyzer:
         self,
         tickers: List[str],
         trade_date: str,
-        max_positions: int = 3
+        max_positions: int = 3,
+        time_horizon: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Analyze multiple ticker candidates and rank them.
@@ -45,7 +46,9 @@ class BatchAnalyzer:
                 self.logger.info(f"Analyzing {ticker}...")
                 
                 # Run full analysis
-                final_state, decision = self.graph.propagate(ticker, trade_date)
+                final_state, decision = self.graph.propagate(
+                    ticker, trade_date, time_horizon=time_horizon
+                )
                 
                 # Calculate conviction score
                 conviction_score = self._calculate_conviction(final_state, decision)
@@ -168,6 +171,7 @@ class BatchAnalyzer:
                     trade_date=trade_date,
                     agent_quantity=structured.get("quantity"),
                     agent_limit_price=structured.get("limit_price"),
+                    agent_position_size_pct=structured.get("position_size_pct"),
                     agent_order_type=structured.get("order_type"),
                     agent_time_in_force=structured.get("time_in_force"),
                     agent_stop_price=structured.get("stop_price"),

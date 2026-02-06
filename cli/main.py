@@ -2,6 +2,7 @@ import os
 from typing import Optional
 import datetime
 import json
+import re
 import typer
 import questionary
 from pathlib import Path
@@ -34,8 +35,8 @@ from cli.discovery_utils import init_discovery_context, run_discovery_flow
 console = Console()
 
 app = typer.Typer(
-    name="TradingAgents",
-    help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
+    name="Boolean Trader",
+    help="Boolean Trader CLI: Team of Agentic Traders",
     add_completion=True,  # Enable shell completion
 )
 
@@ -182,17 +183,6 @@ class MessageBuffer:
 
 message_buffer = MessageBuffer()
 
-def _validate_pct_text(val: str) -> bool | str:
-    s = (val or "").strip()
-    try:
-        pct = float(s)
-    except Exception:
-        return "Must be a number"
-    if pct <= 0 or pct > 100:
-        return "Must be between 0 and 100"
-    return True
-
-
 def select_execution_settings() -> dict:
     """Select optional execution settings shown on the main (pre-run) page."""
     choice = questionary.select(
@@ -218,18 +208,14 @@ def select_execution_settings() -> dict:
     if choice == "none":
         return {"enabled": False}
 
-    position_pct = questionary.text(
-        "Position size as % of portfolio (default 10%):",
-        default="10",
-        validate=_validate_pct_text,
-    ).ask()
-    position_size_pct = float(position_pct) / 100.0
-
     return {
         "enabled": True,
         "provider": "alpaca",
         "paper": True,
-        "position_size_pct": position_size_pct,
+        # Agent-driven sizing (QUANTITY or POSITION_SIZE_PCT) is preferred.
+        # This config value is a fallback sizing percentage used only if the agent
+        # does not provide a usable size.
+        "position_size_pct": 0.10,
     }
 
 
@@ -294,9 +280,9 @@ def update_display(layout, spinner_text=None):
     # Header with welcome message
     layout["header"].update(
         Panel(
-            "[bold green]Welcome to TradingAgents CLI[/bold green]\n"
-            "[dim]© [Tauric Research](https://github.com/TauricResearch)[/dim]",
-            title="Welcome to TradingAgents",
+            "[bold green]Welcome to Boolean Trader CLI[/bold green]\n"
+            "[dim]© [muye1202](https://github.com/muye1202/Multi-LLM-Agent-Trader)[/dim]",
+            title="Welcome to Boolean Trader",
             border_style="green",
             padding=(1, 2),
             expand=True,
@@ -512,7 +498,7 @@ def update_display(layout, spinner_text=None):
 def get_user_selections():
     """Get all user selections before starting the analysis display."""
     # Display ASCII art welcome message
-    with open("./cli/static/welcome.txt", "r") as f:
+    with open("./cli/static/welcome.txt", "r", encoding="utf-8") as f:
         welcome_ascii = f.read()
 
     # Create welcome box content
@@ -556,7 +542,7 @@ def get_user_selections():
     analysis_mode = questionary.select(
         "Select [Analysis Mode]:",
         choices=[
-            questionary.Choice("Single ticker (one symbol)", value="single"),
+            questionary.Choice("Single ticker (one or more symbols)", value="single"),
             questionary.Choice("Portfolio (analyze all positions)", value="portfolio"),
             questionary.Choice("Stock Discovery (AI finds promising stocks)", value="discovery"),
         ],
@@ -599,7 +585,7 @@ def get_user_selections():
         console.print(
             create_question_box(
                 "Step 5: Execution",
-                "Optionally execute BUY/SELL signals after deep analysis.",
+                "Optionally execute BUY/SELL signals after deep analysis. Sizing is agent-driven (QUANTITY or POSITION_SIZE_PCT).",
                 "Analysis only",
             )
         )
@@ -624,10 +610,13 @@ def get_user_selections():
     if analysis_mode == "single":
         console.print(
             create_question_box(
-                "Step 2: Ticker Symbol", "Enter the ticker symbol to analyze", "SPY"
+                "Step 2: Ticker Symbols",
+                "Enter ticker symbols to analyze (one at a time). Confirm each ticker, then choose Submit.",
+                "SPY",
             )
         )
-        selected_ticker = get_ticker()
+        selected_tickers = get_tickers()
+        selected_ticker = selected_tickers[0]
 
         console.print(
             create_question_box(
@@ -638,8 +627,19 @@ def get_user_selections():
         )
         analysis_date = get_analysis_date()
 
-    # Common params (both modes)
-    analysts_step = 4 if analysis_mode == "single" else 2
+    # Holding period (single + portfolio)
+    horizon_step = 4 if analysis_mode == "single" else 2
+    console.print(
+        create_question_box(
+            f"Step {horizon_step}: Holding Period",
+            "Select the target holding period for trade ideas (affects all agent prompts)",
+            "1–2 months",
+        )
+    )
+    selected_time_horizon = select_time_horizon()
+
+    # Common params (single + portfolio)
+    analysts_step = horizon_step + 1
     console.print(
         create_question_box(
             f"Step {analysts_step}: Analysts Team",
@@ -668,7 +668,7 @@ def get_user_selections():
     console.print(
         create_question_box(
             f"Step {exec_step}: Execution",
-            "Optionally execute BUY/SELL signals (paper trading).",
+            "Optionally execute BUY/SELL signals (paper trading). Sizing is agent-driven (QUANTITY or POSITION_SIZE_PCT).",
             "Analysis only",
         )
     )
@@ -738,7 +738,11 @@ def get_user_selections():
     return {
         "analysis_mode": analysis_mode,
         "ticker": selected_ticker,
+        # Multi-ticker single-stock analysis: loop over these sequentially.
+        # For compatibility, `ticker` remains the first ticker.
+        **({"tickers": selected_tickers} if analysis_mode == "single" else {}),
         "analysis_date": analysis_date,
+        "time_horizon": selected_time_horizon,
         "analysts": selected_analysts,
         "research_depth": selected_research_depth,
         "llm_provider": selected_llm_provider.lower(),
@@ -755,6 +759,97 @@ def get_user_selections():
 def get_ticker():
     """Get ticker symbol from user input."""
     return typer.prompt("", default="SPY")
+
+
+_TICKER_RE = re.compile(r"^[A-Z0-9.\-]+$")
+
+
+def get_tickers() -> list[str]:
+    """
+    Collect one or more ticker symbols.
+
+    Workflow:
+    - Enter a ticker
+    - Confirm it
+    - Choose: Enter more ticker / Submit
+
+    Returns an ordered list of unique tickers (uppercased).
+    """
+    tickers: list[str] = []
+
+    def _validate_ticker_text(val: str) -> bool | str:
+        s = (val or "").strip().upper()
+        if not s:
+            return "Please enter a ticker symbol."
+        if not _TICKER_RE.match(s):
+            return "Use only letters/numbers and optional . or - (e.g., BRK.B, RDS-A)."
+        return True
+
+    select_style = questionary.Style(
+        [
+            ("selected", "fg:yellow noinherit"),
+            ("highlighted", "fg:yellow noinherit"),
+            ("pointer", "fg:yellow noinherit"),
+        ]
+    )
+
+    while True:
+        entered = questionary.text(
+            "",
+            default=("SPY" if not tickers else ""),
+            validate=_validate_ticker_text,
+        ).ask()
+
+        if entered is None:
+            console.print("\n[red]Ticker entry cancelled. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
+        ticker = entered.strip().upper()
+
+        confirm = questionary.select(
+            f"Confirm ticker '{ticker}'?",
+            choices=[
+                questionary.Choice("Confirm", value="confirm"),
+                questionary.Choice("Re-enter", value="reenter"),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=select_style,
+        ).ask()
+
+        if confirm is None:
+            console.print("\n[red]Ticker confirmation cancelled. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
+        if confirm == "reenter":
+            continue
+
+        if ticker in tickers:
+            console.print(f"[yellow]Duplicate ticker ignored:[/yellow] {ticker}")
+        else:
+            tickers.append(ticker)
+
+        next_action = questionary.select(
+            "Next:",
+            choices=[
+                questionary.Choice("Enter more ticker", value="more"),
+                questionary.Choice("Submit", value="submit"),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=select_style,
+        ).ask()
+
+        if next_action is None:
+            console.print("\n[red]No selection made. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
+        if next_action == "submit":
+            break
+
+    if not tickers:
+        console.print("\n[red]No tickers submitted. Exiting...[/red]")
+        raise typer.Exit(code=1)
+
+    return tickers
 
 
 def get_analysis_date():

@@ -23,17 +23,29 @@ from tradingagents.default_config import DEFAULT_CONFIG
 # Injected from cli/main.py
 console = None
 setup_executor = None
+message_buffer = None
+create_layout = None
+update_display = None
+display_complete_report = None
 
 
 def init_discovery_context(
     *,
     console_ref,
     setup_executor_ref,
+    message_buffer_ref=None,
+    create_layout_ref=None,
+    update_display_ref=None,
+    display_complete_report_ref=None,
 ):
     """Inject dependencies from main CLI."""
-    global console, setup_executor
+    global console, setup_executor, message_buffer, create_layout, update_display, display_complete_report
     console = console_ref
     setup_executor = setup_executor_ref
+    message_buffer = message_buffer_ref
+    create_layout = create_layout_ref
+    update_display = update_display_ref
+    display_complete_report = display_complete_report_ref
 
 
 def display_discovery_header():
@@ -117,6 +129,175 @@ def display_recommendations_table(tickers: list, action_prompt: bool = True):
     console.print(Align.center(table))
 
 
+def _run_discovery_deep_analysis(
+    selected_tickers,
+    trade_date,
+    time_horizon,
+    config,
+    selections,
+):
+    """
+    Run streaming deep analysis on each discovered ticker, showing the same
+    Live progress display used in single-ticker analysis mode.
+    """
+    import time
+    import logging
+    from rich.live import Live
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from cli.analysis_utils import (
+        process_analysis_stream,
+        _reset_message_buffer,
+    )
+
+    logger = logging.getLogger("DiscoveryDeepAnalysis")
+    selected_analysts = ["market", "news", "fundamentals"]
+
+    # Setup executor if requested
+    executor = None
+    exec_settings = selections.get("execution", {})
+    if exec_settings.get("enabled"):
+        results_dir = Path(config["results_dir"]) / "discovery" / trade_date
+        results_dir.mkdir(parents=True, exist_ok=True)
+        executor = setup_executor(exec_settings, log_dir=results_dir)
+
+    # Create the graph once (reused across tickers)
+    graph = TradingAgentsGraph(
+        selected_analysts=selected_analysts,
+        config=config,
+        debug=False,
+    )
+
+    results = []
+    total = len(selected_tickers)
+
+    for idx, ticker in enumerate(selected_tickers):
+        console.print()
+        console.print(Rule(f"[bold green]Analyzing {idx + 1}/{total}: {ticker}[/bold green]"))
+        console.print()
+
+        _reset_message_buffer()
+
+        # Set initial agent statuses
+        first_analyst = f"{selected_analysts[0].capitalize()} Analyst"
+        message_buffer.update_agent_status(first_analyst, "in_progress")
+
+        message_buffer.add_message("System", f"Discovery deep analysis: {ticker}")
+        message_buffer.add_message("System", f"Analysis date: {trade_date}")
+
+        init_agent_state = graph.propagator.create_initial_state(
+            ticker,
+            trade_date,
+            time_horizon=time_horizon,
+        )
+        args = graph.propagator.get_graph_args()
+
+        layout = create_layout()
+
+        try:
+            with Live(layout, refresh_per_second=4):
+                update_display(layout)
+                trace, final_state = process_analysis_stream(
+                    graph, init_agent_state, args,
+                    message_buffer, update_display, layout,
+                    selected_analysts,
+                )
+
+                # Mark all agents completed
+                for agent in message_buffer.agent_status:
+                    message_buffer.update_agent_status(agent, "completed")
+                update_display(layout)
+
+            if final_state:
+                structured = graph.extract_structured_decision(
+                    final_state.get("final_trade_decision", "")
+                )
+                decision = structured.get("action") or graph.process_signal(
+                    final_state.get("final_trade_decision", "")
+                )
+
+                conviction_score = _calculate_conviction(final_state, decision)
+
+                results.append({
+                    "ticker": ticker,
+                    "decision": decision,
+                    "conviction_score": conviction_score,
+                    "final_state": final_state,
+                    "market_report": final_state.get("market_report", ""),
+                    "fundamentals_report": final_state.get("fundamentals_report", ""),
+                    "news_report": final_state.get("news_report", ""),
+                    "final_decision": final_state.get("final_trade_decision", ""),
+                })
+
+                display_complete_report(final_state)
+            else:
+                logger.error(f"No final state for {ticker}")
+
+        except Exception as e:
+            logger.error(f"Error analyzing {ticker}: {e}")
+            console.print(Panel(
+                f"[red]Error analyzing {ticker}:[/red] {e}",
+                title="Analysis Failed",
+                border_style="red",
+                padding=(1, 2),
+            ))
+
+        # Brief pause between tickers
+        if idx < total - 1:
+            console.print("[dim]Waiting before next ticker...[/dim]")
+            time.sleep(5)
+
+    # Rank by conviction score
+    results.sort(key=lambda x: x["conviction_score"], reverse=True)
+
+    # Filter to BUY signals only
+    buy_signals = [r for r in results if r["decision"] == "BUY"]
+
+    logger.info(
+        f"Discovery analysis complete. {len(buy_signals)} BUY signals out of "
+        f"{len(results)} analyzed"
+    )
+
+    return buy_signals if buy_signals else results
+
+
+def _calculate_conviction(final_state, decision):
+    """
+    Calculate a conviction score (0-100) based on analysis quality.
+    Mirrors BatchAnalyzer._calculate_conviction logic.
+    """
+    score = 0.0
+
+    if decision == "BUY":
+        score = 60
+    elif decision == "SELL":
+        score = 40
+    else:
+        score = 50
+
+    final_text = final_state.get("final_trade_decision", "").lower()
+
+    if any(word in final_text for word in ["strong", "compelling", "excellent", "outstanding"]):
+        score += 10
+    if any(word in final_text for word in ["high confidence", "strongly recommend", "clear opportunity"]):
+        score += 10
+
+    if any(word in final_text for word in ["uncertain", "mixed", "unclear", "cautious"]):
+        score -= 10
+    if any(word in final_text for word in ["weak", "concerning", "risky"]):
+        score -= 10
+
+    if "investment_debate_state" in final_state:
+        debate = final_state["investment_debate_state"]
+        judge_decision = debate.get("judge_decision", "").lower()
+
+        if decision == "BUY" and "bull" in judge_decision and "strong" in judge_decision:
+            score += 5
+        elif decision == "SELL" and "bear" in judge_decision and "strong" in judge_decision:
+            score += 5
+
+    return max(0, min(100, score))
+
+
 def run_discovery_flow(selections: Dict[str, Any]):
     """
     Main discovery flow handler.
@@ -182,40 +363,23 @@ def run_discovery_flow(selections: Dict[str, Any]):
         console.print("[yellow]No tickers selected for analysis.[/yellow]")
         return
 
+    # Select holding period / time horizon for the deep analysis run
+    from cli.utils import select_time_horizon
+
+    console.print()
+    time_horizon = select_time_horizon()
+
     # Run deep analysis
     console.print()
     console.print(f"[cyan]Running deep analysis on: {', '.join(selected_tickers)}[/cyan]")
 
-    # Use BatchAnalyzer through the discovery graph
-    with console.status("[bold cyan]Running deep analysis...[/bold cyan]", spinner="dots"):
-        from tradingagents.graph.trading_graph import TradingAgentsGraph
-        from tradingagents.graph.batch_analysis import BatchAnalyzer
-
-        # Setup executor if requested
-        executor = None
-        exec_settings = selections.get("execution", {})
-        if exec_settings.get("enabled"):
-            results_dir = Path(config["results_dir"]) / "discovery" / trade_date
-            results_dir.mkdir(parents=True, exist_ok=True)
-            executor = setup_executor(exec_settings, log_dir=results_dir)
-
-        # Create full analysis graph
-        graph = TradingAgentsGraph(
-            selected_analysts=["market", "news", "fundamentals"],
-            config=config,
-            debug=False,
-        )
-
-        batch_analyzer = BatchAnalyzer(
-            graph=graph,
-            executor=executor,
-        )
-
-        analysis_results = batch_analyzer.analyze_candidates(
-            tickers=selected_tickers,
-            trade_date=trade_date,
-            max_positions=len(selected_tickers),
-        )
+    analysis_results = _run_discovery_deep_analysis(
+        selected_tickers=selected_tickers,
+        trade_date=trade_date,
+        time_horizon=time_horizon,
+        config=config,
+        selections=selections,
+    )
 
     # Display analysis results
     display_analysis_results(analysis_results)

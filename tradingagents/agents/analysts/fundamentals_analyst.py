@@ -2,7 +2,8 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
 from tradingagents.agents.utils.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions
-from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.context_budget import cap_section, get_budget_settings
 
 
 def create_fundamentals_analyst(llm):
@@ -11,6 +12,9 @@ def create_fundamentals_analyst(llm):
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
+        spec = get_time_horizon_spec(state.get("time_horizon"))
+        holding_text = spec.label
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
         tools = [
             get_fundamentals,
@@ -22,7 +26,7 @@ def create_fundamentals_analyst(llm):
         ]
 
         system_message = (
-            "You are a fundamentals analyst supporting a short-term (1–2 month) swing trade decision. Focus on what can plausibly matter over the next 4–8 weeks (quality, liquidity/financing risk, earnings sensitivity, and any near-term fundamental catalysts)."
+            f"You are a fundamentals analyst supporting a {holding_text} swing trade decision. Focus on what can plausibly matter over {window_text} (quality, liquidity/financing risk, earnings sensitivity, and any near-term fundamental catalysts)."
             "\n\nWorkflow (tool-first, then write):"
             "\n1) Call `get_fundamentals(ticker=<ticker>, curr_date=<current_date>)` to pull the company overview/ratios."
             "\n2) Call `get_income_statement`, `get_balance_sheet`, and `get_cashflow` (quarterly) to identify recent acceleration/deceleration and balance-sheet constraints."
@@ -34,15 +38,15 @@ def create_fundamentals_analyst(llm):
             "\n- Balance-sheet/liquidity: cash, debt, liquidity runway, refinancing risk (if discernible)."
             "\n- Valuation/expectations: whether expectations look stretched vs recent fundamentals (use available ratios; avoid long debates)."
             "\n- Insider activity: summarize net buying/selling and any notable patterns."
-            "\n- Bottom line: bullish/bearish fundamental bias for a 1–2 month horizon + 2–3 concrete risks that would invalidate it."
-            "\n\nEnd with a compact Markdown table summarizing: key metric(s), directionality, why it matters in 4–8 weeks, and the risk if wrong."
+            f"\n- Bottom line: bullish/bearish fundamental bias for a {holding_text} horizon + 2–3 concrete risks that would invalidate it."
+            f"\n\nEnd with a compact Markdown table summarizing: key metric(s), directionality, why it matters over {window_text}, and the risk if wrong."
         )
 
         if portfolio_context:
             system_message += (
                 "\n\n---\nCURRENT PORTFOLIO CONTEXT (live brokerage snapshot):\n"
                 + str(portfolio_context)
-                + "\n\nExecution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP) that may execute later. Highlight any near-term catalysts/risks that would affect whether to execute now vs stage entries/exits.\n---"
+                + "\n\n**CRITICAL** Execution note: The system can place MARKET (execute now) or conditional orders (LIMIT/STOP/STOP_LIMIT/TRAILING_STOP). Your report MUST provide concrete numeric levels for: (1) entry/trigger, (2) stop-loss, (3) take-profit, and (4) holding horizon or time-stop for hold management. This applies to both active BUY/SELL setups and HOLD/watch scenarios. If confidence is low, still provide bounded watch levels and explicit invalidation logic instead of omitting levels.\n---"
             )
 
         prompt = ChatPromptTemplate.from_messages(

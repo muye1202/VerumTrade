@@ -74,7 +74,26 @@ def get_insider_sentiment(
     Returns:
         str: A report of insider sentiment data
     """
-    return route_to_vendor("get_insider_sentiment", ticker, curr_date)
+    # Some vendors reject future dates; treat curr_date as "as-of" and clamp to today.
+    effective_date = curr_date
+    try:
+        cd = datetime.strptime(curr_date, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        if cd > today:
+            effective_date = today.strftime("%Y-%m-%d")
+    except Exception:
+        effective_date = curr_date
+
+    try:
+        return route_to_vendor("get_insider_sentiment", ticker, effective_date)
+    except Exception as e:
+        note = ""
+        if effective_date != curr_date:
+            note = f" (requested date {curr_date} is in the future; using {effective_date})"
+        return (
+            f"No insider sentiment data available for {ticker} as of {effective_date}{note}. "
+            f"Reason: {type(e).__name__}: {e}"
+        )
 
 @tool
 def get_insider_transactions(
@@ -90,4 +109,23 @@ def get_insider_transactions(
     Returns:
         str: A report of insider transaction data
     """
-    return route_to_vendor("get_insider_transactions", ticker, curr_date)
+    # Some vendors reject future dates; treat curr_date as "as-of" and clamp to today.
+    effective_date = curr_date
+    try:
+        cd = datetime.strptime(curr_date, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        if cd > today:
+            effective_date = today.strftime("%Y-%m-%d")
+    except Exception:
+        effective_date = curr_date
+
+    try:
+        return route_to_vendor("get_insider_transactions", ticker, effective_date)
+    except Exception as e:
+        note = ""
+        if effective_date != curr_date:
+            note = f" (requested date {curr_date} is in the future; using {effective_date})"
+        return (
+            f"No insider transactions data available for {ticker} as of {effective_date}{note}. "
+            f"Reason: {type(e).__name__}: {e}"
+        )

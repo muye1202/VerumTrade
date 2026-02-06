@@ -33,6 +33,15 @@ class FinancialSituationMemory:
             self.client = OpenAI(base_url=backend_url, api_key=api_key)
 
         self.chroma_client = chromadb.Client(Settings(allow_reset=True))
+
+        # Chroma clients can share state within a process. When running multi-ticker
+        # analysis sequentially, re-initializing this memory with the same collection
+        # name would otherwise raise "Collection already exists". We prefer a clean
+        # slate per run, so delete+recreate if needed.
+        try:
+            self.chroma_client.delete_collection(name=name)
+        except Exception:
+            pass
         self.situation_collection = self.chroma_client.create_collection(name=name)
 
     def _hash_embed(self, text: str, dim: int = 256) -> list[float]:

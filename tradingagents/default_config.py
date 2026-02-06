@@ -44,6 +44,21 @@ DEFAULT_CONFIG = {
         else None
     ),
 
+    # Prompt/context budgeting (important for providers with strict context windows).
+    "context_budget_mode": os.getenv("TRADINGAGENTS_CONTEXT_BUDGET_MODE", "adaptive"),
+    "prompt_soft_cap_tokens": int(os.getenv("TRADINGAGENTS_PROMPT_SOFT_CAP_TOKENS", "45000")),
+    "char_per_token_estimate": float(os.getenv("TRADINGAGENTS_CHAR_PER_TOKEN_ESTIMATE", "4.0")),
+    "section_max_chars_report": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_REPORT", "2200")),
+    "section_max_chars_history": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_HISTORY", "8000")),
+    "section_max_chars_response": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_RESPONSE", "1800")),
+    "section_max_chars_memory": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_MEMORY", "1200")),
+    "section_max_chars_portfolio": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_PORTFOLIO", "2500")),
+    "section_max_chars_trader_plan": int(os.getenv("TRADINGAGENTS_SECTION_MAX_CHARS_TRADER_PLAN", "2000")),
+    "tool_response_max_chars": int(os.getenv("TRADINGAGENTS_TOOL_RESPONSE_MAX_CHARS", "12000")),
+    "news_max_items": int(os.getenv("TRADINGAGENTS_NEWS_MAX_ITEMS", "12")),
+    "max_debate_rounds_cap": int(os.getenv("TRADINGAGENTS_MAX_DEBATE_ROUNDS_CAP", "3")),
+    "max_risk_rounds_cap": int(os.getenv("TRADINGAGENTS_MAX_RISK_ROUNDS_CAP", "3")),
+
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,

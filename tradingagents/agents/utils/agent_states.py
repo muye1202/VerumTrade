@@ -52,6 +52,10 @@ class RiskDebateState(TypedDict):
 class AgentState(_MessagesState):
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
+    time_horizon: Annotated[
+        str,
+        "User-selected target holding period for this run (e.g., '1-2 weeks', '1-2 months')",
+    ]
 
     sender: Annotated[str, "Agent that sent this message"]
 

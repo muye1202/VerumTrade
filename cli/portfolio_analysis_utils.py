@@ -426,9 +426,21 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
 
     # Create config
     config = DEFAULT_CONFIG.copy()
-    config["max_debate_rounds"] = selections["research_depth"]
-    config["max_risk_discuss_rounds"] = selections["research_depth"]
-    config["max_recur_limit"] = max(100, selections["research_depth"] * 120)
+    requested_depth = int(selections["research_depth"])
+    debate_cap = int(config.get("max_debate_rounds_cap", requested_depth))
+    risk_cap = int(config.get("max_risk_rounds_cap", requested_depth))
+    config["max_debate_rounds"] = min(requested_depth, debate_cap)
+    config["max_risk_discuss_rounds"] = min(requested_depth, risk_cap)
+    config["max_recur_limit"] = max(100, requested_depth * 120)
+    if console is not None and (
+        config["max_debate_rounds"] < requested_depth
+        or config["max_risk_discuss_rounds"] < requested_depth
+    ):
+        console.print(
+            "[yellow]Context guard: clamped research depth "
+            f"(requested={requested_depth}, debate={config['max_debate_rounds']}, "
+            f"risk={config['max_risk_discuss_rounds']}).[/yellow]"
+        )
     config["quick_think_llm"] = selections["shallow_thinker"]
     config["deep_think_llm"] = selections["deep_thinker"]
     config["backend_url"] = selections["backend_url"]
@@ -457,7 +469,12 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
         console.print("Portfolio analysis requires Alpaca credentials in `.env` to fetch positions.")
         raise typer.Exit(code=1)
 
-    analyzer = PortfolioAnalyzer(graph=graph, executor=executor, analysis_date=selections["analysis_date"])
+    analyzer = PortfolioAnalyzer(
+        graph=graph,
+        executor=executor,
+        analysis_date=selections["analysis_date"],
+        time_horizon=selections.get("time_horizon"),
+    )
 
     execute_trades = bool(exec_sel.get("enabled", False))
     min_conviction = float(selections.get("min_conviction", 70.0))

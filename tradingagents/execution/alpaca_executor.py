@@ -40,6 +40,7 @@ import logging
 from pathlib import Path
 import json
 import re
+import time
 
 
 @dataclass(frozen=True)
@@ -519,6 +520,7 @@ class AlpacaExecutor:
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
+        agent_position_size_pct: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Execute a trading signal from TradingAgents.
@@ -562,6 +564,7 @@ class AlpacaExecutor:
                       agent_stop_price=agent_stop_price,
                       agent_trail_percent=agent_trail_percent,
                       agent_trail_price=agent_trail_price,
+                      agent_position_size_pct=agent_position_size_pct,
                   ))
               elif signal == "SELL":
                   result.update(self._execute_sell(
@@ -607,11 +610,13 @@ class AlpacaExecutor:
         agent_stop_price: Optional[float] = None,
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
+        agent_position_size_pct: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute BUY signal."""
         # Portfolio-aware sizing: allow adds, but enforce concentration cap.
         cash_available = float(getattr(account, "cash", 0.0) or 0.0)
         equity = float(getattr(account, "equity", 0.0) or 0.0)
+        ticker_u = str(ticker or "").strip().upper()
 
         held_qty = 0.0
         held_value = 0.0
@@ -629,20 +634,52 @@ class AlpacaExecutor:
         max_additional_value = max(0.0, max_position_value - held_value) if max_position_value else None
 
         # Determine target notional from cash, then apply hard caps.
-        target_value = cash_available * float(self.position_size_pct)
+        effective_pct = float(self.position_size_pct)
+        if agent_position_size_pct is not None:
+            try:
+                v = float(agent_position_size_pct)
+                # Allow either "10" (meaning 10%) or "0.10" (meaning 10%).
+                if v > 1.0:
+                    v = v / 100.0
+                if 0.0 < v <= 1.0:
+                    effective_pct = v
+            except Exception:
+                pass
+
+        target_value = cash_available * effective_pct
         if self.max_position_size_usd:
             target_value = min(target_value, float(self.max_position_size_usd))
         if max_additional_value is not None:
             target_value = min(target_value, max_additional_value)
 
-        # Get current price
-        quote = self._get_latest_quote(ticker)
-        if not quote:
-            return {"executed": False, "error": "Could not get latest quote"}
+        # Get current price (best-effort). Quotes can fail due to transient network issues or Alpaca data access.
+        quote = self._get_latest_quote(ticker_u)
+        quote_error_hint = None
 
-        current_price = quote.get("ask_price") or quote.get("bid_price")
+        current_price = None
+        if quote:
+            current_price = quote.get("ask_price") or quote.get("bid_price")
+
+        # If quote isn't available, try to proceed using agent-provided prices when possible (e.g., explicit LIMIT/STOP).
         if not current_price:
-            return {"executed": False, "error": "Quote missing ask/bid price"}
+            fallback_price = (
+                _parse_floatish(agent_limit_price)
+                or _parse_floatish(agent_stop_price)
+                or _parse_floatish(agent_trail_price)
+            )
+            if fallback_price and fallback_price > 0:
+                current_price = float(fallback_price)
+                quote_error_hint = "quote_unavailable_used_agent_price"
+                if not quote:
+                    quote = {
+                        "bid_price": None,
+                        "ask_price": None,
+                        "bid_size": None,
+                        "ask_size": None,
+                        "timestamp": None,
+                        "source": quote_error_hint,
+                        "reference_price": current_price,
+                    }
 
         # If concentration cap blocks any add, stop here.
         if max_additional_value is not None and max_additional_value <= 0:
@@ -654,30 +691,56 @@ class AlpacaExecutor:
                 "equity": equity,
             }
 
+        if not current_price:
+            # We can still submit a MARKET order with an explicit quantity, but cannot do cash/concentration sizing.
+            normalized_order_type = _normalize_order_type(agent_order_type) or _normalize_order_type(self.order_type) or "MARKET"
+            if normalized_order_type == "MARKET" and agent_quantity and agent_quantity > 0:
+                current_price = 1.0
+                quote_error_hint = "quote_unavailable_market_qty_only"
+                self.logger.warning(
+                    f"{ticker_u}: Latest quote unavailable; submitting MARKET order with agent quantity only (no sizing caps)."
+                )
+            else:
+                return {
+                    "executed": False,
+                    "error": "Could not get latest quote",
+                    "message": (
+                        f"{ticker_u}: Could not fetch a latest quote from Alpaca data. "
+                        "This can be due to transient connectivity, a data entitlement issue, or an invalid symbol. "
+                        "If your order includes an explicit LIMIT_PRICE/STOP_PRICE, ensure it is provided; "
+                        "otherwise set an explicit QUANTITY to allow execution without quote-based sizing."
+                    ),
+                }
+
         # Guardrail: skip if open orders exist for this ticker.
         if self.skip_if_open_orders_exist:
-            open_orders = self._get_open_orders(ticker)
+            open_orders = self._get_open_orders(ticker_u)
             if open_orders:
                 return {
                     "executed": False,
-                    "message": f"Skipped BUY: existing open orders for {ticker.upper()} detected",
+                    "message": f"Skipped BUY: existing open orders for {ticker_u} detected",
                     "open_orders": [self._order_brief(o) for o in open_orders],
                 }
 
         # Use agent-specified quantity if provided, otherwise calculate
         if agent_quantity and agent_quantity > 0:
-            max_affordable = int(cash_available / current_price)
-            qty = min(int(agent_quantity), max_affordable)
-            # Enforce concentration cap in share terms.
-            if max_additional_value is not None:
-                max_additional_qty = int(max_additional_value / current_price)
-                qty = min(qty, max_additional_qty)
-            self.logger.info(
-                f"{ticker}: Agent requested {agent_quantity} shares, "
-                f"capped to {qty} by available cash ${cash_available:,.2f}"
-            )
+            qty = int(agent_quantity)
+            # If we have a meaningful price reference, enforce cash/concentration caps.
+            if quote_error_hint != "quote_unavailable_market_qty_only":
+                max_affordable = int(cash_available / float(current_price))
+                qty = min(qty, max_affordable)
+                if max_additional_value is not None:
+                    max_additional_qty = int(max_additional_value / float(current_price))
+                    qty = min(qty, max_additional_qty)
+            if quote_error_hint == "quote_unavailable_market_qty_only":
+                self.logger.info(f"{ticker}: Agent requested {agent_quantity} shares (quote unavailable; no sizing caps applied)")
+            else:
+                self.logger.info(
+                    f"{ticker}: Agent requested {agent_quantity} shares, "
+                    f"capped to {qty} by available cash ${cash_available:,.2f}"
+                )
         else:
-            qty = int(target_value / current_price)
+            qty = int(target_value / float(current_price))
 
         if qty <= 0:
             self.logger.warning(f"{ticker}: Insufficient funds for BUY")
@@ -689,10 +752,10 @@ class AlpacaExecutor:
         # Place order
         try:
             order, requested_limit_price, order_spec = self._place_order(
-                ticker=ticker,
+                ticker=ticker_u,
                 qty=qty,
                 side=OrderSide.BUY,
-                current_price=current_price,
+                current_price=float(current_price),
                 agent_order_type=agent_order_type,
                 agent_time_in_force=agent_time_in_force,
                 agent_extended_hours=agent_extended_hours,
@@ -718,9 +781,10 @@ class AlpacaExecutor:
             "executed": True,
             "order": self._order_to_dict(order),
             "qty": qty,
-            "price": current_price,
+            "price": float(current_price),
             "side": "BUY",
             "quote": quote,
+            "quote_note": quote_error_hint,
             "requested_limit_price": requested_limit_price,
             "order_spec": order_spec.__dict__,
         }
@@ -749,6 +813,7 @@ class AlpacaExecutor:
             }
 
         held_qty = abs(int(float(current_position.qty)))
+        ticker_u = str(ticker or "").strip().upper()
 
         # Use agent-specified quantity if provided, otherwise default to full position
         if agent_quantity and agent_quantity > 0:
@@ -763,31 +828,69 @@ class AlpacaExecutor:
         if qty <= 0:
             return {"executed": False, "error": "Invalid SELL quantity"}
 
-        quote = self._get_latest_quote(ticker)
-        if not quote:
-            return {"executed": False, "error": "Could not get latest quote"}
+        quote = self._get_latest_quote(ticker_u)
+        quote_error_hint = None
 
-        current_price = quote.get("bid_price") or quote.get("ask_price")
+        current_price = None
+        if quote:
+            current_price = quote.get("bid_price") or quote.get("ask_price")
+
         if not current_price:
-            return {"executed": False, "error": "Quote missing bid/ask price"}
+            fallback_price = (
+                _parse_floatish(agent_limit_price)
+                or _parse_floatish(agent_stop_price)
+                or _parse_floatish(agent_trail_price)
+            )
+            if fallback_price and fallback_price > 0:
+                current_price = float(fallback_price)
+                quote_error_hint = "quote_unavailable_used_agent_price"
+                if not quote:
+                    quote = {
+                        "bid_price": None,
+                        "ask_price": None,
+                        "bid_size": None,
+                        "ask_size": None,
+                        "timestamp": None,
+                        "source": quote_error_hint,
+                        "reference_price": current_price,
+                    }
+
+        if not current_price:
+            normalized_order_type = _normalize_order_type(agent_order_type) or _normalize_order_type(self.order_type) or "MARKET"
+            if normalized_order_type == "MARKET":
+                current_price = 1.0
+                quote_error_hint = "quote_unavailable_market_sell"
+                self.logger.warning(
+                    f"{ticker_u}: Latest quote unavailable; submitting MARKET SELL without a reference quote."
+                )
+            else:
+                return {
+                    "executed": False,
+                    "error": "Could not get latest quote",
+                    "message": (
+                        f"{ticker_u}: Could not fetch a latest quote from Alpaca data. "
+                        "Provide an explicit LIMIT_PRICE/STOP_PRICE to execute without a quote, "
+                        "or retry later if this is a transient connectivity/data issue."
+                    ),
+                }
 
         # Guardrail: skip if open orders exist for this ticker.
         if self.skip_if_open_orders_exist:
-            open_orders = self._get_open_orders(ticker)
+            open_orders = self._get_open_orders(ticker_u)
             if open_orders:
                 return {
                     "executed": False,
-                    "message": f"Skipped SELL: existing open orders for {ticker.upper()} detected",
+                    "message": f"Skipped SELL: existing open orders for {ticker_u} detected",
                     "open_orders": [self._order_brief(o) for o in open_orders],
                 }
 
         # Place sell order
         try:
             order, requested_limit_price, order_spec = self._place_order(
-                ticker=ticker,
+                ticker=ticker_u,
                 qty=qty,
                 side=OrderSide.SELL,
-                current_price=current_price,
+                current_price=float(current_price),
                 agent_order_type=agent_order_type,
                 agent_time_in_force=agent_time_in_force,
                 agent_extended_hours=agent_extended_hours,
@@ -813,9 +916,10 @@ class AlpacaExecutor:
             "executed": True,
             "order": self._order_to_dict(order),
             "qty": qty,
-            "price": current_price,
+            "price": float(current_price),
             "side": "SELL",
             "quote": quote,
+            "quote_note": quote_error_hint,
             "requested_limit_price": requested_limit_price,
             "order_spec": order_spec.__dict__,
         }
@@ -1053,36 +1157,128 @@ class AlpacaExecutor:
         return out
 
     def _get_latest_quote(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """Get latest quote for ticker (bid/ask)."""
-        try:
-            request = StockLatestQuoteRequest(symbol_or_symbols=ticker)
-            quote = self.data_client.get_stock_latest_quote(request)
+        """
+        Get latest quote for ticker (bid/ask).
 
-            if ticker in quote:
-                q = quote[ticker]
+        Note: Alpaca responses and dict keys can vary by alpaca-py version; this method is defensive.
+        """
+        ticker_u = str(ticker or "").strip().upper()
+        if not ticker_u:
+            return None
+
+        def _to_float(v):
+            try:
+                return float(v) if v is not None else None
+            except Exception:
+                return None
+
+        def _is_transient_error(exc: Exception) -> bool:
+            msg = str(exc).lower()
+            return any(
+                s in msg
+                for s in (
+                    "timeout",
+                    "timed out",
+                    "temporarily unavailable",
+                    "connection aborted",
+                    "connection reset",
+                    "connection error",
+                    "service unavailable",
+                    "bad gateway",
+                    "gateway timeout",
+                    "too many requests",
+                    "429",
+                    "502",
+                    "503",
+                    "504",
+                )
+            )
+
+        last_exc: Exception | None = None
+
+        # Try latest quote with a small retry loop (helps with transient network/API blips).
+        for attempt in range(1, 4):
+            try:
+                if StockLatestQuoteRequest is None:
+                    return None
+                request = StockLatestQuoteRequest(symbol_or_symbols=ticker_u)
+                quote = self.data_client.get_stock_latest_quote(request)
+
+                q: Any = None
+                if isinstance(quote, dict):
+                    q = quote.get(ticker_u) or quote.get(ticker) or quote.get(ticker_u.lower())
+                else:
+                    q = quote
+
+                if q is None:
+                    return None
+
                 bid_price = getattr(q, "bid_price", None)
                 ask_price = getattr(q, "ask_price", None)
                 bid_size = getattr(q, "bid_size", None)
                 ask_size = getattr(q, "ask_size", None)
                 ts = getattr(q, "timestamp", None)
 
-                def _to_float(v):
-                    try:
-                        return float(v) if v is not None else None
-                    except Exception:
-                        return None
-
                 return {
                     "bid_price": _to_float(bid_price),
                     "ask_price": _to_float(ask_price),
                     "bid_size": _to_float(bid_size),
                     "ask_size": _to_float(ask_size),
-                    "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts) if ts is not None else None,
+                    "timestamp": ts.isoformat()
+                    if hasattr(ts, "isoformat")
+                    else str(ts)
+                    if ts is not None
+                    else None,
+                    "source": "alpaca_latest_quote",
                 }
+            except Exception as e:
+                last_exc = e
+                if attempt < 3 and _is_transient_error(e):
+                    time.sleep(0.25 * attempt)
+                    continue
+                break
 
-            return None
+        # Fallback: try latest trade and synthesize a quote-like payload.
+        try:
+            from alpaca.data.requests import StockLatestTradeRequest  # type: ignore
+
+            request = StockLatestTradeRequest(symbol_or_symbols=ticker_u)
+            trade = self.data_client.get_stock_latest_trade(request)
+
+            t: Any = None
+            if isinstance(trade, dict):
+                t = trade.get(ticker_u) or trade.get(ticker) or trade.get(ticker_u.lower())
+            else:
+                t = trade
+
+            if t is None:
+                return None
+
+            price = _to_float(getattr(t, "price", None))
+            ts = getattr(t, "timestamp", None)
+            if price is None:
+                return None
+
+            return {
+                "bid_price": price,
+                "ask_price": price,
+                "bid_size": None,
+                "ask_size": None,
+                "timestamp": ts.isoformat()
+                if hasattr(ts, "isoformat")
+                else str(ts)
+                if ts is not None
+                else None,
+                "source": "alpaca_latest_trade",
+            }
         except Exception as e:
-            self.logger.error(f"Error getting quote for {ticker}: {e}")
+            # Preserve the most informative exception in logs.
+            if last_exc is not None:
+                self.logger.error(
+                    f"Error getting quote for {ticker_u}: {last_exc} (fallback trade also failed: {e})"
+                )
+            else:
+                self.logger.error(f"Error getting quote for {ticker_u}: {e}")
             return None
 
     def _order_to_dict(self, order: Any) -> Dict[str, Any]:

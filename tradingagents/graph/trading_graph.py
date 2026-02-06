@@ -246,15 +246,15 @@ class TradingAgentsGraph:
                     # Fall through to safe behavior below.
                     pass
 
-                # Important: do NOT pass DashScope-only flags via model_kwargs here.
-                # Many langchain_openai versions forward model_kwargs into the OpenAI SDK
-                # as top-level kwargs (e.g., enable_thinking=...), which raises:
-                #   TypeError: Completions.create() got an unexpected keyword argument 'enable_thinking'
-                #
-                # If extra_body isn't supported by this langchain_openai version,
-                # we skip these params rather than crashing the whole run.
+                # Compatibility fallback: when ChatOpenAI.__init__ has no `extra_body`,
+                # pass it via model_kwargs so OpenAI SDK receives `extra_body={...}`.
+                # Avoid putting provider fields (e.g., enable_thinking) directly under
+                # model_kwargs because some versions forward them as top-level kwargs.
+                mk = kwargs.get("model_kwargs") or {}
+                mk["extra_body"] = extra
+                kwargs["model_kwargs"] = mk
                 if self.debug:
-                    print("INFO: ChatOpenAI doesn't support extra_body; skipping provider-specific params:", extra)
+                    print("INFO: ChatOpenAI doesn't expose extra_body in __init__; using model_kwargs.extra_body:", extra)
                 return kwargs
 
             def _qwen_supports_thinking(model_name: str) -> bool:
@@ -299,16 +299,6 @@ class TradingAgentsGraph:
                 kwargs["model_kwargs"] = mk
                 return kwargs
 
-            qwen_extra: Dict[str, Any] = {}
-            if self.config["llm_provider"].lower() == "qwen3-cn":
-                if self.config.get("qwen_enable_thinking") and _qwen_supports_thinking(self.config.get("deep_think_llm", "")):
-                    qwen_extra["enable_thinking"] = True
-                if (
-                    self.config.get("qwen_thinking_budget") is not None
-                    and _qwen_supports_thinking(self.config.get("deep_think_llm", ""))
-                ):
-                    qwen_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
-
             # Some DashScope reasoning-capable models require stream mode when thinking is enabled.
             deep_streaming = bool(
                 self.config.get("llm_provider", "").lower() == "qwen3-cn"
@@ -320,6 +310,18 @@ class TradingAgentsGraph:
                     or _qwen_requires_stream(self.config.get("deep_think_llm", ""))
                 )
             )
+            qwen_extra: Dict[str, Any] = {}
+            if self.config["llm_provider"].lower() == "qwen3-cn":
+                deep_supports_thinking = _qwen_supports_thinking(self.config.get("deep_think_llm", ""))
+                deep_enable_thinking = bool(
+                    self.config.get("qwen_enable_thinking")
+                    and deep_supports_thinking
+                    and deep_streaming
+                )
+                # DashScope requires enable_thinking=false for non-streaming calls.
+                qwen_extra["enable_thinking"] = deep_enable_thinking
+                if deep_enable_thinking and self.config.get("qwen_thinking_budget") is not None:
+                    qwen_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
 
             provider = self.config["llm_provider"].lower()
 
@@ -361,28 +363,23 @@ class TradingAgentsGraph:
                     or _qwen_requires_stream(self.config.get("quick_think_llm", ""))
                 )
             )
+            qwen_quick_extra: Dict[str, Any] = {}
+            if self.config.get("llm_provider", "").lower() == "qwen3-cn":
+                quick_supports_thinking = _qwen_supports_thinking(self.config.get("quick_think_llm", ""))
+                quick_enable_thinking = bool(
+                    self.config.get("qwen_enable_thinking_quick")
+                    and quick_supports_thinking
+                    and quick_streaming
+                )
+                qwen_quick_extra["enable_thinking"] = quick_enable_thinking
+                if quick_enable_thinking and self.config.get("qwen_thinking_budget") is not None:
+                    qwen_quick_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
+
             self.quick_thinking_llm = quick_llm_cls(
                 model=self.config["quick_think_llm"],
                 **_with_extra_params(
                     _with_streaming(openai_kwargs.copy(), quick_streaming),
-                    (
-                        {"enable_thinking": True, "thinking_budget": int(self.config["qwen_thinking_budget"])}
-                        if (
-                            self.config.get("llm_provider", "").lower() == "qwen3-cn"
-                            and self.config.get("qwen_enable_thinking_quick")
-                            and _qwen_supports_thinking(self.config.get("quick_think_llm", ""))
-                            and self.config.get("qwen_thinking_budget") is not None
-                        )
-                        else (
-                            {"enable_thinking": True}
-                            if (
-                                self.config.get("llm_provider", "").lower() == "qwen3-cn"
-                                and self.config.get("qwen_enable_thinking_quick")
-                                and _qwen_supports_thinking(self.config.get("quick_think_llm", ""))
-                            )
-                            else {}
-                        )
-                    ),
+                    qwen_quick_extra,
                 ),
             )
             if provider == "glm" and quick_llm_cls is GLMFlashSerialChatOpenAI:
@@ -478,6 +475,9 @@ class TradingAgentsGraph:
                     get_balance_sheet,
                     get_cashflow,
                     get_income_statement,
+                    # Insider activity (fundamental catalyst context)
+                    get_insider_sentiment,
+                    get_insider_transactions,
                 ]
             ),
         }
@@ -493,10 +493,14 @@ class TradingAgentsGraph:
         executor: Optional[AlpacaExecutor] = None,
         execute: bool = False,
         portfolio_context: str = None,
+        time_horizon: Optional[str] = None,
     ):
         # Run normal propagation with portfolio awareness
         final_state, decision = self.propagate(
-            company_name, trade_date, portfolio_context=portfolio_context
+            company_name,
+            trade_date,
+            portfolio_context=portfolio_context,
+            time_horizon=time_horizon,
         )
 
         execution_result = None
@@ -517,6 +521,7 @@ class TradingAgentsGraph:
                 trade_date=trade_date,
                 agent_quantity=structured.get("quantity"),
                 agent_limit_price=structured.get("limit_price"),
+                agent_position_size_pct=structured.get("position_size_pct"),
                 agent_order_type=structured.get("order_type"),
                 agent_time_in_force=structured.get("time_in_force"),
                 agent_stop_price=structured.get("stop_price"),
@@ -526,7 +531,13 @@ class TradingAgentsGraph:
 
         return final_state, decision, execution_result
 
-    def propagate(self, company_name, trade_date, portfolio_context: str = None):
+    def propagate(
+        self,
+        company_name,
+        trade_date,
+        portfolio_context: str = None,
+        time_horizon: Optional[str] = None,
+    ):
         """Run the trading agents graph for a company on a specific date."""
         self.ticker = company_name
 
@@ -535,7 +546,10 @@ class TradingAgentsGraph:
             portfolio_context = fetch_portfolio_context(company_name)
 
         init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date, portfolio_context=portfolio_context
+            company_name,
+            trade_date,
+            portfolio_context=portfolio_context,
+            time_horizon=time_horizon,
         )
 
         args = self.propagator.get_graph_args()
