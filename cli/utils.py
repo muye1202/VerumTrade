@@ -182,6 +182,10 @@ def select_shallow_thinking_agent(provider) -> str:
         "deepseek": [
             ("DeepSeek Chat", "deepseek-chat"),
         ],
+        "openrouter": [
+            ("Pony Alpha (test) - OpenRouter free reasoning variant", "openrouter/pony-alpha"),
+            ("DeepSeek V3 (free)", "deepseek/deepseek-chat-v3-0324:free"),
+        ],
         # "openai": [
         #     ("Gemini-3-Flash", "gemini-3-flash"),
         #     ("Gemini-2.5-Flash", "gemini-2.5-flash"),
@@ -238,8 +242,8 @@ def select_deep_thinking_agent(provider) -> str:
         #     ("Gemini-2.5-Thinking", "gemini-2.5-flash-thinking"),
         # ],
         "openrouter": [
+            ("Pony Alpha (test) - OpenRouter free reasoning variant", "openrouter/pony-alpha"),
             ("DeepSeek V3 - a 685B-parameter, mixture-of-experts model", "deepseek/deepseek-chat-v3-0324:free"),
-            ("Deepseek - latest iteration of the flagship chat model family from the DeepSeek team.", "deepseek/deepseek-chat-v3-0324:free"),
         ],
     }
 
@@ -273,6 +277,7 @@ def select_llm_provider() -> tuple[str, str]:
         ("Qwen3-CN (DashScope)", "qwen3-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
         ("GLM (ZhipuAI)", "glm", "https://open.bigmodel.cn/api/paas/v4"),
+        ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
     ]
 
     choice = questionary.select(

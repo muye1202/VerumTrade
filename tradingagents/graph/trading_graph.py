@@ -224,7 +224,9 @@ class TradingAgentsGraph:
             if self.config["llm_provider"].lower() == "qwen3-cn":
                 openai_kwargs["api_key"] = os.getenv("DASHSCOPE_API_KEY")
             if self.config["llm_provider"].lower() == "deepseek":
-                openai_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+                openai_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY")
+            if self.config["llm_provider"].lower() == "openrouter":
+                openai_kwargs["api_key"] = os.getenv("OPENROUTER_API_KEY")
             if self.config["llm_provider"].lower() == "glm":
                 openai_kwargs["api_key"] = (
                     os.getenv("ZHIPUAI_API_KEY")
@@ -256,6 +258,13 @@ class TradingAgentsGraph:
                 if self.debug:
                     print("INFO: ChatOpenAI doesn't expose extra_body in __init__; using model_kwargs.extra_body:", extra)
                 return kwargs
+
+            def _merge_extra_params(*extras: Dict[str, Any]) -> Dict[str, Any]:
+                merged: Dict[str, Any] = {}
+                for extra in extras:
+                    if extra:
+                        merged.update(extra)
+                return merged
 
             def _qwen_supports_thinking(model_name: str) -> bool:
                 name = (model_name or "").lower()
@@ -323,6 +332,13 @@ class TradingAgentsGraph:
                 if deep_enable_thinking and self.config.get("qwen_thinking_budget") is not None:
                     qwen_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
 
+            openrouter_deep_extra: Dict[str, Any] = {}
+            if (
+                self.config["llm_provider"].lower() == "openrouter"
+                and (self.config.get("deep_think_llm") or "") == "openrouter/pony-alpha"
+            ):
+                openrouter_deep_extra["reasoning"] = {"enabled": True}
+
             provider = self.config["llm_provider"].lower()
 
             if provider == "qwen3-cn":
@@ -346,7 +362,13 @@ class TradingAgentsGraph:
 
             self.deep_thinking_llm = deep_llm_cls(
                 model=self.config["deep_think_llm"],
-                **_with_streaming(_with_extra_params(openai_kwargs.copy(), qwen_extra), deep_streaming),
+                **_with_streaming(
+                    _with_extra_params(
+                        openai_kwargs.copy(),
+                        _merge_extra_params(qwen_extra, openrouter_deep_extra),
+                    ),
+                    deep_streaming,
+                ),
             )
             if provider == "glm" and deep_llm_cls is GLMFlashSerialChatOpenAI:
                 self.deep_thinking_llm._ta_llm_concurrency_key = (
@@ -375,11 +397,18 @@ class TradingAgentsGraph:
                 if quick_enable_thinking and self.config.get("qwen_thinking_budget") is not None:
                     qwen_quick_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
 
+            openrouter_quick_extra: Dict[str, Any] = {}
+            if (
+                self.config.get("llm_provider", "").lower() == "openrouter"
+                and (self.config.get("quick_think_llm") or "") == "openrouter/pony-alpha"
+            ):
+                openrouter_quick_extra["reasoning"] = {"enabled": True}
+
             self.quick_thinking_llm = quick_llm_cls(
                 model=self.config["quick_think_llm"],
                 **_with_extra_params(
                     _with_streaming(openai_kwargs.copy(), quick_streaming),
-                    qwen_quick_extra,
+                    _merge_extra_params(qwen_quick_extra, openrouter_quick_extra),
                 ),
             )
             if provider == "glm" and quick_llm_cls is GLMFlashSerialChatOpenAI:

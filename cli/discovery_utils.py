@@ -18,6 +18,10 @@ from rich.align import Align
 
 from tradingagents.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
 from tradingagents.default_config import DEFAULT_CONFIG
+from cli.discovery_report_logger import (
+    write_deep_analysis_report,
+    write_discovery_report,
+)
 
 
 # Injected from cli/main.py
@@ -332,6 +336,19 @@ def run_discovery_flow(selections: Dict[str, Any]):
         )
         result = discovery_graph.run_discovery(trade_date=trade_date)
 
+    # Persist discovery report regardless of success/failure.
+    try:
+        discovery_report_path = write_discovery_report(
+            results_root=config["results_dir"],
+            trade_date=trade_date,
+            result=result,
+            llm_provider=config["llm_provider"],
+            deep_think_model=config["deep_think_llm"],
+        )
+        console.print(f"[dim]Discovery report saved: {discovery_report_path}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: failed to write discovery report ({e})[/yellow]")
+
     # Display results
     display_discovery_result(result)
 
@@ -380,6 +397,19 @@ def run_discovery_flow(selections: Dict[str, Any]):
         config=config,
         selections=selections,
     )
+
+    # Persist deep analysis report regardless of result count.
+    try:
+        deep_report_path = write_deep_analysis_report(
+            results_root=config["results_dir"],
+            trade_date=trade_date,
+            selected_tickers=selected_tickers,
+            analysis_results=analysis_results,
+            time_horizon=time_horizon,
+        )
+        console.print(f"[dim]Deep analysis report saved: {deep_report_path}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: failed to write deep analysis report ({e})[/yellow]")
 
     # Display analysis results
     display_analysis_results(analysis_results)

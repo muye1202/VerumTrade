@@ -21,8 +21,11 @@ DEFAULT_PRIORITY = [
 
 def get_budget_settings() -> Dict[str, Any]:
     cfg = get_config()
+    mode = str(cfg.get("context_budget_mode", "adaptive")).strip().lower()
+    if mode not in {"off", "adaptive", "compact"}:
+        mode = "adaptive"
     settings = {
-        "mode": str(cfg.get("context_budget_mode", "adaptive")).strip().lower(),
+        "mode": mode,
         "soft_cap_tokens": int(cfg.get("prompt_soft_cap_tokens", 45000)),
         "char_per_token_estimate": float(cfg.get("char_per_token_estimate", 4.0)),
         "section_max_chars_report": int(cfg.get("section_max_chars_report", 2200)),
@@ -90,6 +93,9 @@ def clip_middle(text: Any, max_chars: int) -> str:
 
 
 def cap_section(label: str, text: Any, max_chars: int) -> str:
+    settings = get_budget_settings()
+    if settings["mode"] == "off":
+        return normalize_text(text)
     capped = clip_middle(text, int(max_chars))
     return capped
 
@@ -101,6 +107,10 @@ def cap_sections_with_soft_token_cap(
     *,
     min_chars: int = 280,
 ) -> Dict[str, str]:
+    settings = get_budget_settings()
+    if settings["mode"] == "off":
+        return {k: normalize_text(v) for k, v in sections.items()}
+
     if soft_cap_tokens <= 0:
         return {k: normalize_text(v) for k, v in sections.items()}
 

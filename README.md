@@ -53,6 +53,7 @@ GOOGLE_API_KEY=AIza...
 DEEPSEEK_API_KEY=sk-...
 DASHSCOPE_API_KEY=sk-...          # Qwen / DashScope
 ZHIPUAI_API_KEY=...               # GLM / ZhipuAI
+OPENROUTER_API_KEY=sk-or-...      # OpenRouter
 
 # ─── Market Data (optional — extends available data sources) ───
 ALPHA_VANTAGE_API_KEY=...
@@ -86,7 +87,7 @@ You'll be prompted to pick:
 | **Date** | The analysis date in `YYYY-MM-DD` format |
 | **Analysts** | Which specialist agents to include — Market, Social, News, Fundamentals. Pick any combination |
 | **Research depth** | How many debate rounds the agents run: **Shallow** (fast) · **Medium** · **Deep** (most thorough) |
-| **LLM Provider** | Which AI backend to use: Google, Qwen, DeepSeek, GLM, and more |
+| **LLM Provider** | Which AI backend to use: Google, Qwen, DeepSeek, GLM, OpenRouter, and more |
 | **Models** | One quick-thinking model (used by most agents) and one deep-thinking model (used by the judges) |
 | **Execution** | Analysis only, or also place a paper trade via Alpaca |
 
@@ -129,12 +130,20 @@ All defaults live in `tradingagents/default_config.py`. Here are the knobs peopl
 
 | Key | What it controls | Example values |
 |:--|:--|:--|
-| `llm_provider` | Which LLM backend to use | `openai` · `anthropic` · `google` · `deepseek` · `qwen3-cn` · `glm` |
+| `llm_provider` | Which LLM backend to use | `openai` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` |
 | `deep_think_llm` / `quick_think_llm` | Model names for judges vs. analysts | `"o4-mini"` · `"gpt-4o-mini"` |
 | `max_debate_rounds` | How many Bull ↔ Bear rounds | `1` (fast) … `5` (thorough) |
 | `data_vendors` | Where market data comes from | See table below |
 | `alpaca_execution.enabled` | Turn trading on / off | `true` / `false` |
 | `alpaca_execution.paper_trading` | Paper vs. live | `true` (safe default) |
+
+**Content limit mode**
+
+- `TRADINGAGENTS_CONTEXT_BUDGET_MODE=off` disables all content-length limiting globally (both prompt truncation and tool-output compaction).
+- Other modes:
+  - `adaptive` (default): cap prompt sections and apply a soft token budget.
+  - `compact`: stronger compression for tighter context windows.
+- Warning: `off` can reintroduce provider 400 errors when request context exceeds model limits.
 
 **Data vendor options** — configured per category:
 
@@ -168,35 +177,35 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       📊 Market Data Layer                          │
+│                       📊 Market Data Layer                          |
 │   Alpaca  ·  Yahoo Finance  ·  Alpha Vantage  ·  Google  ·  Local   │
 │                  (automatic fallback between sources)               │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  price · news · fundamentals · sentiment
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    🔍 1. Analyst Team                                │
+│                    🔍 1. Analyst Team                              │
 │                                                                     │
-│   ┌────────────┐  ┌────────────┐  ┌──────────┐  ┌───────────────┐  │
-│   │  Market    │→ │  Social    │→ │  News    │→ │ Fundamentals  │  │
-│   │  Analyst   │  │  Analyst   │  │  Analyst │  │   Analyst     │  │
-│   └────────────┘  └────────────┘  └──────────┘  └───────────────┘  │
+│   ┌────────────┐  ┌────────────┐  ┌──────────┐  ┌───────────────┐   │
+│   │  Market    │→ │  Social    │→ │  News    │→ │ Fundamentals  │   │
+│   │  Analyst   │  │  Analyst   │  │  Analyst │  │   Analyst     │   │
+│   └────────────┘  └────────────┘  └──────────┘  └───────────────┘   │
 │        Each analyst calls data tools in a loop, then writes a       │
 │        focused report.  Uses the quick-thinking LLM.                │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  four analyst reports
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                 💬 2. Research Team (Debate)                         │
+│                 💬 2. Research Team (Debate)                        │
 │                                                                     │
 │          ┌──────────────┐  ◄──►  ┌──────────────┐                   │
 │          │ Bull         │        │ Bear         │                   │
 │          │ Researcher   │        │ Researcher   │                   │
 │          └──────┬───────┘        └──────┬───────┘                   │
-│                 │                       │                            │
-│                 ▼───────────────────────▼                            │
+│                 │                       │                           │
+│                 ▼───────────────────────▼                           │
 │          ┌────────────────────────────────┐                         │
-│          │      Research Manager          │  ← deep-thinking LLM   │
+│          │      Research Manager          │  ← deep-thinking LLM    │
 │          │  Judges the debate, writes     │                         │
 │          │  the investment plan           │                         │
 │          └────────────────┬───────────────┘                         │
@@ -204,7 +213,7 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
                             │  investment plan
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     📝 3. Trading Team                               │
+│                     📝 3. Trading Team                              │
 │                                                                     │
 │          ┌────────────────────────────────┐                         │
 │          │            Trader              │                         │
@@ -218,14 +227,14 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
 ┌─────────────────────────────────────────────────────────────────────┐
 │               ⚖️  4. Risk Management Team (Debate)                  │
 │                                                                     │
-│     ┌───────────┐   ┌─────────┐   ┌───────────┐                    │
-│     │  Risky    │◄──│ Neutral │──►│  Safe     │                    │
-│     │  Analyst  │   │ Analyst │   │  Analyst  │                    │
-│     └───────────┘   └─────────┘   └───────────┘                    │
+│     ┌───────────┐   ┌─────────┐   ┌───────────┐                     │
+│     │  Risky    │◄──│ Neutral │──►│  Safe     │                     │
+│     │  Analyst  │   │ Analyst │   │  Analyst  │                     │
+│     └───────────┘   └─────────┘   └───────────┘                     │
 │                         │                                           │
 │                         ▼                                           │
 │          ┌────────────────────────────────┐                         │
-│          │        Risk Judge              │  ← deep-thinking LLM   │
+│          │        Risk Judge              │  ← deep-thinking LLM    │
 │          │  Final decision with position  │                         │
 │          │  size, guardrails, and order   │                         │
 │          └────────────────┬───────────────┘                         │
@@ -233,7 +242,7 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
                             │  final structured decision
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                  💰 5. Execution Layer                               │
+│                  💰 5. Execution Layer                              │
 │                                                                     │
 │          ┌────────────────────────────────┐                         │
 │          │       Alpaca Executor          │                         │

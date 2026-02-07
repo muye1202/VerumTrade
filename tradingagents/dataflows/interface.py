@@ -85,6 +85,10 @@ def _clip_middle_text(text: str, max_chars: int) -> str:
 
 def _compact_tool_output(method: str, value):
     cfg = get_config()
+    mode = str(cfg.get("context_budget_mode", "adaptive")).strip().lower()
+    if mode == "off":
+        return value
+
     global_cap = int(cfg.get("tool_response_max_chars", 12000))
     method_cap_map = {
         "get_news": global_cap,
