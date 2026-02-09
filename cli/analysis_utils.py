@@ -674,6 +674,24 @@ def run_single_ticker_analysis(
                         ))
                         execution_portfolio_summary = summary
 
+                        # Journal capture (non-critical)
+                        try:
+                            from tradingagents.agents.journal.store import JournalStore
+                            from tradingagents.agents.journal.hooks import capture_trade_thesis
+                            
+                            journal_store = JournalStore()
+                            capture_trade_thesis(
+                                store=journal_store,
+                                final_state=final_state,
+                                structured_decision=structured,
+                                execution_result=execution_result,
+                                trade_date=selections["analysis_date"],
+                            )
+                        except Exception as e:
+                            # Journal capture is non-critical — never break the main flow
+                            if console:
+                                console.print(f"[dim yellow]Journal capture note: {e}[/dim yellow]")
+
                     else:
                         # Trade not executed (HOLD or error)
                         message = execution_result.get('message', 'No action taken')

@@ -31,6 +31,7 @@ from cli.utils import *
 from cli.analysis_utils import init_analysis_context, run_analysis
 from cli.portfolio_analysis_utils import init_portfolio_context, analyze_portfolio as _analyze_portfolio_impl
 from cli.discovery_utils import init_discovery_context, run_discovery_flow
+from cli.journal_cli import journal_app
 
 console = Console()
 
@@ -39,6 +40,9 @@ app = typer.Typer(
     help="Boolean Trader CLI: Team of Agentic Traders",
     add_completion=True,  # Enable shell completion
 )
+
+# Register journal subcommand
+app.add_typer(journal_app, name="journal")
 
 
 # Create a deque to store recent messages with a maximum length

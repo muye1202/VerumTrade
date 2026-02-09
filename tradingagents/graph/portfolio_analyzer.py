@@ -152,7 +152,7 @@ class PortfolioAnalyzer:
                 on_execution_start()
 
             execution_results = self._execute_recommendations(
-                recommendations, min_conviction
+                recommendations, min_conviction, position_analyses
             )
 
             if on_execution_complete:
@@ -557,7 +557,11 @@ class PortfolioAnalyzer:
         self,
         recommendations: List[Dict[str, Any]],
         min_conviction: float,
+        analyses: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
+        # Create lookup dictionary for analyses by ticker
+        analyses_by_ticker = {a["ticker"]: a for a in analyses if "ticker" in a}
+        
         results = []
         for rec in recommendations:
             if rec["action"] == "HOLD":
@@ -580,12 +584,35 @@ class PortfolioAnalyzer:
                 "Executing %s for %s (conviction: %s)", action, ticker, rec["conviction"]
             )
             try:
+                # Get analysis for this ticker
+                analysis = analyses_by_ticker.get(ticker, {})
+                final_state = analysis.get("final_state")
+                structured = analysis.get("structured_decision", {})
+
                 result = self.executor.execute_signal(
                     ticker=ticker,
                     signal=action,
-                    analysis_state=None,
+                    analysis_state=final_state,
                     trade_date=self.analysis_date,
                 )
+
+                # Journal capture (non-critical)
+                try:
+                    from tradingagents.agents.journal.store import JournalStore
+                    from tradingagents.agents.journal.hooks import capture_trade_thesis
+                    
+                    journal_store = JournalStore()
+                    capture_trade_thesis(
+                        store=journal_store,
+                        final_state=final_state,
+                        structured_decision=structured,
+                        execution_result=result,
+                        trade_date=self.analysis_date,
+                    )
+                except Exception:
+                    # Journal capture is non-critical — never break the main flow
+                    pass
+
                 results.append(
                     {
                         "ticker": ticker,
