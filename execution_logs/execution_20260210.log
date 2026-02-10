@@ -1,3 +1,0 @@
-2026-02-10 01:15:05,233 - AlpacaExecutor - INFO - AlpacaExecutor initialized (paper=True)
-2026-02-10 01:15:05,234 - AlpacaExecutor - INFO - Alpaca trading base URL override: https://paper-api.alpaca.markets
-2026-02-10 01:15:05,235 - AlpacaExecutor - INFO - Alpaca data base URL override: https://data.alpaca.markets

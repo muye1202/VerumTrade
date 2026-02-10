@@ -11,3 +11,5 @@ eval_data/
 .env
 tests
 tmp_*
+journal
+execution_*
