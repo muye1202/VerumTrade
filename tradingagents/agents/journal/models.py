@@ -281,3 +281,75 @@ class TradeOutcome:
     def from_dict(cls, d: Dict[str, Any]) -> "TradeOutcome":
         known = {f.name for f in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in d.items() if k in known})
+
+
+@dataclass
+class TradeLesson:
+    """
+    Structured lesson extracted from a completed trade by the reflection agent.
+
+    Combines machine-queryable tags with human-readable wisdom. Stored in ChromaDB
+    for semantic retrieval during future trading decisions.
+    """
+
+    # Identity
+    id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    thesis_id: str = ""  # FK to TradeThesis
+    outcome_id: str = ""  # FK to TradeOutcome
+    ticker: str = ""
+    trade_date: str = ""
+
+    # Human-readable lesson
+    lesson_text: str = ""  # 1-2 sentence summary suitable for memory retrieval
+
+    # Structured analysis
+    what_worked: List[str] = field(default_factory=list)  # Things agents got right
+    what_failed: List[str] = field(default_factory=list)  # Things agents got wrong
+
+    # Agent accuracy assessment
+    agent_accuracy: Dict[str, str] = field(default_factory=dict)  # {agent: assessment}
+    most_accurate_agent: Optional[str] = None  # market|fundamentals|news|risk_judge
+    least_accurate_agent: Optional[str] = None
+
+    # Thesis accuracy
+    regime_correct: Optional[bool] = None  # Was regime classification correct?
+    catalyst_materialized: Optional[bool] = None  # Did expected catalyst occur?
+
+    # Categorization for retrieval
+    category: str = ""  # e.g., "momentum_in_uptrend", "earnings_catalyst"
+    tags: List[str] = field(default_factory=list)  # Searchable tags
+    confidence: float = 50.0  # 0-100 confidence in this lesson
+
+    # Trade context (copied for standalone retrieval)
+    action: str = ""  # BUY | SELL
+    realized_pl_pct: Optional[float] = None
+    exit_reason: Optional[str] = None
+    risk_multiple: Optional[float] = None  # R-multiple
+
+    # Metadata
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "TradeLesson":
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        return cls(**{k: v for k, v in d.items() if k in known})
+
+    def to_embedding_text(self) -> str:
+        """Generate text for embedding/semantic search."""
+        parts = [
+            f"Ticker: {self.ticker}",
+            f"Action: {self.action}",
+            f"Category: {self.category}",
+            f"Lesson: {self.lesson_text}",
+        ]
+        if self.what_worked:
+            parts.append(f"What worked: {'; '.join(self.what_worked)}")
+        if self.what_failed:
+            parts.append(f"What failed: {'; '.join(self.what_failed)}")
+        if self.tags:
+            parts.append(f"Tags: {', '.join(self.tags)}")
+        return " | ".join(parts)
+

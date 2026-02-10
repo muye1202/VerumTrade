@@ -1,0 +1,11 @@
+2026-02-10 01:15:05,233 [INFO] AlpacaExecutor: AlpacaExecutor initialized (paper=True)
+2026-02-10 01:15:05,234 [INFO] AlpacaExecutor: Alpaca trading base URL override: https://paper-api.alpaca.markets
+2026-02-10 01:15:05,235 [INFO] AlpacaExecutor: Alpaca data base URL override: https://data.alpaca.markets
+2026-02-10 01:15:11,725 [INFO] tradingagents.agents.journal.lesson_memory: LessonMemory initialized at journal\lessons_chromadb (collection: trade_lessons, 0 lessons)
+2026-02-10 01:15:14,916 [INFO] tradingagents.agents.journal.scheduler: Journal scheduler started (foreground mode)
+2026-02-10 01:15:14,925 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)
+2026-02-10 01:30:14,939 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)
+2026-02-10 01:45:14,961 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)
+2026-02-10 02:00:14,976 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)
+2026-02-10 02:15:15,001 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)
+2026-02-10 02:30:15,020 [INFO] tradingagents.agents.journal.scheduler: Next tick in 15m (session: market_hours)

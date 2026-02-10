@@ -15,11 +15,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tradingagents.journal.models import (
+from tradingagents.agents.journal.models import (
     TradeThesis,
     PositionSnapshot,
     JournalAlert,
     TradeOutcome,
+    TradeLesson,
     ThesisStatus,
     AlertType,
 )
@@ -198,6 +199,34 @@ class JournalStore:
 
                 CREATE INDEX IF NOT EXISTS idx_outcomes_thesis ON trade_outcomes(thesis_id);
                 CREATE INDEX IF NOT EXISTS idx_outcomes_ticker ON trade_outcomes(ticker);
+
+                CREATE TABLE IF NOT EXISTS trade_lessons (
+                    id              TEXT PRIMARY KEY,
+                    thesis_id       TEXT NOT NULL REFERENCES trade_theses(id),
+                    outcome_id      TEXT NOT NULL REFERENCES trade_outcomes(id),
+                    ticker          TEXT NOT NULL,
+                    trade_date      TEXT,
+                    lesson_text     TEXT NOT NULL,
+                    what_worked     TEXT,  -- JSON array
+                    what_failed     TEXT,  -- JSON array
+                    agent_accuracy  TEXT,  -- JSON object
+                    most_accurate_agent TEXT,
+                    least_accurate_agent TEXT,
+                    regime_correct  INTEGER,
+                    catalyst_materialized INTEGER,
+                    category        TEXT NOT NULL DEFAULT 'uncategorized',
+                    tags            TEXT,  -- JSON array
+                    confidence      REAL DEFAULT 50.0,
+                    action          TEXT,
+                    realized_pl_pct REAL,
+                    exit_reason     TEXT,
+                    risk_multiple   REAL,
+                    created_at      TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_lessons_thesis ON trade_lessons(thesis_id);
+                CREATE INDEX IF NOT EXISTS idx_lessons_ticker ON trade_lessons(ticker);
+                CREATE INDEX IF NOT EXISTS idx_lessons_category ON trade_lessons(category);
 
                 CREATE TABLE IF NOT EXISTS journal_meta (
                     key   TEXT PRIMARY KEY,
@@ -540,3 +569,106 @@ class JournalStore:
             "avg_mae": row["avg_mae"],
             "avg_mfe": row["avg_mfe"],
         }
+
+    # ------------------------------------------------------------------
+    # TradeLesson CRUD
+    # ------------------------------------------------------------------
+
+    def save_lesson(self, lesson: TradeLesson) -> str:
+        """Insert or update a trade lesson. Returns the lesson ID."""
+        d = lesson.to_dict()
+        # Serialize lists and dicts to JSON
+        d["what_worked"] = json.dumps(d["what_worked"]) if d["what_worked"] else None
+        d["what_failed"] = json.dumps(d["what_failed"]) if d["what_failed"] else None
+        d["agent_accuracy"] = json.dumps(d["agent_accuracy"]) if d["agent_accuracy"] else None
+        d["tags"] = json.dumps(d["tags"]) if d["tags"] else None
+        # Convert booleans to int for SQLite
+        if d["regime_correct"] is not None:
+            d["regime_correct"] = int(d["regime_correct"])
+        if d["catalyst_materialized"] is not None:
+            d["catalyst_materialized"] = int(d["catalyst_materialized"])
+
+        cols = list(d.keys())
+        placeholders = ", ".join(["?"] * len(cols))
+        col_names = ", ".join(cols)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "id")
+
+        with self._conn() as conn:
+            conn.execute(
+                f"INSERT INTO trade_lessons ({col_names}) VALUES ({placeholders}) "
+                f"ON CONFLICT(id) DO UPDATE SET {updates}",
+                [d[c] for c in cols],
+            )
+        logger.info(f"Saved lesson {lesson.id} for {lesson.ticker}: {lesson.category}")
+        return lesson.id
+
+    def get_lesson(self, lesson_id: str) -> Optional[TradeLesson]:
+        """Fetch a single lesson by ID."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM trade_lessons WHERE id = ?", (lesson_id,)
+            ).fetchone()
+        return self._row_to_lesson(row) if row else None
+
+    def get_lessons_by_thesis(self, thesis_id: str) -> List[TradeLesson]:
+        """Fetch lessons for a thesis."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trade_lessons WHERE thesis_id = ? ORDER BY created_at DESC",
+                (thesis_id,),
+            ).fetchall()
+        return [self._row_to_lesson(r) for r in rows]
+
+    def get_lessons_by_category(self, category: str, limit: int = 50) -> List[TradeLesson]:
+        """Fetch lessons by category."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trade_lessons WHERE category = ? ORDER BY created_at DESC LIMIT ?",
+                (category, limit),
+            ).fetchall()
+        return [self._row_to_lesson(r) for r in rows]
+
+    def get_all_lessons(self, limit: int = 100) -> List[TradeLesson]:
+        """Fetch recent lessons, newest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trade_lessons ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row_to_lesson(r) for r in rows]
+
+    def get_lesson_categories(self) -> Dict[str, int]:
+        """Get count of lessons per category."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT category, COUNT(*) as cnt FROM trade_lessons GROUP BY category ORDER BY cnt DESC"
+            ).fetchall()
+        return {r["category"]: r["cnt"] for r in rows}
+
+    def _row_to_lesson(self, row) -> TradeLesson:
+        """Convert a database row to a TradeLesson."""
+        d = dict(row)
+        # Parse JSON fields
+        if d.get("what_worked"):
+            d["what_worked"] = json.loads(d["what_worked"])
+        else:
+            d["what_worked"] = []
+        if d.get("what_failed"):
+            d["what_failed"] = json.loads(d["what_failed"])
+        else:
+            d["what_failed"] = []
+        if d.get("agent_accuracy"):
+            d["agent_accuracy"] = json.loads(d["agent_accuracy"])
+        else:
+            d["agent_accuracy"] = {}
+        if d.get("tags"):
+            d["tags"] = json.loads(d["tags"])
+        else:
+            d["tags"] = []
+        # Convert int back to bool
+        if d.get("regime_correct") is not None:
+            d["regime_correct"] = bool(d["regime_correct"])
+        if d.get("catalyst_materialized") is not None:
+            d["catalyst_materialized"] = bool(d["catalyst_materialized"])
+        return TradeLesson.from_dict(d)
+

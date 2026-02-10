@@ -11,12 +11,12 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from tradingagents.journal.models import (
+from tradingagents.agents.journal.models import (
     TradeThesis,
     TradeOutcome,
     ThesisStatus,
 )
-from tradingagents.journal.store import JournalStore
+from tradingagents.agents.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
 

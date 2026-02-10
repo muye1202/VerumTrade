@@ -6,7 +6,7 @@ This is the glue between the existing execution flow and the new journal system.
 
 Usage in the existing pipeline (analysis_utils.py or portfolio_analysis_utils.py):
 
-    from tradingagents.journal.hooks import capture_trade_thesis
+    from tradingagents.agents.journal.hooks import capture_trade_thesis
 
     # After propagate_and_execute or manual execute_signal:
     capture_trade_thesis(
@@ -23,9 +23,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from tradingagents.journal.models import TradeThesis, ThesisStatus
-from tradingagents.journal.store import JournalStore
-from tradingagents.journal.thesis_extractor import ThesisExtractor
+from tradingagents.agents.journal.models import TradeThesis, ThesisStatus
+from tradingagents.agents.journal.store import JournalStore
+from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
 
 logger = logging.getLogger(__name__)
 

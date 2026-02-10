@@ -533,6 +533,174 @@ def inspect_thesis(
             )
         )
 
+    # Lessons for this thesis
+    lessons = store.get_lessons_by_thesis(thesis_id)
+    if lessons:
+        console.print()
+        lesson = lessons[0]  # Most recent
+        lesson_lines = [
+            f"[bold]Category:[/bold] {lesson.category}",
+            f"[bold]Confidence:[/bold] {lesson.confidence:.0f}%",
+            "",
+            f"[bold]Lesson:[/bold] {lesson.lesson_text}",
+        ]
+        if lesson.what_worked:
+            lesson_lines.append(f"[bold green]What worked:[/bold green] {'; '.join(lesson.what_worked)}")
+        if lesson.what_failed:
+            lesson_lines.append(f"[bold red]What failed:[/bold red] {'; '.join(lesson.what_failed)}")
+        if lesson.most_accurate_agent:
+            lesson_lines.append(f"[bold]Most accurate agent:[/bold] {lesson.most_accurate_agent}")
+        if lesson.least_accurate_agent:
+            lesson_lines.append(f"[bold]Least accurate agent:[/bold] {lesson.least_accurate_agent}")
+
+        console.print(
+            Panel(
+                "\n".join(lesson_lines),
+                title="[bold]Trade Lesson[/bold]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+        )
+
+
+@journal_app.command()
+def lessons(
+    db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
+    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+):
+    """List trade lessons extracted from completed trades."""
+    store = _get_store(db_path)
+
+    if category:
+        lesson_list = store.get_lessons_by_category(category, limit=limit)
+    else:
+        lesson_list = store.get_all_lessons(limit=limit)
+
+    if not lesson_list:
+        console.print("[dim]No lessons recorded yet. Lessons are generated when trades close and reflection runs.[/dim]")
+        return
+
+    table = Table(
+        show_header=True,
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        expand=True,
+        padding=(0, 1),
+    )
+    table.add_column("Ticker", style="cyan", width=8)
+    table.add_column("Category", width=20)
+    table.add_column("P&L %", justify="right", width=8)
+    table.add_column("R-Mult", justify="right", width=8)
+    table.add_column("Conf", justify="right", width=6)
+    table.add_column("Lesson", no_wrap=False)
+    table.add_column("Date", width=12)
+
+    for lesson in lesson_list:
+        pl_color = "green" if (lesson.realized_pl_pct or 0) >= 0 else "red"
+        table.add_row(
+            lesson.ticker,
+            lesson.category,
+            f"[{pl_color}]{lesson.realized_pl_pct:+.1f}%[/{pl_color}]" if lesson.realized_pl_pct is not None else "—",
+            f"{lesson.risk_multiple:+.1f}R" if lesson.risk_multiple is not None else "—",
+            f"{lesson.confidence:.0f}",
+            lesson.lesson_text[:80] + ("..." if len(lesson.lesson_text) > 80 else ""),
+            lesson.trade_date,
+        )
+
+    console.print(
+        Panel(table, title="[bold]Trade Lessons[/bold]", border_style="yellow")
+    )
+
+    # Show category distribution
+    categories = store.get_lesson_categories()
+    if categories:
+        cat_str = " | ".join(f"{cat}: {count}" for cat, count in list(categories.items())[:5])
+        console.print(f"\n[dim]Categories: {cat_str}[/dim]")
+
+
+@journal_app.command(name="lesson-memory")
+def lesson_memory_stats(
+    db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
+):
+    """Show lesson memory (ChromaDB) statistics."""
+    try:
+        from tradingagents.agents.journal.lesson_memory import LessonMemory
+        memory = LessonMemory()
+        stats = memory.get_stats()
+
+        lines = [
+            f"[bold]Total lessons in memory:[/bold] {stats['total_lessons']}",
+            f"[bold]Persist directory:[/bold] {stats['persist_directory']}",
+            "",
+            f"[bold]Winning trades:[/bold] [green]{stats['winning_trades']}[/green]",
+            f"[bold]Losing trades:[/bold] [red]{stats['losing_trades']}[/red]",
+        ]
+
+        if stats.get("categories"):
+            lines.append("")
+            lines.append("[bold]Categories:[/bold]")
+            for cat, count in list(stats["categories"].items())[:10]:
+                lines.append(f"  • {cat}: {count}")
+
+        if stats.get("tickers"):
+            lines.append("")
+            lines.append("[bold]Tickers:[/bold]")
+            for ticker, count in list(stats["tickers"].items())[:10]:
+                lines.append(f"  • {ticker}: {count}")
+
+        console.print(
+            Panel(
+                "\n".join(lines),
+                title="[bold yellow]Lesson Memory (ChromaDB)[/bold yellow]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+        )
+    except ImportError:
+        console.print("[red]ChromaDB is not installed. Run: pip install chromadb[/red]")
+    except Exception as e:
+        console.print(f"[red]Error accessing lesson memory: {e}[/red]")
+
+
+@journal_app.command(name="query-lessons")
+def query_lessons(
+    query: str = typer.Argument(..., help="Natural language query to search lessons"),
+    n: int = typer.Option(5, "--n", "-n", help="Number of results"),
+):
+    """Search lessons using semantic similarity."""
+    try:
+        from tradingagents.agents.journal.lesson_memory import LessonMemory
+        memory = LessonMemory()
+
+        console.print(f"[dim]Searching for: '{query}'...[/dim]\n")
+        results = memory.query_similar(query, n_results=n)
+
+        if not results:
+            console.print("[dim]No lessons found.[/dim]")
+            return
+
+        for i, result in enumerate(results, 1):
+            meta = result.get("metadata", {})
+            similarity = result.get("similarity", 0)
+            pl_color = "green" if meta.get("realized_pl_pct", 0) >= 0 else "red"
+
+            console.print(
+                Panel(
+                    f"[bold]Ticker:[/bold] {meta.get('ticker', '?')} | "
+                    f"[bold]Category:[/bold] {meta.get('category', '?')} | "
+                    f"[bold]P&L:[/bold] [{pl_color}]{meta.get('realized_pl_pct', 0):+.1f}%[/{pl_color}]\n\n"
+                    f"{result.get('document', '')}",
+                    title=f"[bold]#{i} (similarity: {similarity:.2%})[/bold]",
+                    border_style="yellow",
+                    padding=(1, 2),
+                )
+            )
+    except ImportError:
+        console.print("[red]ChromaDB is not installed. Run: pip install chromadb[/red]")
+    except Exception as e:
+        console.print(f"[red]Error querying lessons: {e}[/red]")
+
 
 # ------------------------------------------------------------------
 # Helpers
@@ -577,3 +745,4 @@ def _display_alerts(alert_list, title="Alerts"):
     console.print(
         Panel(table, title=f"[bold]{title}[/bold]", border_style="magenta")
     )
+

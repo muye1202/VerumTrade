@@ -18,14 +18,14 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from tradingagents.journal.models import (
+from tradingagents.agents.journal.models import (
     TradeThesis,
     PositionSnapshot,
     JournalAlert,
     AlertType,
     ThesisStatus,
 )
-from tradingagents.journal.store import JournalStore
+from tradingagents.agents.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
 

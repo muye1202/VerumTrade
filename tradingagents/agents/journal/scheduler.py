@@ -26,9 +26,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from tradingagents.journal.store import JournalStore
-from tradingagents.journal.monitor import PositionMonitor
-from tradingagents.journal.outcome import OutcomeRecorder
+from tradingagents.agents.journal.store import JournalStore
+from tradingagents.agents.journal.monitor import PositionMonitor
+from tradingagents.agents.journal.outcome import OutcomeRecorder
+from tradingagents.agents.journal.models import TradeThesis, TradeOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class JournalScheduler:
         extended_hours_interval_minutes: int = 30,
         on_tick_complete: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_alert: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_outcome_recorded: Optional[Callable[["TradeThesis", "TradeOutcome"], None]] = None,
     ):
         """
         Args:
@@ -72,6 +74,7 @@ class JournalScheduler:
             extended_hours_interval_minutes: How often during pre/post market
             on_tick_complete: Callback fired after each tick with summary dict
             on_alert: Callback fired for each new alert
+            on_outcome_recorded: Callback fired for each newly recorded outcome (thesis, outcome)
         """
         self.store = store
         self.monitor = PositionMonitor(store=store, executor=executor)
@@ -83,6 +86,7 @@ class JournalScheduler:
 
         self.on_tick_complete = on_tick_complete
         self.on_alert = on_alert
+        self.on_outcome_recorded = on_outcome_recorded
 
         self._running = False
         self._timer: Optional[threading.Timer] = None
@@ -211,6 +215,16 @@ class JournalScheduler:
             logger.error(f"Outcome recording failed: {e}", exc_info=True)
             summary["outcomes_recorded"] = 0
             summary.setdefault("errors", []).append(f"Outcome recording: {e}")
+
+        # Fire on_outcome_recorded callback for each new outcome
+        if self.on_outcome_recorded and new_outcomes:
+            for outcome in new_outcomes:
+                try:
+                    thesis = self.store.get_thesis(outcome.thesis_id)
+                    if thesis:
+                        self.on_outcome_recorded(thesis, outcome)
+                except Exception as e:
+                    logger.error(f"on_outcome_recorded callback failed: {e}")
 
         # Add timing info
         summary["duration_seconds"] = round(
