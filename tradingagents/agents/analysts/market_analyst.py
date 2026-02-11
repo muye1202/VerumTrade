@@ -4,6 +4,22 @@ import json
 from tradingagents.agents.utils.agent_utils import get_stock_data, get_indicators
 from tradingagents.agents.utils.price_action_tools import get_price_action_summary
 from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.vwap_tools import (
+    get_intraday_vwap_position,
+    get_multi_day_vwap_context,
+)
+from tradingagents.agents.utils.options_flow_tools import (
+    get_unusual_options_activity,
+    get_options_sentiment_summary,
+)
+from tradingagents.agents.utils.dark_pool_tools import (
+    get_dark_pool_short_volume,
+    get_off_exchange_volume_context,
+)
+from tradingagents.agents.utils.short_interest_tools import (
+    get_short_interest_data,
+    get_squeeze_candidates_assessment,
+)
 
 
 def create_market_analyst(llm):
@@ -22,9 +38,22 @@ def create_market_analyst(llm):
         )
 
         tools = [
+            # Core tools
             get_stock_data,
             get_indicators,
             get_price_action_summary,
+            # VWAP positioning (Alpaca free)
+            get_intraday_vwap_position,
+            get_multi_day_vwap_context,
+            # Options flow (Yahoo free)
+            get_unusual_options_activity,
+            get_options_sentiment_summary,
+            # Dark pool / off-exchange (FINRA free)
+            get_dark_pool_short_volume,
+            get_off_exchange_volume_context,
+            # Short interest (Yahoo + FINRA free)
+            get_short_interest_data,
+            get_squeeze_candidates_assessment,
         ]
 
         system_message = (
@@ -40,7 +69,14 @@ Workflow (tool-first, then write):
 2) Select 4–6 indicators (max 6) from the allowed list below that add *non-redundant* information for a {holding_text} horizon.
 3) For each selected indicator, call `get_indicators(symbol=<ticker>, indicator=..., curr_date=<current_date>, look_back_days=90)` (use ~90 days for context). Use the exact indicator names.
    - If a vendor replies that an indicator isn't available (e.g., VWMA on Alpha Vantage), substitute another from the list and continue.
-4) After you have the data, write the final report **without** further tool calls.
+4) Call VWAP tools for entry timing context:
+   - `get_intraday_vwap_position(symbol, curr_date)` for current session positioning
+   - `get_multi_day_vwap_context(symbol, curr_date)` for trend confirmation
+5) Check institutional flow signals:
+   - `get_unusual_options_activity(symbol, curr_date)` for smart money positioning
+   - `get_dark_pool_short_volume(symbol, curr_date)` for off-exchange activity
+   - `get_short_interest_data(symbol, curr_date)` for squeeze risk assessment
+6) After gathering data, write the final report **without** further tool calls.
 
 Allowed indicators (exact names):
 
@@ -67,12 +103,44 @@ Volume-Based Indicators:
 - vwma: VWMA: A moving average weighted by volume. Usage: Confirm trends by integrating price action with volume data. Tips: Watch for skewed results from volume spikes; use in combination with other volume analyses.
 - mfi: MFI: Money Flow Index (price+volume momentum). Usage: Overbought/oversold and buying/selling pressure; divergences can signal reversals. Tips: Best as a confirmation, not a standalone trigger.
 
+Advanced Institutional Flow Tools (Free-Tier Data):
+
+VWAP Positioning:
+- `get_intraday_vwap_position(symbol, curr_date)`: Current price vs session VWAP, time spent above/below, entry timing guidance.
+- `get_multi_day_vwap_context(symbol, curr_date, lookback_days=5)`: Multi-day VWAP trend for confirming swing direction.
+
+Options Flow Analysis:
+- `get_unusual_options_activity(symbol, curr_date)`: Scan for high volume/OI contracts indicating informed trading. EOD data.
+- `get_options_sentiment_summary(symbol, curr_date)`: Quick put/call ratio and sentiment read.
+
+Dark Pool / Off-Exchange:
+- `get_dark_pool_short_volume(symbol, curr_date)`: Daily short volume from FINRA (T+1). Proxies institutional selling pressure.
+- `get_off_exchange_volume_context(symbol, curr_date)`: Estimated dark pool volume and institutional activity signals.
+
+Short Interest:
+- `get_short_interest_data(symbol, curr_date)`: Short % of float, days to cover, squeeze potential assessment.
+- `get_squeeze_candidates_assessment(symbol, curr_date)`: Detailed squeeze scoring if short interest is elevated.
+
+Advanced Tool Usage Notes:
+- VWAP tools use Alpaca data (real-time if market open)
+- Options flow is EOD data from Yahoo - useful for swing, not intraday signals
+- Dark pool short volume is T+1 (next-day) data from FINRA
+- Short interest from Yahoo has ~1-2 week lag
+- For real-time institutional flow, recommend paid services in report
+- Call VWAP tools for entry timing (buy below VWAP, sell above)
+- Call options tools when you need sentiment confirmation or suspect unusual activity
+- Call dark pool/short tools when assessing institutional positioning or squeeze risk
+
 Report requirements (keep it to-the-point, but specific):
 - Regime: trend vs range + evidence (levels, momentum, vol).
 - Key levels: supports/resistances, invalidation level(s), breakout/breakdown triggers.
 - Volatility/liquidity: ATR% implications for stop placement; volume + gap risk notes.
+- VWAP positioning: Where is price relative to session VWAP? Entry timing implications.
+- Options sentiment: Put/call ratio, any unusual activity detected.
+- Institutional flow: Short volume trends, dark pool activity signals.
+- Squeeze risk: If short interest >10%, assess squeeze potential.
 - Setup(s) for {window_text}: 1–2 candidate trade plans with entry zone, stop, 1–2 targets, and a time-stop.
-- Risks/catalysts: what news/earnings/macro surprises could break the setup (don’t invent dates).
+- Risks/catalysts: what news/earnings/macro surprises could break the setup (don't invent dates).
 - End with a compact Markdown table summarizing: regime, bias, key levels, trigger, stop, targets, time horizon, and top risks.
 """
         )

@@ -28,9 +28,26 @@ from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
 from tradingagents.agents.journal.monitor import PositionMonitor
 from tradingagents.agents.journal.outcome import OutcomeRecorder
-from tradingagents.agents.journal.scheduler import JournalScheduler
-from tradingagents.agents.journal.reflection_agent import ReflectionAgent, create_reflection_callback
-from tradingagents.agents.journal.lesson_memory import LessonMemory
+
+# Optional components may require extra runtime dependencies (e.g., tzdata/chromadb).
+try:  # pragma: no cover
+    from tradingagents.agents.journal.scheduler import JournalScheduler
+except Exception:  # pragma: no cover
+    JournalScheduler = None  # type: ignore[assignment]
+
+try:  # pragma: no cover
+    from tradingagents.agents.journal.reflection_agent import (
+        ReflectionAgent,
+        create_reflection_callback,
+    )
+except Exception:  # pragma: no cover
+    ReflectionAgent = None  # type: ignore[assignment]
+    create_reflection_callback = None  # type: ignore[assignment]
+
+try:  # pragma: no cover
+    from tradingagents.agents.journal.lesson_memory import LessonMemory
+except Exception:  # pragma: no cover
+    LessonMemory = None  # type: ignore[assignment]
 
 __all__ = [
     "TradeThesis",
@@ -49,4 +66,3 @@ __all__ = [
     "LessonMemory",
     "create_reflection_callback",
 ]
-

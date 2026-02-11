@@ -381,7 +381,6 @@ def _extract_content_string(content: Any) -> str:
 
 
 def analyze_portfolio(execute_trades: bool, 
-                      min_conviction: float, 
                       analysis_date: Optional[str], 
                       n_stocks: Optional[int] = None):
 
@@ -394,7 +393,7 @@ def analyze_portfolio(execute_trades: bool,
     3. Analyze selected positions using the agent framework
     4. Calculate portfolio-level metrics
     5. Generate BUY/SELL/HOLD recommendations
-    6. (Optional) Execute high-conviction trades
+    6. (Optional) Execute trades (no conviction gating)
     7. Provide strategic insights and future recommendations
     """
     console.print("\n")
@@ -414,7 +413,6 @@ def analyze_portfolio(execute_trades: bool,
         "paper": True,
         "position_size_pct": 0.10,
     }
-    selections["min_conviction"] = float(min_conviction)
 
     run_portfolio_analysis_from_selections(selections)
 
@@ -477,7 +475,6 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
     )
 
     execute_trades = bool(exec_sel.get("enabled", False))
-    min_conviction = float(selections.get("min_conviction", 70.0))
 
     n_stocks = selections.get("n_stocks")  # None means "analyze all"
 
@@ -613,6 +610,13 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
         if live_context["live"]:
             update_portfolio_display(layout, buffer)
 
+    def on_stock_executed(ticker: str, exec_result: Dict[str, Any]):
+        executed = exec_result.get("executed", False)
+        status = "✓ executed" if executed else "✗ not executed"
+        buffer.add_message("Execution", f"{ticker}: {status}")
+        if live_context["live"]:
+            update_portfolio_display(layout, buffer)
+
     # ------------------------------------------------------------------
     # Run analysis with Live GUI
     # ------------------------------------------------------------------
@@ -622,13 +626,13 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
 
         results = analyzer.analyze_portfolio(
             execute_trades=execute_trades,
-            min_conviction=min_conviction,
             n_stocks=n_stocks,
             on_triage_start=on_triage_start,
             on_triage_complete=on_triage_complete,
             on_stock_start=on_stock_start,
             on_stock_chunk=on_stock_chunk,
             on_stock_complete=on_stock_complete,
+            on_stock_executed=on_stock_executed,
             on_execution_start=on_execution_start,
             on_execution_complete=on_execution_complete,
         )

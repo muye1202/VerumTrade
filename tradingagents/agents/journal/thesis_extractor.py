@@ -75,7 +75,38 @@ class ThesisExtractor:
 
         # --- From execution result ---
         if execution_result and execution_result.get("executed"):
-            thesis.entry_price = _parse_float(execution_result.get("price"))
+            final_entry = _parse_float(execution_result.get("entry_price_final"))
+            order_entry = _parse_float(
+                (execution_result.get("order") or {}).get("filled_avg_price")
+            )
+            provisional_entry = _parse_float(
+                execution_result.get("entry_price_provisional")
+                or execution_result.get("price")
+            )
+
+            if final_entry:
+                thesis.entry_price = final_entry
+                thesis.entry_price_source = "filled_avg_price"
+                thesis.entry_price_pending = False
+            elif order_entry:
+                thesis.entry_price = order_entry
+                thesis.entry_price_source = "filled_avg_price"
+                thesis.entry_price_pending = False
+            elif provisional_entry:
+                thesis.entry_price = provisional_entry
+                thesis.entry_price_source = "submission_quote"
+                thesis.entry_price_pending = bool(
+                    execution_result.get("order_needs_reconcile", True)
+                )
+            else:
+                thesis.entry_price = None
+                thesis.entry_price_source = "unknown"
+                thesis.entry_price_pending = bool(
+                    execution_result.get("order_needs_reconcile", False)
+                )
+
+            if not thesis.entry_price_pending:
+                thesis.last_reconciled_at = datetime.utcnow().isoformat()
             thesis.order_id = execution_result.get("order", {}).get("id")
             thesis.quantity = _parse_int(
                 execution_result.get("qty")

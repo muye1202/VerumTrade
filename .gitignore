@@ -13,3 +13,4 @@ tests
 tmp_*
 journal
 execution_*
+data_cache

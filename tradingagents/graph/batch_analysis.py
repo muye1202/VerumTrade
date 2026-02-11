@@ -177,6 +177,8 @@ class BatchAnalyzer:
                     agent_stop_price=structured.get("stop_price"),
                     agent_trail_percent=structured.get("trail_percent"),
                     agent_trail_price=structured.get("trail_price"),
+                    agent_stop_loss=structured.get("stop_loss"),
+                    agent_take_profit=structured.get("take_profit"),
                 )
 
                 execution_results.append({**pick, "execution": result})

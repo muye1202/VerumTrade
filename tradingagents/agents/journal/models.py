@@ -69,6 +69,9 @@ class TradeThesis:
 
     # Entry parameters
     entry_price: Optional[float] = None  # Actual fill price (set after execution)
+    entry_price_source: Optional[str] = None  # filled_avg_price|broker_avg_entry|submission_quote|unknown
+    entry_price_pending: bool = False  # True until order fill reconciliation completes
+    last_reconciled_at: Optional[str] = None  # ISO timestamp of last order reconciliation
     entry_zone_low: Optional[float] = None  # Planned entry zone lower bound
     entry_zone_high: Optional[float] = None  # Planned entry zone upper bound
 
@@ -352,4 +355,3 @@ class TradeLesson:
         if self.tags:
             parts.append(f"Tags: {', '.join(self.tags)}")
         return " | ".join(parts)
-

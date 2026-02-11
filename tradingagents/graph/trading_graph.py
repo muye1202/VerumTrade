@@ -42,6 +42,22 @@ from tradingagents.agents.utils.agent_utils import (
     get_insider_transactions,
     get_global_news
 )
+from tradingagents.agents.utils.vwap_tools import (
+    get_intraday_vwap_position,
+    get_multi_day_vwap_context,
+)
+from tradingagents.agents.utils.options_flow_tools import (
+    get_unusual_options_activity,
+    get_options_sentiment_summary,
+)
+from tradingagents.agents.utils.dark_pool_tools import (
+    get_dark_pool_short_volume,
+    get_off_exchange_volume_context,
+)
+from tradingagents.agents.utils.short_interest_tools import (
+    get_short_interest_data,
+    get_squeeze_candidates_assessment,
+)
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -478,6 +494,18 @@ class TradingAgentsGraph:
                     get_indicators,
                     # Short-term price action/risk metrics
                     get_price_action_summary,
+                    # VWAP positioning (Alpaca free)
+                    get_intraday_vwap_position,
+                    get_multi_day_vwap_context,
+                    # Options flow (Yahoo free)
+                    get_unusual_options_activity,
+                    get_options_sentiment_summary,
+                    # Dark pool / off-exchange (FINRA free)
+                    get_dark_pool_short_volume,
+                    get_off_exchange_volume_context,
+                    # Short interest (Yahoo + FINRA free)
+                    get_short_interest_data,
+                    get_squeeze_candidates_assessment,
                 ]
             ),
             "social": ToolNode(

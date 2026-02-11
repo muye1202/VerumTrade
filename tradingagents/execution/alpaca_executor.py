@@ -15,8 +15,10 @@ try:  # Optional dependency: alpaca-py
         StopOrderRequest,
         StopLimitOrderRequest,
         TrailingStopOrderRequest,
+        TakeProfitRequest,
+        StopLossRequest,
     )
-    from alpaca.trading.enums import OrderSide, TimeInForce, OrderType  # type: ignore
+    from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, OrderClass  # type: ignore
     from alpaca.data.historical import StockHistoricalDataClient  # type: ignore
     from alpaca.data.requests import StockLatestQuoteRequest  # type: ignore
 except Exception as e:  # pragma: no cover
@@ -26,15 +28,18 @@ except Exception as e:  # pragma: no cover
     StopOrderRequest = None  # type: ignore[assignment]
     StopLimitOrderRequest = None  # type: ignore[assignment]
     TrailingStopOrderRequest = None  # type: ignore[assignment]
+    TakeProfitRequest = None  # type: ignore[assignment]
+    StopLossRequest = None  # type: ignore[assignment]
     OrderSide = None  # type: ignore[assignment]
     TimeInForce = None  # type: ignore[assignment]
     OrderType = None  # type: ignore[assignment]
+    OrderClass = None  # type: ignore[assignment]
     StockHistoricalDataClient = None  # type: ignore[assignment]
     StockLatestQuoteRequest = None  # type: ignore[assignment]
     _ALPACA_IMPORT_ERROR = e
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional, Literal, Mapping
 import os
 import logging
 from pathlib import Path
@@ -119,6 +124,120 @@ def _parse_floatish(value: Any) -> Optional[float]:
         return float(m.group(1).replace(",", ""))
     except Exception:
         return None
+
+
+def _parse_structured_decision_text(text: Optional[str]) -> Dict[str, Any]:
+    """
+    Best-effort parser for FINAL TRADING DECISION / FINAL TRANSACTION PROPOSAL blocks.
+
+    Used by executor as a fallback when `analysis_state["structured_decision"]` is
+    missing, so execution can still consume stop/target and sizing hints.
+    """
+    if not text:
+        return {}
+
+    patterns = [
+        r"(?:^|\n)\s*(?:#+\s*)?FINAL TRADING DECISION\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
+        r"(?:^|\n)\s*(?:#+\s*)?FINAL TRANSACTION PROPOSAL\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
+    ]
+
+    block = None
+    for pattern in patterns:
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if match:
+            block = match.group(1)
+            break
+
+    if not block:
+        return {}
+
+    field_map = {
+        "ACTION": "action",
+        "TICKER": "ticker",
+        "QUANTITY": "quantity",
+        "ORDER_TYPE": "order_type",
+        "TIME_IN_FORCE": "time_in_force",
+        "EXTENDED_HOURS": "extended_hours",
+        "LIMIT_PRICE": "limit_price",
+        "STOP_PRICE": "stop_price",
+        "TRAIL_PERCENT": "trail_percent",
+        "TRAIL_PRICE": "trail_price",
+        "STOP_LOSS": "stop_loss",
+        "TAKE_PROFIT": "take_profit",
+        "POSITION_SIZE_PCT": "position_size_pct",
+    }
+
+    out: Dict[str, Any] = {}
+    for field_key, result_key in field_map.items():
+        m = re.search(
+            rf"^\s*-\s*{field_key}\s*:\s*(.+?)\s*$",
+            block,
+            re.IGNORECASE | re.MULTILINE,
+        )
+        if not m:
+            continue
+
+        value: Any = m.group(1).strip().strip("*").strip()
+        if str(value).upper() in {"N/A", "NA", "NONE", "-"}:
+            value = None
+
+        if result_key == "quantity":
+            if value is None:
+                out[result_key] = None
+                continue
+            nums = re.findall(r"(\d+)", str(value))
+            out[result_key] = int(nums[-1]) if nums else None
+            continue
+
+        if result_key in {
+            "limit_price",
+            "stop_price",
+            "trail_percent",
+            "trail_price",
+            "stop_loss",
+            "take_profit",
+            "position_size_pct",
+        }:
+            out[result_key] = _parse_floatish(value)
+            continue
+
+        if result_key == "action":
+            if value is None:
+                out[result_key] = None
+                continue
+            v = str(value).upper()
+            if "BUY" in v:
+                out[result_key] = "BUY"
+            elif "SELL" in v:
+                out[result_key] = "SELL"
+            else:
+                out[result_key] = "HOLD"
+            continue
+
+        if result_key == "order_type":
+            out[result_key] = _normalize_order_type(value) if value is not None else None
+            continue
+
+        if result_key == "time_in_force":
+            out[result_key] = _normalize_time_in_force(value) if value is not None else None
+            continue
+
+        if result_key == "extended_hours":
+            if value is None:
+                out[result_key] = None
+            else:
+                v = str(value).strip().lower()
+                if v in {"true", "t", "yes", "y", "1"}:
+                    out[result_key] = True
+                elif v in {"false", "f", "no", "n", "0"}:
+                    out[result_key] = False
+                else:
+                    out[result_key] = None
+            continue
+
+        out[result_key] = value
+
+    return out
 
 
 def normalize_order_inputs(
@@ -521,6 +640,8 @@ class AlpacaExecutor:
         agent_trail_percent: Optional[float] = None,
         agent_trail_price: Optional[float] = None,
         agent_position_size_pct: Optional[float] = None,
+        agent_stop_loss: Optional[float] = None,
+        agent_take_profit: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Execute a trading signal from TradingAgents.
@@ -537,6 +658,49 @@ class AlpacaExecutor:
         signal = signal.strip().upper()
 
         self.logger.info(f"Processing signal for {ticker}: {signal}")
+
+        # Backfill missing agent params from analysis_state when callers only provide final text.
+        structured: Dict[str, Any] = {}
+        if isinstance(analysis_state, dict):
+            raw_structured = analysis_state.get("structured_decision")
+            if isinstance(raw_structured, Mapping):
+                structured.update(raw_structured)
+
+            parsed_text = _parse_structured_decision_text(
+                analysis_state.get("final_trade_decision")
+            )
+            for k, v in parsed_text.items():
+                if k not in structured or structured.get(k) is None:
+                    structured[k] = v
+
+        if agent_quantity is None:
+            q = structured.get("quantity")
+            try:
+                agent_quantity = int(q) if q is not None else None
+            except Exception:
+                agent_quantity = None
+        if agent_limit_price is None:
+            agent_limit_price = _parse_floatish(structured.get("limit_price"))
+        if agent_order_type is None:
+            agent_order_type = structured.get("order_type")
+        if agent_time_in_force is None:
+            agent_time_in_force = structured.get("time_in_force")
+        if agent_extended_hours is None:
+            eh = structured.get("extended_hours")
+            if isinstance(eh, bool):
+                agent_extended_hours = eh
+        if agent_stop_price is None:
+            agent_stop_price = _parse_floatish(structured.get("stop_price"))
+        if agent_trail_percent is None:
+            agent_trail_percent = _parse_floatish(structured.get("trail_percent"))
+        if agent_trail_price is None:
+            agent_trail_price = _parse_floatish(structured.get("trail_price"))
+        if agent_position_size_pct is None:
+            agent_position_size_pct = _parse_floatish(structured.get("position_size_pct"))
+        if agent_stop_loss is None:
+            agent_stop_loss = _parse_floatish(structured.get("stop_loss"))
+        if agent_take_profit is None:
+            agent_take_profit = _parse_floatish(structured.get("take_profit"))
 
         # Get current position and account info
         current_position = self._get_position(ticker)
@@ -581,9 +745,22 @@ class AlpacaExecutor:
                       agent_trail_price=agent_trail_price,
                   ))
               elif signal == "HOLD":
-                  self.logger.info(f"{ticker}: HOLD - No action taken")
-                  result["executed"] = False
-                  result["message"] = "HOLD signal - no action"
+                  # Check if agent provided risk management levels
+                  if agent_stop_loss is not None or agent_take_profit is not None:
+                      result.update(self._execute_hold_risk_management(
+                          ticker,
+                          current_position,
+                          account,
+                          agent_quantity=agent_quantity,
+                          agent_stop_loss=agent_stop_loss,
+                          agent_take_profit=agent_take_profit,
+                          agent_time_in_force=agent_time_in_force,
+                      ))
+                  else:
+                      # Original HOLD behavior: no risk management levels
+                      self.logger.info(f"{ticker}: HOLD - No action taken")
+                      result["executed"] = False
+                      result["message"] = "HOLD signal - no action"
               else:
                 self.logger.warning(f"Unknown signal for {ticker}: {signal}")
                 result["error"] = f"Unknown signal: {signal}"
@@ -777,11 +954,18 @@ class AlpacaExecutor:
             f"{ticker}: BUY order placed - {qty} shares at ~${current_price:.2f}"
         )
 
+        order_dict = self._order_to_dict(order)
+        entry_price_final = _parse_floatish(order_dict.get("filled_avg_price"))
+        order_status = str(order_dict.get("status") or "")
         return {
             "executed": True,
-            "order": self._order_to_dict(order),
+            "order": order_dict,
             "qty": qty,
             "price": float(current_price),
+            "entry_price_provisional": float(current_price),
+            "entry_price_final": entry_price_final,
+            "order_status": order_status,
+            "order_needs_reconcile": self._order_needs_reconcile(order_dict),
             "side": "BUY",
             "quote": quote,
             "quote_note": quote_error_hint,
@@ -912,17 +1096,188 @@ class AlpacaExecutor:
             f"{ticker}: SELL order placed - {qty} shares at ~${current_price:.2f}"
         )
 
+        order_dict = self._order_to_dict(order)
+        entry_price_final = _parse_floatish(order_dict.get("filled_avg_price"))
+        order_status = str(order_dict.get("status") or "")
         return {
             "executed": True,
-            "order": self._order_to_dict(order),
+            "order": order_dict,
             "qty": qty,
             "price": float(current_price),
+            "entry_price_provisional": float(current_price),
+            "entry_price_final": entry_price_final,
+            "order_status": order_status,
+            "order_needs_reconcile": self._order_needs_reconcile(order_dict),
             "side": "SELL",
             "quote": quote,
             "quote_note": quote_error_hint,
             "requested_limit_price": requested_limit_price,
             "order_spec": order_spec.__dict__,
         }
+
+    def _execute_hold_risk_management(
+        self,
+        ticker: str,
+        current_position: Optional[Dict],
+        account: Any,
+        agent_quantity: Optional[int] = None,
+        agent_stop_loss: Optional[float] = None,
+        agent_take_profit: Optional[float] = None,
+        agent_time_in_force: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute HOLD action with risk management (stop-loss and/or take-profit).
+
+        When agents provide HOLD with stop_loss and/or take_profit levels, this method
+        submits OCO orders to protect the existing position.
+
+        Args:
+            ticker: Stock ticker
+            current_position: Current position from Alpaca (or None)
+            account: Alpaca account object
+            agent_quantity: Optional quantity to protect (defaults to full position)
+            agent_stop_loss: Stop-loss price level
+            agent_take_profit: Take-profit price level
+            agent_time_in_force: Order duration (defaults to GTC for OCO)
+
+        Returns:
+            Execution result dictionary
+        """
+        ticker_u = str(ticker or "").strip().upper()
+
+        # Check if position exists
+        if not current_position or float(current_position.qty) <= 0:
+            # No position = "watch mode" - log the levels but don't submit orders
+            self.logger.info(
+                f"{ticker_u}: HOLD watch mode (no position) - "
+                f"stop=${agent_stop_loss}, target=${agent_take_profit}"
+            )
+            return {
+                "executed": False,
+                "message": "HOLD watch mode - no position to protect",
+                "watch_stop_loss": agent_stop_loss,
+                "watch_take_profit": agent_take_profit,
+            }
+
+        held_qty = abs(int(float(current_position.qty)))
+
+        # Require at least one risk management level
+        if agent_stop_loss is None and agent_take_profit is None:
+            self.logger.info(f"{ticker_u}: HOLD - No risk management levels provided")
+            return {
+                "executed": False,
+                "message": "HOLD signal - no stop/target provided"
+            }
+
+        # Determine quantity to protect
+        if agent_quantity and agent_quantity > 0:
+            protect_qty = min(int(agent_quantity), held_qty)
+            if protect_qty < held_qty:
+                self.logger.info(
+                    f"{ticker_u}: Protecting partial position - "
+                    f"{protect_qty} of {held_qty} shares"
+                )
+        else:
+            protect_qty = held_qty
+
+        # Get current price for validation
+        quote = self._get_latest_quote(ticker_u)
+        current_price = None
+        if quote:
+            current_price = quote.get("ask_price") or quote.get("bid_price")
+
+        # If we have both stop and target, validate price relationship
+        if agent_stop_loss and agent_take_profit:
+            # For long positions: stop < current < target
+            if current_price:
+                if agent_stop_loss >= current_price:
+                    return {
+                        "executed": False,
+                        "error": f"Stop-loss (${agent_stop_loss:.2f}) must be below current price (${current_price:.2f})"
+                    }
+                if agent_take_profit <= current_price:
+                    return {
+                        "executed": False,
+                        "error": f"Take-profit (${agent_take_profit:.2f}) must be above current price (${current_price:.2f})"
+                    }
+
+            if agent_stop_loss >= agent_take_profit:
+                return {
+                    "executed": False,
+                    "error": f"Stop-loss (${agent_stop_loss:.2f}) must be below take-profit (${agent_take_profit:.2f})"
+                }
+
+        # Check for existing open orders (optional safety check)
+        if self.skip_if_open_orders_exist:
+            open_orders = self._get_open_orders(ticker_u)
+            if open_orders:
+                return {
+                    "executed": False,
+                    "message": f"Skipped HOLD risk mgmt: existing open orders for {ticker_u}",
+                    "open_orders": [self._order_brief(o) for o in open_orders],
+                }
+
+        # If only one level provided, we can't use OCO - fall back to single order
+        if agent_stop_loss is None or agent_take_profit is None:
+            self.logger.warning(
+                f"{ticker_u}: HOLD risk management requires BOTH stop-loss AND take-profit for OCO orders. "
+                f"Only one provided - no orders submitted."
+            )
+            return {
+                "executed": False,
+                "error": "OCO orders require both stop-loss and take-profit levels",
+                "provided_stop": agent_stop_loss,
+                "provided_target": agent_take_profit,
+            }
+
+        # Submit OCO order
+        time_in_force = agent_time_in_force or "GTC"
+
+        try:
+            order = self._submit_oco_order(
+                ticker=ticker_u,
+                qty=protect_qty,
+                side=OrderSide.SELL,  # Assume long positions; TODO: handle shorts
+                take_profit_price=float(agent_take_profit),
+                stop_loss_price=float(agent_stop_loss),
+                time_in_force=time_in_force,
+            )
+
+            self.logger.info(
+                f"{ticker_u}: OCO order placed - protecting {protect_qty} shares: "
+                f"stop=${agent_stop_loss:.2f}, target=${agent_take_profit:.2f}"
+            )
+
+            return {
+                "executed": True,
+                "order_type": "OCO",
+                "order": self._order_to_dict(order),
+                "protected_qty": protect_qty,
+                "held_qty": held_qty,
+                "stop_loss": agent_stop_loss,
+                "take_profit": agent_take_profit,
+                "time_in_force": time_in_force,
+            }
+
+        except ValueError as e:
+            # Invalid parameters - don't retry
+            self.logger.error(f"{ticker_u}: Invalid OCO parameters: {e}")
+            return {
+                "executed": False,
+                "error": str(e),
+                "message": "OCO order validation failed"
+            }
+        except Exception as e:
+            # Alpaca API error - log and continue (position remains unprotected)
+            self.logger.error(
+                f"{ticker_u}: OCO order submission failed: {e}",
+                exc_info=True
+            )
+            return {
+                "executed": False,
+                "error": str(e),
+                "message": "Position remains unprotected - OCO submission failed"
+            }
 
     def _place_order(
         self,
@@ -1050,6 +1405,73 @@ class AlpacaExecutor:
                 raise ExtendedHoursSubmissionError(str(e)) from e
             raise
         return order, spec.requested_limit_price, spec
+
+    def _submit_oco_order(
+        self,
+        ticker: str,
+        qty: int,
+        side: OrderSide,
+        take_profit_price: float,
+        stop_loss_price: float,
+        time_in_force: str = "GTC",
+    ) -> Any:
+        """
+        Submit an OCO (One-Cancels-Other) order for position risk management.
+
+        OCO orders place two exit orders simultaneously: one take-profit (limit) and
+        one stop-loss. When either order fills, the other is automatically canceled.
+
+        Args:
+            ticker: Stock symbol
+            qty: Number of shares to protect (must not exceed held position)
+            side: OrderSide.SELL (for long positions) or OrderSide.BUY (for shorts)
+            take_profit_price: Limit price for take-profit order
+            stop_loss_price: Stop price for stop-loss order
+            time_in_force: Order duration (GTC or DAY)
+
+        Returns:
+            Alpaca order response object
+
+        Raises:
+            ValueError: If order parameters are invalid
+            RuntimeError: If alpaca-py TakeProfitRequest/StopLossRequest not available
+        """
+        if TakeProfitRequest is None or StopLossRequest is None or OrderClass is None:
+            raise RuntimeError(
+                "OCO orders require alpaca-py with TakeProfitRequest, StopLossRequest, and OrderClass. "
+                "Update alpaca-py to the latest version."
+            )
+
+        # Validate price relationship (for SELL orders, stop must be below take-profit)
+        if side == OrderSide.SELL:
+            if stop_loss_price >= take_profit_price:
+                raise ValueError(
+                    f"For OCO sell orders, stop-loss (${stop_loss_price:.2f}) must be below "
+                    f"take-profit (${take_profit_price:.2f}) by at least $0.01"
+                )
+        elif side == OrderSide.BUY:
+            # For short positions (cover with BUY), stop must be above take-profit
+            if stop_loss_price <= take_profit_price:
+                raise ValueError(
+                    f"For OCO buy orders (short cover), stop-loss (${stop_loss_price:.2f}) must be above "
+                    f"take-profit (${take_profit_price:.2f}) by at least $0.01"
+                )
+
+        # Map time_in_force to Alpaca enum
+        tif = TimeInForce.GTC if time_in_force == "GTC" else TimeInForce.DAY
+
+        # Build OCO request
+        request = LimitOrderRequest(
+            symbol=ticker,
+            qty=qty,
+            side=side,
+            time_in_force=tif,
+            order_class=OrderClass.OCO,
+            take_profit=TakeProfitRequest(limit_price=round(float(take_profit_price), 2)),
+            stop_loss=StopLossRequest(stop_price=round(float(stop_loss_price), 2))
+        )
+
+        return self.trading_client.submit_order(request)
 
     def _get_position(self, ticker: str) -> Optional[Any]:
         """Get current position for ticker."""
@@ -1293,8 +1715,28 @@ class AlpacaExecutor:
             "side": _enumish(getattr(order, "side", None)),
             "type": _enumish(getattr(order, "type", None)),
             "status": _enumish(getattr(order, "status", None)),
-            "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None
+            "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None,
+            "filled_qty": str(getattr(order, "filled_qty", "")) if getattr(order, "filled_qty", None) is not None else None,
+            "filled_avg_price": str(getattr(order, "filled_avg_price", "")) if getattr(order, "filled_avg_price", None) is not None else None,
+            "filled_at": getattr(order, "filled_at", None).isoformat() if getattr(order, "filled_at", None) else None,
+            "updated_at": getattr(order, "updated_at", None).isoformat() if getattr(order, "updated_at", None) else None,
         }
+
+    @staticmethod
+    def _order_needs_reconcile(order_dict: Dict[str, Any]) -> bool:
+        status = str(order_dict.get("status") or "").upper()
+        if status in {"FILLED", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED"}:
+            return False
+        return True
+
+    def get_order_status(self, order_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch an order by ID and normalize to dict."""
+        try:
+            order = self.trading_client.get_order_by_id(order_id)
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch order {order_id}: {e}")
+            return None
+        return self._order_to_dict(order)
 
     def _log_execution(
         self,
@@ -1332,7 +1774,10 @@ class AlpacaExecutor:
                     "qty": float(p.qty),
                     "market_value": float(p.market_value),
                     "unrealized_pl": float(p.unrealized_pl),
-                    "unrealized_plpc": float(p.unrealized_plpc)
+                    "unrealized_plpc": float(p.unrealized_plpc),
+                    "avg_entry_price": float(getattr(p, "avg_entry_price", 0.0) or 0.0),
+                    "cost_basis": float(getattr(p, "cost_basis", 0.0) or 0.0),
+                    "side": str(getattr(getattr(p, "side", None), "value", getattr(p, "side", "")) or ""),
                 }
                 for p in positions
             ]

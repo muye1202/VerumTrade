@@ -11,13 +11,21 @@ def get_news(
 ) -> str:
     """
     Retrieve news data for a given ticker symbol.
+
+    Returns news articles with TEXT-BASED SENTIMENT scores derived from NLP
+    analysis of headlines and article content (e.g., "Bullish", "Bearish", "Neutral").
+
+    This is different from get_insider_sentiment() which measures ACTION-BASED
+    sentiment from insider trading behavior.
+
     Uses the configured news_data vendor.
+
     Args:
         ticker (str): Ticker symbol
         start_date (str): Start date in yyyy-mm-dd format
         end_date (str): End date in yyyy-mm-dd format
     Returns:
-        str: A formatted string containing news data
+        str: A formatted string containing news data with sentiment scores
     """
     return route_to_vendor("get_news", ticker, start_date, end_date)
 
@@ -67,12 +75,31 @@ def get_insider_sentiment(
 ) -> str:
     """
     Retrieve insider sentiment information about a company.
+
+    IMPORTANT: This measures ACTION-BASED sentiment, NOT text-based sentiment.
+    "Insider sentiment" refers to the confidence/outlook IMPLIED by insider trading
+    behavior - specifically when company executives and directors BUY or SELL their
+    own company's stock.
+
+    The sentiment is derived from analyzing:
+    - Net share changes (total insider buys - total insider sells)
+    - Share purchase ratio (% of insider transactions that are purchases)
+    - Dollar values of insider purchases vs sales
+
+    Interpretation:
+    - Net positive (more buying) → Bullish insider sentiment (insiders confident)
+    - Net negative (more selling) → Bearish insider sentiment (insiders cautious)
+
+    This is fundamentally different from get_news() which provides TEXT-BASED
+    sentiment from NLP analysis of news article language.
+
     Uses the configured news_data vendor.
+
     Args:
         ticker (str): Ticker symbol of the company
         curr_date (str): Current date you are trading at, yyyy-mm-dd
     Returns:
-        str: A report of insider sentiment data
+        str: A report of insider sentiment data derived from trading actions
     """
     # Some vendors reject future dates; treat curr_date as "as-of" and clamp to today.
     effective_date = curr_date

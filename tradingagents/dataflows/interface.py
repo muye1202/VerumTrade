@@ -15,6 +15,7 @@ from .alpha_vantage import (
     get_cashflow as get_alpha_vantage_cashflow,
     get_income_statement as get_alpha_vantage_income_statement,
     get_insider_transactions as get_alpha_vantage_insider_transactions,
+    get_insider_sentiment as get_alpha_vantage_insider_sentiment,
     get_news as get_alpha_vantage_news
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
@@ -176,6 +177,7 @@ VENDOR_METHODS = {
         "local": get_reddit_global_news,
     },
     "get_insider_sentiment": {
+        "alpha_vantage": get_alpha_vantage_insider_sentiment,
         "local": get_finnhub_company_insider_sentiment
     },
     "get_insider_transactions": {

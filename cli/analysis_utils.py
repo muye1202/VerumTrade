@@ -686,6 +686,7 @@ def run_single_ticker_analysis(
                                 structured_decision=structured,
                                 execution_result=execution_result,
                                 trade_date=selections["analysis_date"],
+                                executor=executor,
                             )
                         except Exception as e:
                             # Journal capture is non-critical — never break the main flow

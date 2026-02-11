@@ -76,7 +76,15 @@ class PositionMonitor:
             "alerts_fired": 0,
             "positions_closed": 0,
             "errors": [],
+            "dedup_closed": 0,
         }
+
+        # Startup-safe cleanup: keep one active thesis per ticker.
+        try:
+            dedup = self.store.deduplicate_active_theses(executor=self.executor)
+            summary["dedup_closed"] = int(dedup.get("closed_theses", 0))
+        except Exception as e:
+            logger.warning(f"Active thesis deduplication failed: {e}")
 
         active_theses = self.store.get_active_theses()
         if not active_theses:
@@ -122,6 +130,10 @@ class PositionMonitor:
     ) -> None:
         """Monitor a single thesis."""
         ticker = thesis.ticker.upper()
+
+        # Reconcile pending entry prices from Alpaca order status before monitoring.
+        if self._reconcile_pending_entry(thesis):
+            return
 
         # Check if position still exists in brokerage
         if ticker not in brokerage_tickers:
@@ -386,6 +398,71 @@ class PositionMonitor:
                 )
 
         return alerts
+
+    def _reconcile_pending_entry(self, thesis: TradeThesis) -> bool:
+        """Update pending entry prices using order status (if available). Returns True if thesis was closed."""
+        if not thesis.entry_price_pending or not thesis.order_id or not self.executor:
+            return False
+
+        order: Optional[Dict[str, Any]] = None
+        try:
+            get_status = getattr(self.executor, "get_order_status", None)
+            if callable(get_status):
+                order = get_status(thesis.order_id)
+            elif getattr(self.executor, "trading_client", None) is not None:
+                raw_order = self.executor.trading_client.get_order_by_id(thesis.order_id)
+                if hasattr(self.executor, "_order_to_dict"):
+                    order = self.executor._order_to_dict(raw_order)
+        except Exception as e:
+            logger.warning(
+                "Order reconciliation failed for %s (%s): %s",
+                thesis.ticker,
+                thesis.order_id,
+                e,
+            )
+            return False
+
+        if not order:
+            return False
+
+        status = str(order.get("status") or "").upper()
+        filled_avg = _safe_float(order.get("filled_avg_price"))
+        filled = status == "FILLED" or (filled_avg is not None and filled_avg > 0)
+        now_iso = datetime.utcnow().isoformat()
+
+        if filled and filled_avg is not None and filled_avg > 0:
+            thesis.entry_price = float(filled_avg)
+            thesis.entry_price_source = "filled_avg_price"
+            thesis.entry_price_pending = False
+            thesis.last_reconciled_at = now_iso
+            self.store.save_thesis(thesis)
+            logger.info(
+                "Reconciled entry for %s thesis %s to filled_avg_price=%s",
+                thesis.ticker,
+                thesis.id,
+                thesis.entry_price,
+            )
+            return False
+
+        if status in {"CANCELED", "CANCELLED", "REJECTED", "EXPIRED"}:
+            # If order died and no open position exists, close thesis.
+            try:
+                pos = self.store.get_open_position_for_ticker(self.executor, thesis.ticker)
+            except Exception:
+                pos = None
+            if pos is None:
+                self.store.close_thesis(thesis.id, ThesisStatus.CLOSED)
+                logger.info(
+                    "Closed pending thesis %s for %s after terminal order status %s",
+                    thesis.id,
+                    thesis.ticker,
+                    status,
+                )
+                return True
+
+        thesis.last_reconciled_at = now_iso
+        self.store.save_thesis(thesis)
+        return False
 
     # ------------------------------------------------------------------
     # Closed position detection

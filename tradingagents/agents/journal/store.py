@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Default location next to execution logs
 DEFAULT_DB_PATH = Path("./journal/trade_journal.db")
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 class JournalStore:
@@ -239,6 +239,30 @@ class JournalStore:
                 "INSERT OR IGNORE INTO journal_meta (key, value) VALUES (?, ?)",
                 ("schema_version", str(_SCHEMA_VERSION)),
             )
+            self._migrate_schema(conn)
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """Best-effort additive migrations for existing journal DBs."""
+        cols = {
+            str(r["name"]) for r in conn.execute("PRAGMA table_info(trade_theses)").fetchall()
+        }
+        migrations = [
+            ("entry_price_source", "TEXT"),
+            ("entry_price_pending", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_reconciled_at", "TEXT"),
+        ]
+        for col_name, col_type in migrations:
+            if col_name in cols:
+                continue
+            conn.execute(f"ALTER TABLE trade_theses ADD COLUMN {col_name} {col_type}")
+            logger.info("Journal schema migration: added trade_theses.%s", col_name)
+
+        # Keep schema version current after additive migrations.
+        conn.execute(
+            "INSERT INTO journal_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("schema_version", str(_SCHEMA_VERSION)),
+        )
 
     # ------------------------------------------------------------------
     # TradeThesis CRUD
@@ -247,6 +271,8 @@ class JournalStore:
     def save_thesis(self, thesis: TradeThesis) -> str:
         """Insert or update a trade thesis. Returns the thesis ID."""
         d = thesis.to_dict()
+        if d.get("entry_price_pending") is not None:
+            d["entry_price_pending"] = int(bool(d["entry_price_pending"]))
         cols = list(d.keys())
         placeholders = ", ".join(["?"] * len(cols))
         col_names = ", ".join(cols)
@@ -267,7 +293,7 @@ class JournalStore:
             row = conn.execute(
                 "SELECT * FROM trade_theses WHERE id = ?", (thesis_id,)
             ).fetchone()
-        return TradeThesis.from_dict(dict(row)) if row else None
+        return self._row_to_thesis(row) if row else None
 
     def get_active_theses(self) -> List[TradeThesis]:
         """Fetch all theses with status='active'."""
@@ -276,7 +302,18 @@ class JournalStore:
                 "SELECT * FROM trade_theses WHERE status = ? ORDER BY created_at DESC",
                 (ThesisStatus.ACTIVE.value,),
             ).fetchall()
-        return [TradeThesis.from_dict(dict(r)) for r in rows]
+        return [self._row_to_thesis(r) for r in rows]
+
+    def get_active_thesis_by_ticker(self, ticker: str) -> Optional[TradeThesis]:
+        """Fetch newest active thesis for a ticker."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM trade_theses "
+                "WHERE ticker = ? AND status = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (ticker.upper(), ThesisStatus.ACTIVE.value),
+            ).fetchone()
+        return self._row_to_thesis(row) if row else None
 
     def get_theses_by_ticker(self, ticker: str) -> List[TradeThesis]:
         """Fetch all theses for a ticker, newest first."""
@@ -285,7 +322,7 @@ class JournalStore:
                 "SELECT * FROM trade_theses WHERE ticker = ? ORDER BY created_at DESC",
                 (ticker.upper(),),
             ).fetchall()
-        return [TradeThesis.from_dict(dict(r)) for r in rows]
+        return [self._row_to_thesis(r) for r in rows]
 
     def get_all_theses(self, limit: int = 100) -> List[TradeThesis]:
         """Fetch recent theses, newest first."""
@@ -294,7 +331,7 @@ class JournalStore:
                 "SELECT * FROM trade_theses ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-        return [TradeThesis.from_dict(dict(r)) for r in rows]
+        return [self._row_to_thesis(r) for r in rows]
 
     def close_thesis(self, thesis_id: str, status: ThesisStatus) -> None:
         """Mark a thesis as closed with the given status."""
@@ -303,6 +340,109 @@ class JournalStore:
                 "UPDATE trade_theses SET status = ?, closed_at = ? WHERE id = ?",
                 (status.value, datetime.utcnow().isoformat(), thesis_id),
             )
+
+    def get_open_position_for_ticker(
+        self, executor: Any, ticker: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a ticker position from executor portfolio summary if available.
+
+        Returns a normalized dict or None.
+        """
+        if executor is None:
+            return None
+        try:
+            portfolio = executor.get_portfolio_summary()
+        except Exception as e:
+            logger.warning("Failed to fetch portfolio summary for %s: %s", ticker, e)
+            return None
+
+        ticker_u = str(ticker or "").upper()
+        for pos in portfolio.get("positions", []) or []:
+            if str(pos.get("symbol", "")).upper() == ticker_u:
+                return pos
+        return None
+
+    def deduplicate_active_theses(self, executor: Any = None) -> Dict[str, Any]:
+        """
+        Merge duplicate active theses by ticker, keeping one canonical active record.
+
+        Canonical selection preference:
+        1) thesis with non-empty order_id
+        2) newest created_at
+        """
+        report: Dict[str, Any] = {
+            "tickers_checked": 0,
+            "tickers_deduplicated": 0,
+            "closed_theses": 0,
+            "details": [],
+        }
+
+        active = self.get_active_theses()
+        by_ticker: Dict[str, List[TradeThesis]] = {}
+        for thesis in active:
+            by_ticker.setdefault(thesis.ticker.upper(), []).append(thesis)
+
+        for ticker, theses in by_ticker.items():
+            report["tickers_checked"] += 1
+            if len(theses) <= 1:
+                continue
+
+            canonical = max(
+                theses,
+                key=lambda t: (1 if t.order_id else 0, t.created_at or ""),
+            )
+            others = [t for t in theses if t.id != canonical.id]
+
+            live_pos = self.get_open_position_for_ticker(executor, ticker)
+            if live_pos:
+                avg_entry = _safe_float(live_pos.get("avg_entry_price"))
+                qty = _safe_float(live_pos.get("qty"))
+                if avg_entry and avg_entry > 0:
+                    canonical.entry_price = avg_entry
+                    canonical.entry_price_source = "broker_avg_entry"
+                    canonical.entry_price_pending = False
+                    canonical.last_reconciled_at = datetime.utcnow().isoformat()
+                if qty is not None:
+                    canonical.quantity = int(abs(qty))
+            else:
+                weighted_qty = 0.0
+                weighted_cost = 0.0
+                for t in theses:
+                    q = _safe_float(t.quantity)
+                    p = _safe_float(t.entry_price)
+                    if q and q > 0 and p and p > 0:
+                        weighted_qty += q
+                        weighted_cost += q * p
+                if weighted_qty > 0:
+                    canonical.entry_price = round(weighted_cost / weighted_qty, 6)
+                    canonical.quantity = int(abs(weighted_qty))
+                    canonical.entry_price_source = (
+                        canonical.entry_price_source or "submission_quote"
+                    )
+
+            self.save_thesis(canonical)
+            for t in others:
+                self.close_thesis(t.id, ThesisStatus.CLOSED)
+
+            report["tickers_deduplicated"] += 1
+            report["closed_theses"] += len(others)
+            report["details"].append(
+                {
+                    "ticker": ticker,
+                    "kept": canonical.id,
+                    "closed": [t.id for t in others],
+                }
+            )
+            logger.info(
+                "Deduplicated %s active theses for %s (kept=%s, closed=%s)",
+                len(theses),
+                ticker,
+                canonical.id,
+                ",".join([t.id for t in others]),
+            )
+
+        return report
 
     # ------------------------------------------------------------------
     # PositionSnapshot
@@ -672,3 +812,18 @@ class JournalStore:
             d["catalyst_materialized"] = bool(d["catalyst_materialized"])
         return TradeLesson.from_dict(d)
 
+    def _row_to_thesis(self, row) -> TradeThesis:
+        """Convert a database row to a TradeThesis with type normalization."""
+        d = dict(row)
+        if d.get("entry_price_pending") is not None:
+            d["entry_price_pending"] = bool(d["entry_price_pending"])
+        return TradeThesis.from_dict(d)
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

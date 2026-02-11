@@ -40,7 +40,6 @@ class PortfolioAnalyzer:
     def analyze_portfolio(
         self,
         execute_trades: bool = False,
-        min_conviction: float = 60.0,
         n_stocks: Optional[int] = None,
         # Progress callbacks for Live GUI integration
         on_triage_start: Optional[Callable[[], None]] = None,
@@ -48,6 +47,7 @@ class PortfolioAnalyzer:
         on_stock_start: Optional[Callable[[str, int, int], None]] = None,
         on_stock_chunk: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_stock_complete: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        on_stock_executed: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_execution_start: Optional[Callable[[], None]] = None,
         on_execution_complete: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
     ) -> Dict[str, Any]:
@@ -56,7 +56,6 @@ class PortfolioAnalyzer:
 
         Args:
             execute_trades: Whether to execute recommended trades
-            min_conviction: Minimum conviction score (0-100) to execute trades
             n_stocks: If set, triage the portfolio down to this many stocks
                       before running full analysis.  ``None`` means analyze all
                       positions (legacy behaviour).
@@ -65,6 +64,7 @@ class PortfolioAnalyzer:
             on_stock_start: Callback when stock analysis begins (ticker, index, total)
             on_stock_chunk: Callback for each streaming chunk during stock analysis
             on_stock_complete: Callback when stock analysis ends (ticker, analysis)
+            on_stock_executed: Callback when a per-stock trade is executed (ticker, result)
             on_execution_start: Callback when trade execution begins
             on_execution_complete: Callback when trade execution ends (receives results)
 
@@ -120,11 +120,15 @@ class PortfolioAnalyzer:
                 time.sleep(triage_delay)
 
         # Step 3: Run full multi-agent analysis on selected positions
+        #         (with per-stock execution if requested)
         position_analyses = self._analyze_positions(
             positions_to_analyze,
             on_stock_start=on_stock_start,
             on_stock_chunk=on_stock_chunk,
             on_stock_complete=on_stock_complete,
+            executor=self.executor if execute_trades else None,
+            execute_trades=execute_trades,
+            on_stock_executed=on_stock_executed,
         )
 
         # Step 3b: Add lightweight stub entries for skipped positions
@@ -145,14 +149,23 @@ class PortfolioAnalyzer:
             portfolio, position_analyses, portfolio_metrics
         )
 
-        # Step 6: Execute trades if requested
+        # Step 6: Execute remaining trades if requested
+        #         (per-stock execution already happened in _analyze_positions;
+        #          this batch step catches any that weren't executed inline.)
         execution_results = []
         if execute_trades:
+            # Collect tickers already executed per-stock
+            already_executed = {
+                a["ticker"]
+                for a in position_analyses
+                if a.get("execution_result") and a["execution_result"].get("executed")
+            }
+
             if on_execution_start:
                 on_execution_start()
 
             execution_results = self._execute_recommendations(
-                recommendations, min_conviction, position_analyses
+                recommendations, position_analyses, already_executed
             )
 
             if on_execution_complete:
@@ -281,14 +294,24 @@ class PortfolioAnalyzer:
         on_stock_start: Optional[Callable[[str, int, int], None]] = None,
         on_stock_chunk: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_stock_complete: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        executor: Optional["AlpacaExecutor"] = None,
+        execute_trades: bool = False,
+        on_stock_executed: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> List[Dict[str, Any]]:
         """Analyze each position using the trading agents framework.
+
+        If *execute_trades* is True and an *executor* is provided, each
+        position's signal is executed **immediately** after analysis completes
+        (matching the single-ticker behaviour).
 
         Args:
             positions: List of position dicts to analyze
             on_stock_start: Callback(ticker, idx, total) when stock analysis begins
             on_stock_chunk: Callback(ticker, chunk) for each streaming chunk
             on_stock_complete: Callback(ticker, analysis) when stock analysis ends
+            executor: Optional AlpacaExecutor for per-stock trade execution
+            execute_trades: Whether to execute trades immediately per-stock
+            on_stock_executed: Callback(ticker, exec_result) after per-stock execution
         """
         analyses = []
         total_positions = len(positions)
@@ -313,7 +336,6 @@ class PortfolioAnalyzer:
                     final_state["final_trade_decision"]
                 )
 
-                # Build preliminary analysis dict for technical metrics extraction
                 analysis = {
                     "ticker": ticker,
                     "current_qty": position["qty"],
@@ -322,21 +344,62 @@ class PortfolioAnalyzer:
                     "unrealized_plpc": position["unrealized_plpc"],
                     "decision": decision,
                     "structured_decision": structured,
+                    "conviction_score": 0,  # placeholder — conviction helpers removed
                     "final_state": final_state,
                     "analysis_summary": self._extract_summary(final_state),
                 }
-
-                # Calculate conviction score (now with technical indicators)
-                conviction = self._calculate_position_conviction(
-                    final_state, decision, analysis
-                )
-                
-                # Add conviction to analysis
-                analysis["conviction_score"] = conviction
                 analyses.append(analysis)
 
                 if on_stock_complete:
                     on_stock_complete(ticker, analysis)
+
+                # ---- Per-stock execution (matches single-ticker behaviour) ----
+                if execute_trades and executor is not None:
+                    try:
+                        exec_result = executor.execute_signal(
+                            ticker=ticker,
+                            signal=decision,
+                            analysis_state=final_state,
+                            trade_date=self.analysis_date,
+                            agent_quantity=structured.get("quantity"),
+                            agent_limit_price=structured.get("limit_price"),
+                            agent_order_type=structured.get("order_type"),
+                            agent_time_in_force=structured.get("time_in_force"),
+                            agent_extended_hours=structured.get("extended_hours"),
+                            agent_stop_price=structured.get("stop_price"),
+                            agent_trail_percent=structured.get("trail_percent"),
+                            agent_trail_price=structured.get("trail_price"),
+                            agent_position_size_pct=structured.get("position_size_pct"),
+                            agent_stop_loss=structured.get("stop_loss"),
+                            agent_take_profit=structured.get("take_profit"),
+                        )
+                        analysis["execution_result"] = exec_result
+
+                        # Journal capture (non-critical)
+                        try:
+                            from tradingagents.agents.journal.store import JournalStore
+                            from tradingagents.agents.journal.hooks import capture_trade_thesis
+
+                            journal_store = JournalStore()
+                            capture_trade_thesis(
+                                store=journal_store,
+                                final_state=final_state,
+                                structured_decision=structured,
+                                execution_result=exec_result,
+                                trade_date=self.analysis_date,
+                                executor=executor,
+                            )
+                        except Exception:
+                            pass
+
+                        if on_stock_executed:
+                            on_stock_executed(ticker, exec_result)
+
+                    except Exception as exec_err:
+                        self.logger.error(f"Per-stock execution failed for {ticker}: {exec_err}")
+                        analysis["execution_result"] = {"executed": False, "error": str(exec_err)}
+                        if on_stock_executed:
+                            on_stock_executed(ticker, analysis["execution_result"])
 
             except Exception as e:
                 self.logger.error(f"Error analyzing {ticker}: {e}")
@@ -557,35 +620,33 @@ class PortfolioAnalyzer:
     def _execute_recommendations(
         self,
         recommendations: List[Dict[str, Any]],
-        min_conviction: float,
         analyses: List[Dict[str, Any]],
+        already_executed: Optional[set] = None,
     ) -> List[Dict[str, Any]]:
-        # Create lookup dictionary for analyses by ticker
+        """Execute remaining recommendations not already handled per-stock."""
+        already_executed = already_executed or set()
         analyses_by_ticker = {a["ticker"]: a for a in analyses if "ticker" in a}
-        
+
         results = []
         for rec in recommendations:
             if rec["action"] == "HOLD":
                 continue
-            if rec["conviction"] < min_conviction:
-                self.logger.info(
-                    "Skipping %s — conviction %s below threshold %s",
-                    rec["ticker"],
-                    rec["conviction"],
-                    min_conviction,
-                )
-                continue
             # Never execute on positions that were triaged out
             if rec.get("triaged_out"):
+                continue
+            # Skip tickers already executed per-stock
+            if rec["ticker"] in already_executed:
+                self.logger.info(
+                    "Skipping %s — already executed per-stock", rec["ticker"]
+                )
                 continue
 
             ticker = rec["ticker"]
             action = rec["action"]
             self.logger.info(
-                "Executing %s for %s (conviction: %s)", action, ticker, rec["conviction"]
+                "Executing %s for %s (batch step)", action, ticker
             )
             try:
-                # Get analysis for this ticker
                 analysis = analyses_by_ticker.get(ticker, {})
                 final_state = analysis.get("final_state")
                 structured = analysis.get("structured_decision", {})
@@ -595,13 +656,24 @@ class PortfolioAnalyzer:
                     signal=action,
                     analysis_state=final_state,
                     trade_date=self.analysis_date,
+                    agent_quantity=structured.get("quantity"),
+                    agent_limit_price=structured.get("limit_price"),
+                    agent_order_type=structured.get("order_type"),
+                    agent_time_in_force=structured.get("time_in_force"),
+                    agent_extended_hours=structured.get("extended_hours"),
+                    agent_stop_price=structured.get("stop_price"),
+                    agent_trail_percent=structured.get("trail_percent"),
+                    agent_trail_price=structured.get("trail_price"),
+                    agent_position_size_pct=structured.get("position_size_pct"),
+                    agent_stop_loss=structured.get("stop_loss"),
+                    agent_take_profit=structured.get("take_profit"),
                 )
 
                 # Journal capture (non-critical)
                 try:
                     from tradingagents.agents.journal.store import JournalStore
                     from tradingagents.agents.journal.hooks import capture_trade_thesis
-                    
+
                     journal_store = JournalStore()
                     capture_trade_thesis(
                         store=journal_store,
@@ -609,9 +681,9 @@ class PortfolioAnalyzer:
                         structured_decision=structured,
                         execution_result=result,
                         trade_date=self.analysis_date,
+                        executor=self.executor,
                     )
                 except Exception:
-                    # Journal capture is non-critical — never break the main flow
                     pass
 
                 results.append(
@@ -652,214 +724,7 @@ class PortfolioAnalyzer:
     # Helpers
     # ================================================================
 
-    def _extract_technical_metrics(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Extract technical indicators from market_report.
 
-        Returns dict with: {
-            'rsi': float,
-            'macd': float,
-            'price': float,
-            'ema10': float,
-            'sma50': float,
-            'sma200': float,
-            'atr': float,
-            'volatility': float (annualized %)
-        }
-        """
-        import re
-
-        metrics = {
-            'rsi': None,
-            'macd': None,
-            'price': None,
-            'ema10': None,
-            'sma50': None,
-            'sma200': None,
-            'atr': None,
-            'volatility': None,
-        }
-
-        final_state = analysis.get('final_state', {})
-        market_report = final_state.get('market_report', '')
-
-        if not market_report:
-            return metrics
-
-        try:
-            # Extract RSI
-            rsi_match = re.search(r'RSI[:\s]+(\d+\.?\d*)', market_report, re.IGNORECASE)
-            if rsi_match:
-                metrics['rsi'] = float(rsi_match.group(1))
-
-            # Extract MACD
-            macd_match = re.search(r'MACD[:\s]+\(?(-?\d+\.?\d*)', market_report, re.IGNORECASE)
-            if macd_match:
-                metrics['macd'] = float(macd_match.group(1))
-
-            # Extract Price
-            price_match = re.search(r'[Pp]rice[:\s]+\$?(\d+\.?\d*)', market_report)
-            if price_match:
-                metrics['price'] = float(price_match.group(1))
-
-            # Extract EMA10
-            ema10_match = re.search(r'EMA10[:\s]+\$?(\d+\.?\d*)', market_report, re.IGNORECASE)
-            if ema10_match:
-                metrics['ema10'] = float(ema10_match.group(1))
-
-            # Extract SMA50
-            sma50_match = re.search(r'SMA50[:\s]+\$?(\d+\.?\d*)', market_report, re.IGNORECASE)
-            if sma50_match:
-                metrics['sma50'] = float(sma50_match.group(1))
-
-            # Extract SMA200
-            sma200_match = re.search(r'SMA200[:\s]+\$?(\d+\.?\d*)', market_report, re.IGNORECASE)
-            if sma200_match:
-                metrics['sma200'] = float(sma200_match.group(1))
-
-            # Extract ATR
-            atr_match = re.search(r'ATR\(?\d*\)?[:\s]+(\d+\.?\d*)', market_report, re.IGNORECASE)
-            if atr_match:
-                metrics['atr'] = float(atr_match.group(1))
-
-            # Extract volatility (realized vol or annualized)
-            vol_match = re.search(r'[Rr]ealized vol.*?(\d+\.?\d*)%', market_report)
-            if not vol_match:
-                vol_match = re.search(r'[Vv]olatility.*?(\d+\.?\d*)%', market_report)
-            if vol_match:
-                metrics['volatility'] = float(vol_match.group(1))
- 
-        except Exception as e:
-            self.logger.warning(f"Error extracting technical metrics: {e}")
-
-        return metrics
-
-    def _calculate_technical_conviction(self, metrics: Dict[str, Any]) -> float:
-        """
-        Calculate conviction based on technical indicators.
-        
-        Returns score from 0-70:
-        - Trend alignment (0-30): Price position relative to EMAs/SMAs
-        - Momentum (0-20): RSI-based scoring
-        - Support/resistance (0-20): Price distance from key levels
-        """
-        score = 0.0
-
-        price = metrics.get('price')
-        ema10 = metrics.get('ema10')
-        sma50 = metrics.get('sma50')
-        sma200 = metrics.get('sma200')
-        rsi = metrics.get('rsi')
-        macd = metrics.get('macd')
-
-        # Trend Alignment (0-30 points)
-        if price and ema10:
-            if price > ema10:
-                score += 10
-
-        if price and sma50:
-            if price > sma50:
-                score += 10
-
-        if price and sma200:
-            if price > sma200:
-                score += 10
-
-        # MACD momentum boost
-        if macd and macd > 0:
-            score += 5
-
-        # Momentum - RSI based (0-20 points)
-        if rsi:
-            if 40 <= rsi <= 60:
-                # Neutral RSI - healthy
-                score += 10
-            elif rsi < 30:
-                # Oversold - potential bounce
-                score += 20
-            elif rsi > 70:
-                # Overbought - caution
-                score += 5
-            else:
-                # 30-40 or 60-70 range
-                score += 7
-
-        return min(70, max(0, score))
-
-    def _calculate_volatility_adjustment(
-        self, metrics: Dict[str, Any], base_conviction: float
-    ) -> float:
-        """
-        Adjust conviction based on volatility.
-        
-        High volatility = higher risk = lower conviction
-        Low volatility = lower risk = modest boost
-        """
-        volatility = metrics.get('volatility')
-
-        if volatility is None:
-            # No adjustment if volatility unknown
-            return base_conviction
-
-        # Apply volatility-based multiplier
-        if volatility > 40:
-            # High volatility - significant penalty
-            multiplier = 0.7
-        elif volatility > 25:
-            # Medium volatility - moderate penalty
-            multiplier = 0.85
-        elif volatility < 15:
-            # Low volatility - small boost
-            multiplier = 1.1
-        else:
-            # Normal volatility - no adjustment
-            multiplier = 1.0
-
-        adjusted = base_conviction * multiplier
-        return min(100, max(0, adjusted))
-
-    def _calculate_position_conviction(
-        self, final_state: Dict[str, Any], decision: str, analysis: Dict[str, Any] = None
-    ) -> float:
-        """
-        Calculate conviction score using text sentiment + technical indicators + risk adjustment.
-
-        Formula:
-        1. Text sentiment score (0-100 based on LLM language)
-        2. Technical conviction (0-70 based on indicators)
-        3. Blend: 50% text + 70% technical (scaled to 0-100)
-        4. Apply volatility adjustment
-
-        Returns: Final conviction (0-100)
-        """
-        # Component 1: Text-based sentiment (legacy approach)
-        text_score = 60.0 if decision in ("BUY", "SELL") else 40.0
-        final_text = final_state.get("final_trade_decision", "").lower()
-        if any(w in final_text for w in ("strong", "compelling", "excellent")):
-            text_score += 10
-        if any(w in final_text for w in ("high confidence", "strongly recommend")):
-            text_score += 10
-        if any(w in final_text for w in ("uncertain", "mixed", "unclear")):
-            text_score -= 10
-        text_score = max(0, min(100, text_score))
-
-        # If no analysis provided, fall back to text-only (legacy behavior)
-        if not analysis:
-            return text_score
-
-        # Component 2: Technical conviction
-        metrics = self._extract_technical_metrics(analysis)
-        tech_score_raw = self._calculate_technical_conviction(metrics)  # 0-70
-        tech_score = (tech_score_raw / 70.0) * 100  # Scale to 0-100
-
-        # Component 3: Blend text + technical
-        # Weight: 70% text sentiment + 30% technical
-        base_conviction = (text_score * 0.7) + (tech_score * 0.3)
-
-        # Component 4: Risk adjustment based on volatility
-        final_conviction = self._calculate_volatility_adjustment(metrics, base_conviction)
-        
-        return round(max(0, min(100, final_conviction)), 2)
 
     def _extract_summary(self, final_state: Dict[str, Any]) -> str:
         decision = final_state.get("final_trade_decision", "")

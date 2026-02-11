@@ -19,4 +19,6 @@ def executor_kwargs_from_structured(structured: Mapping[str, Any] | None) -> dic
         "agent_trail_percent": structured.get("trail_percent"),
         "agent_trail_price": structured.get("trail_price"),
         "agent_position_size_pct": structured.get("position_size_pct"),
+        "agent_stop_loss": structured.get("stop_loss"),
+        "agent_take_profit": structured.get("take_profit"),
     }

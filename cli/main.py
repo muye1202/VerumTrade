@@ -606,7 +606,6 @@ def get_user_selections():
             "shallow_thinker": selected_deep_thinker,  # Use same for simplicity
             "deep_thinker": selected_deep_thinker,
             "execution": execution_settings,
-            "min_conviction": 70.0,
             "n_stocks": None,
         }
 
@@ -678,28 +677,6 @@ def get_user_selections():
     )
     execution_settings = select_execution_settings()
 
-    min_conviction = 70.0
-    if analysis_mode == "portfolio" and execution_settings and execution_settings.get("enabled"):
-        def _validate_conviction_text(val: str) -> bool | str:
-            s = (val or "").strip()
-            try:
-                v = float(s)
-            except Exception:
-                return "Must be a number"
-            if v < 0 or v > 100:
-                return "Must be between 0 and 100"
-            return True
-
-        entered = questionary.text(
-            "Minimum conviction (0-100) to execute portfolio trades (default 70):",
-            default="70",
-            validate=_validate_conviction_text,
-        ).ask()
-        if entered is None:
-            console.print("\n[red]No conviction threshold provided. Exiting...[/red]")
-            raise typer.Exit(code=1)
-        min_conviction = float(entered)
-
     # --- Portfolio triage: pick N stocks ---
     n_stocks = None
     if analysis_mode == "portfolio":
@@ -754,8 +731,6 @@ def get_user_selections():
         "shallow_thinker": selected_shallow_thinker,
         "deep_thinker": selected_deep_thinker,
         "execution": execution_settings,
-        # Used by portfolio analysis; ignored for single ticker.
-        "min_conviction": min_conviction,
         "n_stocks": n_stocks,
     }
 
@@ -1086,11 +1061,6 @@ def analyze_portfolio(
         "--execute/--no-execute",
         help="Execute recommended trades (default: analysis only)",
     ),
-    min_conviction: float = typer.Option(
-        70.0,
-        "--min-conviction",
-        help="Minimum conviction score (0-100) to execute trades",
-    ),
     analysis_date: Optional[str] = typer.Option(
         None,
         "--date",
@@ -1103,7 +1073,7 @@ def analyze_portfolio(
     ),
 ):
     init_portfolio_context(console=console, setup_executor=setup_executor)
-    _analyze_portfolio_impl(execute_trades, min_conviction, analysis_date, n_stocks=n_stocks)
+    _analyze_portfolio_impl(execute_trades, analysis_date, n_stocks=n_stocks)
 
 
 if __name__ == "__main__":
