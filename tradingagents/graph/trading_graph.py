@@ -4,9 +4,9 @@ import os
 import inspect
 from pathlib import Path
 import json
-from datetime import date
 from contextlib import nullcontext
 from typing import Dict, Any, Tuple, List, Optional
+import asyncio
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -18,17 +18,12 @@ from typing import Optional
 from tradingagents.execution import AlpacaExecutor
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.agents.utils.memory import FinancialSituationMemory
+from tradingagents.agents.utils.memory.memory import FinancialSituationMemory
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
-from tradingagents.agents.utils.agent_states import (
-    AgentState,
-    InvestDebateState,
-    RiskDebateState,
-)
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
-from tradingagents.agents.utils.agent_utils import (
+from tradingagents.agents.utils.agent_runtime.agent_utils import (
     get_stock_data,
     get_indicators,
     get_price_action_summary,
@@ -42,19 +37,19 @@ from tradingagents.agents.utils.agent_utils import (
     get_insider_transactions,
     get_global_news
 )
-from tradingagents.agents.utils.vwap_tools import (
+from tradingagents.agents.utils.market_data.vwap_tools import (
     get_intraday_vwap_position,
     get_multi_day_vwap_context,
 )
-from tradingagents.agents.utils.options_flow_tools import (
+from tradingagents.agents.utils.market_data.options_flow_tools import (
     get_unusual_options_activity,
     get_options_sentiment_summary,
 )
-from tradingagents.agents.utils.dark_pool_tools import (
+from tradingagents.agents.utils.market_data.dark_pool_tools import (
     get_dark_pool_short_volume,
     get_off_exchange_volume_context,
 )
-from tradingagents.agents.utils.short_interest_tools import (
+from tradingagents.agents.utils.market_data.short_interest_tools import (
     get_short_interest_data,
     get_squeeze_candidates_assessment,
 )
@@ -66,7 +61,7 @@ from .reflection import Reflector
 from .signal_processing import SignalProcessor
 from .openai_compat import sanitize_openai_compatible_response_dict
 from .glm_compat import sanitize_glm_chat_completion_response_dict
-from tradingagents.agents.utils.llm_concurrency import llm_inflight_slot
+from tradingagents.agents.utils.llm.llm_concurrency import llm_inflight_slot
 
 class StreamCompatibleChatOpenAI(ChatOpenAI):
     """Handle OpenAI SDK Stream responses by aggregating them into a single ChatCompletion-like dict."""
@@ -351,7 +346,7 @@ class TradingAgentsGraph:
             openrouter_deep_extra: Dict[str, Any] = {}
             if (
                 self.config["llm_provider"].lower() == "openrouter"
-                and (self.config.get("deep_think_llm") or "") == "openrouter/pony-alpha"
+                and (self.config.get("deep_think_llm") or "") == "openrouter/aurora-alpha"
             ):
                 openrouter_deep_extra["reasoning"] = {"enabled": True}
 
@@ -416,7 +411,7 @@ class TradingAgentsGraph:
             openrouter_quick_extra: Dict[str, Any] = {}
             if (
                 self.config.get("llm_provider", "").lower() == "openrouter"
-                and (self.config.get("quick_think_llm") or "") == "openrouter/pony-alpha"
+                and (self.config.get("quick_think_llm") or "") == "openrouter/aurora-alpha"
             ):
                 openrouter_quick_extra["reasoning"] = {"enabled": True}
 
@@ -439,7 +434,7 @@ class TradingAgentsGraph:
             self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config['llm_provider']}")
-        
+
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
@@ -553,6 +548,7 @@ class TradingAgentsGraph:
         time_horizon: Optional[str] = None,
     ):
         # Run normal propagation with portfolio awareness
+        # This calls the sync wrapper 'propagate' which runs the loop.
         final_state, decision = self.propagate(
             company_name,
             trade_date,
@@ -588,19 +584,73 @@ class TradingAgentsGraph:
 
         return final_state, decision, execution_result
 
-    def propagate(
+    async def apropagate_and_execute(
+        self,
+        company_name: str,
+        trade_date: str,
+        executor: Optional[AlpacaExecutor] = None,
+        execute: bool = False,
+        portfolio_context: str = None,
+        time_horizon: Optional[str] = None,
+    ):
+        # Run async propagation
+        final_state, decision = await self.apropagate(
+            company_name,
+            trade_date,
+            portfolio_context=portfolio_context,
+            time_horizon=time_horizon,
+        )
+
+        execution_result = None
+
+        # Execute if requested
+        if execute:
+            if not executor:
+                raise ValueError("Executor required when execute=True")
+
+            structured = self.extract_structured_decision(
+                final_state.get("final_trade_decision", "")
+            )
+
+            # executor.execute_signal is currently sync.
+            # If we want to make it async later, we'd await it.
+            # For now, wrap in to_thread to keep main loop responsive?
+            # Or just call it if it's fast/IO-bound but sync.
+            # Let's wrap it to be safe.
+            execution_result = await asyncio.to_thread(
+                executor.execute_signal,
+                ticker=company_name,
+                signal=decision,
+                analysis_state=final_state,
+                trade_date=trade_date,
+                agent_quantity=structured.get("quantity"),
+                agent_limit_price=structured.get("limit_price"),
+                agent_position_size_pct=structured.get("position_size_pct"),
+                agent_order_type=structured.get("order_type"),
+                agent_time_in_force=structured.get("time_in_force"),
+                agent_stop_price=structured.get("stop_price"),
+                agent_trail_percent=structured.get("trail_percent"),
+                agent_trail_price=structured.get("trail_price"),
+            )
+
+        return final_state, decision, execution_result
+
+    async def apropagate(
         self,
         company_name,
         trade_date,
         portfolio_context: str = None,
         time_horizon: Optional[str] = None,
     ):
-        """Run the trading agents graph for a company on a specific date."""
+        """Run the trading agents graph properly for a company on a specific date (Async)."""
         self.ticker = company_name
 
         # Fetch portfolio context from brokerage if not provided
         if portfolio_context is None:
-            portfolio_context = fetch_portfolio_context(company_name)
+            # Note: fetch_portfolio_context is currently sync. 
+            # If it becomes async, await it. For now, wrap in thread if blocking?
+            # It's likely fast or blocking. Let's assume it's fine or wrap it.
+            portfolio_context = await asyncio.to_thread(fetch_portfolio_context, company_name)
 
         init_agent_state = self.propagator.create_initial_state(
             company_name,
@@ -614,7 +664,7 @@ class TradingAgentsGraph:
         if self.debug:
             # Debug mode with tracing
             trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
+            async for chunk in self.graph.astream(init_agent_state, **args):
                 if len(chunk["messages"]) == 0:
                     pass
                 else:
@@ -624,7 +674,7 @@ class TradingAgentsGraph:
             final_state = trace[-1]
         else:
             # Standard mode without tracing
-            final_state = self.graph.invoke(init_agent_state, **args)
+            final_state = await self.graph.ainvoke(init_agent_state, **args)
 
         # Store current state for reflection
         self.curr_state = final_state
@@ -641,6 +691,35 @@ class TradingAgentsGraph:
         )
 
         return final_state, decision
+
+    def propagate(
+        self,
+        company_name,
+        trade_date,
+        portfolio_context: str = None,
+        time_horizon: Optional[str] = None,
+    ):
+        """Run the trading agents graph for a company on a specific date (Sync Wrapper)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # If we are already in an event loop, we can't use asyncio.run.
+            # We must return a coroutine, but this function is defined as sync.
+            # This is a critical issue for sync callers in async envs (like Jupyter).
+            # Ideally, the caller should use apropagate in async envs.
+            # For now, we raise an error or try nest_asyncio if available?
+            # Let's assume standard script usage (no loop) or user calls apropagate if in async.
+            raise RuntimeError("Event loop is running. Use 'apropagate' instead of 'propagate' in async contexts.")
+        
+        return asyncio.run(self.apropagate(
+            company_name, 
+            trade_date, 
+            portfolio_context, 
+            time_horizon
+        ))
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -706,3 +785,5 @@ class TradingAgentsGraph:
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""
         return self.signal_processor.process_signal(full_signal)
+
+

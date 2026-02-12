@@ -402,7 +402,7 @@ class PortfolioAnalyzer:
                             on_stock_executed(ticker, analysis["execution_result"])
 
             except Exception as e:
-                self.logger.error(f"Error analyzing {ticker}: {e}")
+                self.logger.exception(f"Error analyzing {ticker}: {e}")
                 error_analysis = {
                     "ticker": ticker,
                     "error": str(e),

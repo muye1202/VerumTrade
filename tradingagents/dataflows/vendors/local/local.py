@@ -1,7 +1,7 @@
 from typing import Annotated
 import pandas as pd
 import os
-from .config import DATA_DIR
+from ...config import DATA_DIR
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import json

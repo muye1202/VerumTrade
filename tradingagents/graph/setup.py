@@ -6,7 +6,7 @@ from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
-from tradingagents.agents.utils.agent_states import AgentState
+from tradingagents.agents.utils.agent_runtime.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
 

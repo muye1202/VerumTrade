@@ -83,8 +83,8 @@ DEFAULT_CONFIG = {
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
         # Prefer Alpaca first; interface.py will automatically fall back to yfinance/local/etc.
-        "core_stock_apis": "alpaca",         # Options: alpaca, yfinance, alpha_vantage, local
-        "technical_indicators": "alpaca",    # Options: alpaca, yfinance, alpha_vantage, local
+        "core_stock_apis": "alpaca",         # Options: alpaca, yfinance, alpha_vantage, twelve_data, local
+        "technical_indicators": "alpaca",    # Options: alpaca, yfinance, alpha_vantage, twelve_data, local
         "fundamental_data": "alpha_vantage", # Options: openai, alpha_vantage, local
         "news_data": "alpha_vantage",        # Options: openai, alpha_vantage, google, local
     },

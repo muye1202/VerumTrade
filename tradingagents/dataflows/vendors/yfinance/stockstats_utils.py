@@ -3,7 +3,7 @@ import yfinance as yf
 from stockstats import wrap
 from typing import Annotated
 import os
-from .config import get_config, DATA_DIR
+from ...config import get_config, DATA_DIR
 
 
 class StockstatsUtils:
@@ -60,7 +60,7 @@ class StockstatsUtils:
                 data["Date"] = pd.to_datetime(data["Date"])
             else:
                 if vendor == "alpaca":
-                    from .alpaca import AlpacaConnectionError, fetch_stock_bars_df_alpaca
+                    from ..alpaca.alpaca import AlpacaConnectionError, fetch_stock_bars_df_alpaca
 
                     try:
                         bars_df = fetch_stock_bars_df_alpaca(symbol, start_date, end_date)

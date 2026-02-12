@@ -183,8 +183,10 @@ def select_shallow_thinking_agent(provider) -> str:
             ("DeepSeek Chat", "deepseek-chat"),
         ],
         "openrouter": [
-            ("Pony Alpha (test) - OpenRouter free reasoning variant", "openrouter/pony-alpha"),
+            ("Aurora Alpha", "openrouter/aurora-alpha"),
+            ("Step 3.5 Flash (free)", "stepfun/step-3.5-flash:free"),
             ("DeepSeek V3 (free)", "deepseek/deepseek-chat-v3-0324:free"),
+            ("GPT-OSS 120B (free)", "openai/gpt-oss-120b:free"),
         ],
         # "openai": [
         #     ("Gemini-3-Flash", "gemini-3-flash"),
@@ -242,8 +244,10 @@ def select_deep_thinking_agent(provider) -> str:
         #     ("Gemini-2.5-Thinking", "gemini-2.5-flash-thinking"),
         # ],
         "openrouter": [
-            ("Pony Alpha (test) - OpenRouter free reasoning variant", "openrouter/pony-alpha"),
+            ("Aurora Alpha", "openrouter/aurora-alpha"),
+            ("Step 3.5 Flash (free)", "stepfun/step-3.5-flash:free"),
             ("DeepSeek V3 - a 685B-parameter, mixture-of-experts model", "deepseek/deepseek-chat-v3-0324:free"),
+            ("GPT-OSS 120B (free)", "openai/gpt-oss-120b:free"),
         ],
     }
 

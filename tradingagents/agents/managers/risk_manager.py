@@ -1,9 +1,9 @@
 import logging
 
 from tradingagents.dataflows.config import get_config
-from tradingagents.agents.utils.llm_rate_limit import invoke_with_backoff
-from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
-from tradingagents.agents.utils.context_budget import (
+from tradingagents.agents.utils.llm.llm_rate_limit import invoke_with_backoff
+from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
     get_budget_settings,

@@ -42,7 +42,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from tradingagents.agents.utils.agent_utils import (
+from tradingagents.agents.utils.agent_runtime.agent_utils import (
     get_global_news,
     get_news,
     get_stock_data,

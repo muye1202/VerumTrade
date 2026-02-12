@@ -4,6 +4,7 @@ import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Optional
+import asyncio
 
 from langchain_core.tools import tool
 
@@ -107,7 +108,7 @@ def _last_n_series(df, col: str, n: int):
 
 
 @tool
-def get_price_action_summary(
+async def get_price_action_summary(
     symbol: Annotated[str, "Ticker symbol, e.g. AAPL"],
     curr_date: Annotated[str, "Current trading date (YYYY-mm-dd)"],
     look_back_days: Annotated[int, "Calendar days to look back for context"] = 180,
@@ -137,7 +138,7 @@ def get_price_action_summary(
     end_date = curr_dt.strftime("%Y-%m-%d")
 
     try:
-        raw = route_to_vendor("get_stock_data", symbol, start_date, end_date)
+        raw = await asyncio.to_thread(route_to_vendor, "get_stock_data", symbol, start_date, end_date)
     except Exception as e:
         return f"Error: failed to fetch OHLCV for {symbol} ({start_date} → {end_date}): {e}"
     if isinstance(raw, str) and raw.lower().startswith("no data found"):

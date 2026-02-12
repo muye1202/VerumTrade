@@ -2,12 +2,12 @@ from typing import Annotated
 import json
 
 # Import from vendor-specific modules
-from .local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
-from .y_finance import get_YFin_data_online, get_stock_stats_indicators_window, get_balance_sheet as get_yfinance_balance_sheet, get_cashflow as get_yfinance_cashflow, get_income_statement as get_yfinance_income_statement, get_insider_transactions as get_yfinance_insider_transactions
-from .alpaca import get_stock_data_alpaca, AlpacaConnectionError
-from .google import get_google_news, get_google_global_news
-from .openai import get_stock_news_openai, get_global_news_openai, get_fundamentals_openai
-from .alpha_vantage import (
+from .vendors.local.local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
+from .vendors.yfinance.y_finance import get_YFin_data_online, get_stock_stats_indicators_window, get_balance_sheet as get_yfinance_balance_sheet, get_cashflow as get_yfinance_cashflow, get_income_statement as get_yfinance_income_statement, get_insider_transactions as get_yfinance_insider_transactions
+from .vendors.alpaca.alpaca import get_stock_data_alpaca, AlpacaConnectionError
+from .vendors.google.google import get_google_news, get_google_global_news
+from .vendors.openai.openai import get_stock_news_openai, get_global_news_openai, get_fundamentals_openai
+from .vendors.alpha_vantage.alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
     get_indicator as get_alpha_vantage_indicator,
     get_fundamentals as get_alpha_vantage_fundamentals,
@@ -18,7 +18,9 @@ from .alpha_vantage import (
     get_insider_sentiment as get_alpha_vantage_insider_sentiment,
     get_news as get_alpha_vantage_news
 )
-from .alpha_vantage_common import AlphaVantageRateLimitError
+from .vendors.alpha_vantage.alpha_vantage_common import AlphaVantageRateLimitError
+from .vendors.twelve_data.twelve_data import get_indicator as get_twelve_data_indicator
+from .vendors.twelve_data.twelve_data_common import TwelveDataRateLimitError
 import re
 
 # Configuration and routing logic
@@ -62,6 +64,7 @@ VENDOR_LIST = [
     "local",
     "alpaca",
     "yfinance",
+    "twelve_data",
     "openai",
     "google"
 ]
@@ -140,6 +143,7 @@ VENDOR_METHODS = {
     "get_indicators": {
         "alpaca": get_stock_stats_indicators_window,
         "yfinance": get_stock_stats_indicators_window,
+        "twelve_data": get_twelve_data_indicator,
         "alpha_vantage": get_alpha_vantage_indicator,
         "local": get_stock_stats_indicators_window
     },
@@ -283,6 +287,11 @@ def route_to_vendor(method: str, *args, **kwargs):
                     print(f"RATE_LIMIT: Alpha Vantage rate limit exceeded, falling back to next available vendor")
                     print(f"DEBUG: Rate limit details: {e}")
                 # Continue to next vendor for fallback
+                continue
+            except TwelveDataRateLimitError as e:
+                if vendor == "twelve_data":
+                    print(f"RATE_LIMIT: Twelve Data rate limit exceeded, falling back to next available vendor")
+                    print(f"DEBUG: Rate limit details: {e}")
                 continue
             except Exception as e:
                 # Log error but continue with other implementations

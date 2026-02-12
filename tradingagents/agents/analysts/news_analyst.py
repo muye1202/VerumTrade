@@ -1,8 +1,8 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_utils import get_news, get_company_news_window, get_global_news
-from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window, get_global_news
+from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 
 
 def create_news_analyst(llm):

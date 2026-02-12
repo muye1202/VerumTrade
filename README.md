@@ -57,6 +57,7 @@ OPENROUTER_API_KEY=sk-or-...      # OpenRouter
 
 # ─── Market Data (optional — extends available data sources) ───
 ALPHA_VANTAGE_API_KEY=...
+TWELVE_DATA_API_KEY=...
 
 # ─── Alpaca Brokerage (optional — required for paper / live trading) ───
 APCA_API_KEY_ID=...
@@ -149,13 +150,14 @@ All defaults live in `tradingagents/default_config.py`. Here are the knobs peopl
 
 | Category | Available sources |
 |:--|:--|
-| `core_stock_apis` | `alpaca` · `yfinance` · `alpha_vantage` · `local` |
-| `technical_indicators` | `alpaca` · `yfinance` · `alpha_vantage` · `local` |
+| `core_stock_apis` | `alpaca` · `yfinance` · `alpha_vantage` · `twelve_data` · `local` |
+| `technical_indicators` | `alpaca` · `yfinance` · `alpha_vantage` · `twelve_data` · `local` |
 | `fundamental_data` | `alpha_vantage` · `openai` · `local` |
 | `news_data` | `alpha_vantage` · `openai` · `google` · `local` |
 
 > [!TIP]
 > If a vendor is unavailable at runtime the system automatically falls back to the next option in the list — nothing crashes.
+> Twelve Data free tier currently allows 800 credits/day and 8 requests/minute; fallback helps keep analysis resilient when limits are hit.
 
 ### 📈 Supported order types
 

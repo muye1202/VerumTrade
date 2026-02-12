@@ -1,22 +1,20 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-import time
-import json
-from tradingagents.agents.utils.agent_utils import get_stock_data, get_indicators
-from tradingagents.agents.utils.price_action_tools import get_price_action_summary
-from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
-from tradingagents.agents.utils.vwap_tools import (
+from tradingagents.agents.utils.agent_runtime.agent_utils import get_stock_data, get_indicators
+from tradingagents.agents.utils.market_data.price_action_tools import get_price_action_summary
+from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.market_data.vwap_tools import (
     get_intraday_vwap_position,
     get_multi_day_vwap_context,
 )
-from tradingagents.agents.utils.options_flow_tools import (
+from tradingagents.agents.utils.market_data.options_flow_tools import (
     get_unusual_options_activity,
     get_options_sentiment_summary,
 )
-from tradingagents.agents.utils.dark_pool_tools import (
+from tradingagents.agents.utils.market_data.dark_pool_tools import (
     get_dark_pool_short_volume,
     get_off_exchange_volume_context,
 )
-from tradingagents.agents.utils.short_interest_tools import (
+from tradingagents.agents.utils.market_data.short_interest_tools import (
     get_short_interest_data,
     get_squeeze_candidates_assessment,
 )
@@ -27,7 +25,6 @@ def create_market_analyst(llm):
     def market_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
-        company_name = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
         market_session_context = state.get("market_session_context", "")
         spec = get_time_horizon_spec(state.get("time_horizon"))

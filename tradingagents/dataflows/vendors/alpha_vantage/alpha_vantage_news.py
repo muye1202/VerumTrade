@@ -1,7 +1,7 @@
 import json
 
 from .alpha_vantage_common import _make_api_request, format_datetime_for_api
-from .config import get_config
+from ...config import get_config
 
 
 def _compact_news_payload(raw: str, ticker: str, start_date: str, end_date: str) -> str:

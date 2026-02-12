@@ -20,6 +20,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 from typing import Annotated, Optional, Dict, Any, List
+import asyncio
 
 from langchain_core.tools import tool
 
@@ -123,7 +124,7 @@ def _get_recent_short_volume(symbol: str, curr_date: datetime, days: int = 10) -
 
 
 @tool
-def get_short_interest_data(
+async def get_short_interest_data(
     symbol: Annotated[str, "Stock ticker symbol (e.g., 'AAPL', 'GME')"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -158,17 +159,18 @@ def get_short_interest_data(
     except ValueError:
         return f"Error: Invalid date format '{curr_date}'. Use yyyy-mm-dd."
     
-    # Get Yahoo Finance short data
-    try:
-        yahoo_data = _get_yahoo_short_data(symbol)
-    except ImportError as e:
-        return str(e)
-    except Exception as e:
-        logger.warning(f"Yahoo Finance error for {symbol}: {e}")
-        yahoo_data = None
-    
-    # Get FINRA short volume
-    short_volume_data = _get_recent_short_volume(symbol, target_date)
+    # Fetch data concurrently
+    async def fetch_yahoo():
+        try:
+            return await asyncio.to_thread(_get_yahoo_short_data, symbol)
+        except Exception as e:
+            logger.warning(f"Yahoo Finance error for {symbol}: {e}")
+            return None
+
+    async def fetch_finra():
+        return await asyncio.to_thread(_get_recent_short_volume, symbol, target_date)
+
+    yahoo_data, short_volume_data = await asyncio.gather(fetch_yahoo(), fetch_finra())
     
     if not yahoo_data and not short_volume_data:
         return f"""## Short Interest Analysis: {symbol}
@@ -327,7 +329,7 @@ Try a different symbol or check back later.
 
 
 @tool
-def get_squeeze_candidates_assessment(
+async def get_squeeze_candidates_assessment(
     symbol: Annotated[str, "Stock ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -354,13 +356,17 @@ def get_squeeze_candidates_assessment(
     except ValueError:
         return f"Error: Invalid date format '{curr_date}'. Use yyyy-mm-dd."
     
-    # Get data
-    try:
-        yahoo_data = _get_yahoo_short_data(symbol)
-    except Exception as e:
-        yahoo_data = None
-    
-    short_volume_data = _get_recent_short_volume(symbol, target_date)
+    # Get data concurrently
+    async def fetch_yahoo():
+        try:
+            return await asyncio.to_thread(_get_yahoo_short_data, symbol)
+        except Exception:
+            return None
+
+    async def fetch_finra():
+        return await asyncio.to_thread(_get_recent_short_volume, symbol, target_date)
+
+    yahoo_data, short_volume_data = await asyncio.gather(fetch_yahoo(), fetch_finra())
     
     if not yahoo_data:
         return f"""## Squeeze Assessment: {symbol}

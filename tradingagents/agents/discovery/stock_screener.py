@@ -3,7 +3,7 @@ from langchain_core.tools import tool
 from typing import List, Dict, Any, Annotated
 import json
 from datetime import datetime, timedelta
-from tradingagents.agents.utils.agent_utils import (
+from tradingagents.agents.utils.agent_runtime.agent_utils import (
     get_stock_data,
     get_indicators,
     get_global_news,

@@ -1,10 +1,11 @@
 from langchain_core.tools import tool
 from typing import Annotated
+import asyncio
 from tradingagents.dataflows.interface import route_to_vendor
 
 
 @tool
-def get_stock_data(
+async def get_stock_data(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
@@ -19,4 +20,4 @@ def get_stock_data(
     Returns:
         str: A formatted dataframe containing the stock price data for the specified ticker symbol in the specified date range.
     """
-    return route_to_vendor("get_stock_data", symbol, start_date, end_date)
+    return await asyncio.to_thread(route_to_vendor, "get_stock_data", symbol, start_date, end_date)

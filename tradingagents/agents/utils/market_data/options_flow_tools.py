@@ -14,13 +14,33 @@ Requirements:
 """
 
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Annotated, List, Dict, Any, Optional
 from dataclasses import dataclass
+import asyncio
 
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Convert value to finite float; fallback for None/NaN/invalid."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return f if math.isfinite(f) else default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Convert value to int with NaN-safe fallback."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return int(f) if math.isfinite(f) else default
 
 
 @dataclass
@@ -91,8 +111,8 @@ def _analyze_chain_for_unusual(
             continue
         
         for _, row in data.iterrows():
-            volume = int(row.get("volume", 0) or 0)
-            oi = int(row.get("openInterest", 0) or 0)
+            volume = _safe_int(row.get("volume", 0), default=0)
+            oi = _safe_int(row.get("openInterest", 0), default=0)
             
             # Skip low activity contracts
             if volume < min_volume or oi < min_oi:
@@ -102,8 +122,8 @@ def _analyze_chain_for_unusual(
             
             # Flag unusual activity
             if vol_oi_ratio >= vol_oi_threshold:
-                strike = float(row.get("strike", 0))
-                last_price = float(row.get("lastPrice", 0) or 0)
+                strike = _safe_float(row.get("strike", 0), default=0.0)
+                last_price = _safe_float(row.get("lastPrice", 0), default=0.0)
                 
                 unusual.append(UnusualContract(
                     symbol=ticker.ticker,
@@ -113,10 +133,10 @@ def _analyze_chain_for_unusual(
                     volume=volume,
                     open_interest=oi,
                     vol_oi_ratio=vol_oi_ratio,
-                    implied_volatility=float(row.get("impliedVolatility", 0) or 0),
+                    implied_volatility=_safe_float(row.get("impliedVolatility", 0), default=0.0),
                     last_price=last_price,
-                    bid=float(row.get("bid", 0) or 0),
-                    ask=float(row.get("ask", 0) or 0),
+                    bid=_safe_float(row.get("bid", 0), default=0.0),
+                    ask=_safe_float(row.get("ask", 0), default=0.0),
                     in_the_money=bool(row.get("inTheMoney", False)),
                     days_to_expiry=days_to_expiry,
                     notional_value=volume * last_price * 100,
@@ -126,7 +146,7 @@ def _analyze_chain_for_unusual(
 
 
 @tool
-def get_unusual_options_activity(
+async def get_unusual_options_activity(
     symbol: Annotated[str, "Stock ticker symbol (e.g., 'AAPL', 'NVDA')"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     max_expirations: Annotated[int, "Max number of expiration dates to scan"] = 6,
@@ -161,7 +181,7 @@ def get_unusual_options_activity(
     
     symbol = symbol.upper().strip()
     
-    chain_data = _get_options_chain(symbol)
+    chain_data = await asyncio.to_thread(_get_options_chain, symbol)
     if not chain_data:
         return f"No options data available for {symbol}. The stock may not have listed options."
     
@@ -169,21 +189,27 @@ def get_unusual_options_activity(
     expirations = chain_data["expirations"][:max_expirations]
     info = chain_data["info"]
     
-    current_price = info.get("regularMarketPrice") or info.get("previousClose", 0)
+    current_price = _safe_float(
+        info.get("regularMarketPrice", info.get("previousClose", 0)),
+        default=0.0,
+    )
     if not current_price:
         return f"Could not determine current price for {symbol}."
     
     # Scan all expirations for unusual activity
     all_unusual: List[UnusualContract] = []
     
-    for expiry in expirations:
-        unusual = _analyze_chain_for_unusual(
+    async def analyze_expiry(expiry):
+        return await asyncio.to_thread(_analyze_chain_for_unusual,
             ticker=ticker,
             expiry=expiry,
             current_price=current_price,
             vol_oi_threshold=vol_oi_threshold,
         )
-        all_unusual.extend(unusual)
+
+    results = await asyncio.gather(*(analyze_expiry(exp) for exp in expirations))
+    for res in results:
+        all_unusual.extend(res)
     
     if not all_unusual:
         return f"""## Options Activity Scan: {symbol} ({curr_date})
@@ -296,7 +322,7 @@ This could mean:
 
 
 @tool
-def get_options_sentiment_summary(
+async def get_options_sentiment_summary(
     symbol: Annotated[str, "Stock ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -318,45 +344,51 @@ def get_options_sentiment_summary(
         return "Error: yfinance not installed. Run: pip install yfinance"
     
     symbol = symbol.upper().strip()
-    ticker = yf.Ticker(symbol)
-    
-    try:
-        expirations = ticker.options
-        if not expirations:
-            return f"No options data available for {symbol}."
-    except Exception as e:
-        return f"Error fetching options for {symbol}: {e}"
-    
-    info = ticker.info
-    current_price = info.get("regularMarketPrice") or info.get("previousClose", 0)
-    
-    total_call_volume = 0
-    total_put_volume = 0
-    total_call_oi = 0
-    total_put_oi = 0
-    iv_samples = []
-    
-    # Scan first 4 expirations
-    for expiry in expirations[:4]:
+    # Define blocking worker for yfinance calls
+    def fetch_sentiment_data():
+        ticker = yf.Ticker(symbol)
         try:
-            chain = ticker.option_chain(expiry)
-            
-            if not chain.calls.empty:
-                total_call_volume += chain.calls["volume"].sum() or 0
-                total_call_oi += chain.calls["openInterest"].sum() or 0
-                # Sample ATM IV
-                atm_calls = chain.calls[abs(chain.calls["strike"] - current_price) < current_price * 0.05]
-                if not atm_calls.empty:
-                    iv_samples.extend(atm_calls["impliedVolatility"].dropna().tolist())
-            
-            if not chain.puts.empty:
-                total_put_volume += chain.puts["volume"].sum() or 0
-                total_put_oi += chain.puts["openInterest"].sum() or 0
-                
+            expirations = ticker.options
+            if not expirations:
+                return "No options data available"
         except Exception as e:
-            logger.warning(f"Error processing {expiry}: {e}")
-            continue
-    
+            return f"Error fetching options: {e}"
+        
+        info = ticker.info
+        current_price = info.get("regularMarketPrice") or info.get("previousClose", 0)
+        
+        tc_vol, tp_vol, tc_oi, tp_oi = 0.0, 0.0, 0.0, 0.0
+        ivs = []
+        
+        for expiry in expirations[:4]:
+            try:
+                chain = ticker.option_chain(expiry)
+                if not chain.calls.empty:
+                    tc_vol += _safe_float(chain.calls["volume"].sum())
+                    tc_oi += _safe_float(chain.calls["openInterest"].sum())
+                    atm_calls = chain.calls[abs(chain.calls["strike"] - current_price) < current_price * 0.05]
+                    if not atm_calls.empty:
+                        ivs.extend([v for v in (_safe_float(x, float("nan")) for x in atm_calls["impliedVolatility"]) if math.isfinite(v)])
+                if not chain.puts.empty:
+                    tp_vol += _safe_float(chain.puts["volume"].sum())
+                    tp_oi += _safe_float(chain.puts["openInterest"].sum())
+            except Exception:
+                continue
+                
+        return {
+            "tc_vol": tc_vol, "tp_vol": tp_vol, "tc_oi": tc_oi, "tp_oi": tp_oi, "ivs": ivs
+        }
+
+    data = await asyncio.to_thread(fetch_sentiment_data)
+    if isinstance(data, str):
+        return data
+
+    total_call_volume = data["tc_vol"]
+    total_put_volume = data["tp_vol"]
+    total_call_oi = data["tc_oi"]
+    total_put_oi = data["tp_oi"]
+    iv_samples = data["ivs"]
+
     # Calculate ratios
     pc_volume_ratio = total_put_volume / total_call_volume if total_call_volume > 0 else 0
     pc_oi_ratio = total_put_oi / total_call_oi if total_call_oi > 0 else 0
@@ -389,10 +421,10 @@ def get_options_sentiment_summary(
 - **Avg ATM IV**: {avg_iv:.1f}%
 
 ### Aggregate Volume
-- Total Call Volume: {int(total_call_volume):,}
-- Total Put Volume: {int(total_put_volume):,}
-- Total Call OI: {int(total_call_oi):,}
-- Total Put OI: {int(total_put_oi):,}
+- Total Call Volume: {_safe_int(total_call_volume):,}
+- Total Put Volume: {_safe_int(total_put_volume):,}
+- Total Call OI: {_safe_int(total_call_oi):,}
+- Total Put OI: {_safe_int(total_put_oi):,}
 
 ### Sentiment Read
 **{sentiment}**

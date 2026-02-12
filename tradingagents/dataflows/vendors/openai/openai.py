@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from .config import get_config
+from ...config import get_config
 
 
 def _require_openai_web_tools() -> None:

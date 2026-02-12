@@ -128,6 +128,12 @@ def get_stock_stats_indicators_window(
         ),
     }
 
+    # Handle common aliases/errors
+    if indicator.lower() == "sma":
+        indicator = "close_50_sma"
+    elif indicator.lower() == "ema":
+        indicator = "close_10_ema"
+
     if indicator not in best_ind_params:
         raise ValueError(
             f"Indicator {indicator} is not supported. Please choose from: {list(best_ind_params.keys())}"
@@ -194,7 +200,7 @@ def _get_stock_stats_bulk(
     Fetches data once and calculates indicator for all available dates.
     Returns dict mapping date strings to indicator values.
     """
-    from .config import get_config
+    from ...config import get_config
     import pandas as pd
     from stockstats import wrap
     import os
@@ -238,7 +244,7 @@ def _get_stock_stats_bulk(
             data["Date"] = pd.to_datetime(data["Date"])
         else:
             if vendor == "alpaca":
-                from .alpaca import AlpacaConnectionError, fetch_stock_bars_df_alpaca
+                from ..alpaca.alpaca import AlpacaConnectionError, fetch_stock_bars_df_alpaca
 
                 try:
                     bars_df = fetch_stock_bars_df_alpaca(symbol, start_date_str, end_date_str)

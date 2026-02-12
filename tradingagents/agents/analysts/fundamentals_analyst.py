@@ -1,9 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions
-from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
-from tradingagents.agents.utils.context_budget import cap_section, get_budget_settings
+from tradingagents.agents.utils.agent_runtime.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions
+from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.agent_runtime.context_budget import cap_section, get_budget_settings
 
 
 def create_fundamentals_analyst(llm):

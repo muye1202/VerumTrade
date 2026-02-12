@@ -1,10 +1,11 @@
 from langchain_core.tools import tool
 from typing import Annotated
+import asyncio
 from tradingagents.dataflows.interface import route_to_vendor
 from datetime import datetime, timedelta
 
 @tool
-def get_news(
+async def get_news(
     ticker: Annotated[str, "Ticker symbol"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
@@ -27,11 +28,11 @@ def get_news(
     Returns:
         str: A formatted string containing news data with sentiment scores
     """
-    return route_to_vendor("get_news", ticker, start_date, end_date)
+    return await asyncio.to_thread(route_to_vendor, "get_news", ticker, start_date, end_date)
 
 
 @tool
-def get_company_news_window(
+async def get_company_news_window(
     ticker: Annotated[str, "Ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     look_back_days: Annotated[int, "Number of calendar days to look back"] = 21,
@@ -48,10 +49,10 @@ def get_company_news_window(
 
     start_date = (curr_dt - timedelta(days=int(look_back_days))).strftime("%Y-%m-%d")
     end_date = curr_dt.strftime("%Y-%m-%d")
-    return route_to_vendor("get_news", ticker, start_date, end_date)
+    return await asyncio.to_thread(route_to_vendor, "get_news", ticker, start_date, end_date)
 
 @tool
-def get_global_news(
+async def get_global_news(
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     look_back_days: Annotated[int, "Number of days to look back"] = 7,
     limit: Annotated[int, "Maximum number of articles to return"] = 5,
@@ -66,10 +67,10 @@ def get_global_news(
     Returns:
         str: A formatted string containing global news data
     """
-    return route_to_vendor("get_global_news", curr_date, look_back_days, limit)
+    return await asyncio.to_thread(route_to_vendor, "get_global_news", curr_date, look_back_days, limit)
 
 @tool
-def get_insider_sentiment(
+async def get_insider_sentiment(
     ticker: Annotated[str, "ticker symbol for the company"],
     curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
 ) -> str:
@@ -112,7 +113,7 @@ def get_insider_sentiment(
         effective_date = curr_date
 
     try:
-        return route_to_vendor("get_insider_sentiment", ticker, effective_date)
+        return await asyncio.to_thread(route_to_vendor, "get_insider_sentiment", ticker, effective_date)
     except Exception as e:
         note = ""
         if effective_date != curr_date:
@@ -123,7 +124,7 @@ def get_insider_sentiment(
         )
 
 @tool
-def get_insider_transactions(
+async def get_insider_transactions(
     ticker: Annotated[str, "ticker symbol"],
     curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
 ) -> str:
@@ -147,7 +148,7 @@ def get_insider_transactions(
         effective_date = curr_date
 
     try:
-        return route_to_vendor("get_insider_transactions", ticker, effective_date)
+        return await asyncio.to_thread(route_to_vendor, "get_insider_transactions", ticker, effective_date)
     except Exception as e:
         note = ""
         if effective_date != curr_date:

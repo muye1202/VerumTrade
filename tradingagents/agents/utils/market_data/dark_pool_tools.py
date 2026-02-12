@@ -23,6 +23,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Annotated, Optional, Dict, Any, List
 import io
+import asyncio
 
 from langchain_core.tools import tool
 
@@ -108,7 +109,7 @@ def _get_recent_short_volume(symbol: str, curr_date: datetime, lookback_days: in
 
 
 @tool
-def get_dark_pool_short_volume(
+async def get_dark_pool_short_volume(
     symbol: Annotated[str, "Stock ticker symbol (e.g., 'AAPL', 'NVDA')"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -143,7 +144,7 @@ def get_dark_pool_short_volume(
         return f"Error: Invalid date format '{curr_date}'. Use yyyy-mm-dd."
     
     # Get recent short volume data
-    recent_data = _get_recent_short_volume(symbol, target_date, lookback_days=14)
+    recent_data = await asyncio.to_thread(_get_recent_short_volume, symbol, target_date, lookback_days=14)
     
     if not recent_data:
         return f"""## Dark Pool Short Volume: {symbol}
@@ -226,7 +227,7 @@ Try again tomorrow or check that {symbol} is an NMS security.
 
 
 @tool
-def get_off_exchange_volume_context(
+async def get_off_exchange_volume_context(
     symbol: Annotated[str, "Stock ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -250,19 +251,26 @@ def get_off_exchange_volume_context(
     except ValueError:
         return f"Error: Invalid date format '{curr_date}'. Use yyyy-mm-dd."
     
-    # Get short volume as our main off-exchange proxy
-    recent_data = _get_recent_short_volume(symbol, target_date, lookback_days=14)
-    
-    # Get current stock info for context
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
-        avg_volume = info.get("averageVolume", 0)
-        current_price = info.get("regularMarketPrice") or info.get("previousClose", 0)
-    except Exception:
-        avg_volume = 0
-        current_price = 0
+    # Define blocking worker
+    def fetch_data():
+        # Get short volume as our main off-exchange proxy
+        r_data = _get_recent_short_volume(symbol, target_date, lookback_days=14)
+        
+        # Get current stock info for context
+        avg_vol = 0
+        curr_px = 0
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            avg_vol = info.get("averageVolume", 0)
+            curr_px = info.get("regularMarketPrice") or info.get("previousClose", 0)
+        except Exception:
+            pass
+            
+        return r_data, avg_vol, curr_px
+
+    recent_data, avg_volume, current_price = await asyncio.to_thread(fetch_data)
     
     # Industry stats: ~50% of US equity volume trades off-exchange
     estimated_dark_pool_pct = 50  # Conservative estimate
@@ -359,7 +367,7 @@ Real-time dark pool prints require paid services like:
 
 
 @tool
-def get_finra_ats_summary(
+async def get_finra_ats_summary(
     symbol: Annotated[str, "Stock ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
@@ -394,7 +402,8 @@ def get_finra_ats_summary(
             "sortFields": [{"fieldName": "weekStartDate", "order": "DESC"}]
         }
         
-        response = requests.post(
+        response = await asyncio.to_thread(
+            requests.post,
             ats_url,
             json=payload,
             headers={"Content-Type": "application/json"},

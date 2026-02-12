@@ -11,8 +11,10 @@ Requirements:
 
 import os
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Annotated, Optional, Dict, Any, List
+import asyncio
 
 from langchain_core.tools import tool
 
@@ -45,6 +47,61 @@ def _parse_date(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
+def _resolve_stock_feed():
+    """
+    Resolve Alpaca stock data feed from env, defaulting to IEX for free-tier compatibility.
+
+    Supported values: IEX, SIP, OTC (case-insensitive).
+    """
+    try:
+        from alpaca.data.enums import DataFeed
+    except Exception:
+        return None
+
+    requested = (os.getenv("ALPACA_STOCK_FEED") or "IEX").strip().upper()
+    if requested in {"IEX", "SIP", "OTC"} and hasattr(DataFeed, requested):
+        return getattr(DataFeed, requested)
+
+    logger.warning(
+        "Unsupported ALPACA_STOCK_FEED='%s'; defaulting to IEX.",
+        requested,
+    )
+    return getattr(DataFeed, "IEX", None)
+
+
+def _is_recent_sip_subscription_error(exc: Exception) -> bool:
+    """Detect Alpaca 403 errors when SIP access is not included in the subscription."""
+    msg = str(exc).lower()
+    return "subscription does not permit querying recent sip data" in msg
+
+
+def _get_stock_bars_with_feed_fallback(client, request_cls, **request_kwargs):
+    """
+    Fetch stock bars with configured feed; retry with IEX if SIP access is denied.
+    """
+    feed = _resolve_stock_feed()
+    request = request_cls(feed=feed, **request_kwargs) if feed else request_cls(**request_kwargs)
+
+    try:
+        return client.get_stock_bars(request)
+    except Exception as e:
+        if not _is_recent_sip_subscription_error(e):
+            raise
+
+        try:
+            from alpaca.data.enums import DataFeed
+        except Exception:
+            raise
+
+        iex_feed = getattr(DataFeed, "IEX", None)
+        if iex_feed is None or feed == iex_feed:
+            raise
+
+        logger.warning("SIP bars unavailable for current subscription; retrying with IEX feed.")
+        retry_request = request_cls(feed=iex_feed, **request_kwargs)
+        return client.get_stock_bars(retry_request)
+
+
 def _compute_session_vwap(bars: List[Dict[str, Any]]) -> float:
     """
     Compute session VWAP from a list of bars.
@@ -67,23 +124,40 @@ def _compute_session_vwap(bars: List[Dict[str, Any]]) -> float:
     return total_pv / total_volume if total_volume > 0 else 0.0
 
 
+def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    """Coerce numeric values to finite float; return default for None/NaN/invalid."""
+    if value is None:
+        return default
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return f if math.isfinite(f) else default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Coerce numeric values to int; return default for None/NaN/invalid."""
+    f = _safe_float(value, default=None)
+    return int(f) if f is not None else default
+
+
 @tool
-def get_intraday_vwap_position(
+async def get_intraday_vwap_position(
     symbol: Annotated[str, "Stock ticker symbol (e.g., 'AAPL', 'NVDA')"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
 ) -> str:
     """
     Get intraday VWAP positioning analysis for a stock.
-    
+
     Uses Alpaca's free-tier market data API which includes VWAP in bar responses.
-    
+
     Returns:
     - Current price vs session VWAP (above/below and % deviation)
     - Time spent above/below VWAP during session
     - Volume analysis (current day vs recent average)
     - VWAP slope/trend during session
     - Trading interpretation for swing entries
-    
+
     This helps identify:
     - Entry timing (institutions buy below VWAP, sell above)
     - Intraday trend strength
@@ -94,68 +168,76 @@ def get_intraday_vwap_position(
         from alpaca.data.timeframe import TimeFrame
     except ImportError:
         return "Error: alpaca-py not installed. Run: pip install alpaca-py"
-    
+
     try:
         client = _get_alpaca_client()
     except ValueError as e:
         return f"Error: {e}"
-    
+
     symbol = symbol.upper().strip()
-    
+
     try:
         target_date = _parse_date(curr_date)
     except ValueError:
         return f"Error: Invalid date format '{curr_date}'. Use yyyy-mm-dd."
-    
+
     try:
         # Get 5-minute bars for the target day
         # Alpaca free tier provides IEX data with VWAP included
-        request = StockBarsRequest(
+        bars_response = await asyncio.to_thread(
+            _get_stock_bars_with_feed_fallback,
+            client=client,
+            request_cls=StockBarsRequest,
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Minute,
             start=target_date.replace(hour=4, minute=0),  # Pre-market start
             end=target_date.replace(hour=20, minute=0),   # After-hours end
         )
-        
-        bars_response = client.get_stock_bars(request)
-        
+
         if symbol not in bars_response or not bars_response[symbol]:
             return f"No intraday data available for {symbol} on {curr_date}. Market may be closed or data not yet available."
-        
+
         bars = bars_response[symbol]
-        
+
         # Convert to list of dicts for processing
         bar_list = []
         for bar in bars:
+            open_px = _safe_float(getattr(bar, "open", None))
+            high_px = _safe_float(getattr(bar, "high", None))
+            low_px = _safe_float(getattr(bar, "low", None))
+            close_px = _safe_float(getattr(bar, "close", None))
+            if None in (open_px, high_px, low_px, close_px):
+                continue
+
             bar_list.append({
                 "timestamp": bar.timestamp,
-                "open": float(bar.open),
-                "high": float(bar.high),
-                "low": float(bar.low),
-                "close": float(bar.close),
-                "volume": int(bar.volume),
-                "vwap": float(bar.vwap) if hasattr(bar, 'vwap') and bar.vwap else None,
+                "open": open_px,
+                "high": high_px,
+                "low": low_px,
+                "close": close_px,
+                "volume": _safe_int(getattr(bar, "volume", None), default=0),
+                "vwap": _safe_float(getattr(bar, "vwap", None), default=None),
             })
-        
+
         if not bar_list:
             return f"No bar data for {symbol} on {curr_date}."
-        
+
         # Current values (last bar)
         current_bar = bar_list[-1]
         current_price = current_bar["close"]
-        
+
         # Session VWAP - use Alpaca's VWAP if available, otherwise compute
         if current_bar["vwap"]:
             session_vwap = current_bar["vwap"]
         else:
             session_vwap = _compute_session_vwap(bar_list)
-        
+
         # VWAP deviation
         if session_vwap > 0:
             vwap_deviation = ((current_price - session_vwap) / session_vwap) * 100
         else:
             vwap_deviation = 0.0
-        
+
         # Position relative to VWAP
         if vwap_deviation > 0.5:
             position = "ABOVE"
@@ -166,13 +248,13 @@ def get_intraday_vwap_position(
         else:
             position = "AT"
             position_emoji = "⚪"
-        
+
         # Time above/below VWAP analysis
         bars_above = 0
         bars_below = 0
         max_above = 0.0
         max_below = 0.0
-        
+
         for bar in bar_list:
             bar_vwap = bar["vwap"] if bar["vwap"] else session_vwap
             if bar_vwap > 0:
@@ -183,13 +265,13 @@ def get_intraday_vwap_position(
                 else:
                     bars_below += 1
                     max_below = max(max_below, abs(bar_dev))
-        
+
         total_bars = bars_above + bars_below
         pct_above = (bars_above / total_bars * 100) if total_bars > 0 else 50
-        
+
         # Session volume
         session_volume = sum(bar["volume"] for bar in bar_list)
-        
+
         # VWAP trend (compare first half vs second half of session)
         mid_idx = len(bar_list) // 2
         if mid_idx > 0 and bar_list[0]["vwap"] and bar_list[-1]["vwap"]:
@@ -204,42 +286,42 @@ def get_intraday_vwap_position(
                 vwap_trend = "Flat"
         else:
             vwap_trend = "N/A"
-        
+
         # Price range context
         session_high = max(bar["high"] for bar in bar_list)
         session_low = min(bar["low"] for bar in bar_list)
         session_range = session_high - session_low
         range_pct = (session_range / session_low * 100) if session_low > 0 else 0
-        
+
         # Where is current price in the day's range?
         if session_range > 0:
             range_position = ((current_price - session_low) / session_range) * 100
         else:
             range_position = 50
-        
+
         # Interpretation for swing trading
         interpretations = []
-        
+
         if position == "BELOW" and pct_above < 40:
             interpretations.append("Price persistently below VWAP - distribution pattern, institutions likely selling")
         elif position == "ABOVE" and pct_above > 60:
             interpretations.append("Price persistently above VWAP - accumulation pattern, institutions likely buying")
-        
+
         if position == "BELOW" and vwap_deviation < -1.5:
             interpretations.append("Significantly extended below VWAP - potential mean reversion bounce candidate")
         elif position == "ABOVE" and vwap_deviation > 1.5:
             interpretations.append("Significantly extended above VWAP - may face resistance, wait for pullback")
-        
+
         if range_position < 25:
             interpretations.append("Trading near session lows - weakness, but potential support test")
         elif range_position > 75:
             interpretations.append("Trading near session highs - strength, but may face resistance")
-        
+
         if not interpretations:
             interpretations.append("Neutral positioning - no strong VWAP signal")
-        
+
         interpretation_text = "\n".join(f"• {i}" for i in interpretations)
-        
+
         return f"""## Intraday VWAP Analysis: {symbol} ({curr_date})
 
 ### Current Position
@@ -272,7 +354,7 @@ def get_intraday_vwap_position(
 
 
 @tool
-def get_multi_day_vwap_context(
+async def get_multi_day_vwap_context(
     symbol: Annotated[str, "Stock ticker symbol"],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     lookback_days: Annotated[int, "Number of days to look back"] = 5,
@@ -310,14 +392,15 @@ def get_multi_day_vwap_context(
     
     try:
         # Get daily bars with VWAP
-        request = StockBarsRequest(
+        bars_response = await asyncio.to_thread(
+            _get_stock_bars_with_feed_fallback,
+            client=client,
+            request_cls=StockBarsRequest,
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,
             start=start_date,
             end=end_date + timedelta(days=1),
         )
-        
-        bars_response = client.get_stock_bars(request)
         
         if symbol not in bars_response or not bars_response[symbol]:
             return f"No daily data available for {symbol}."
@@ -333,9 +416,12 @@ def get_multi_day_vwap_context(
         total_volume = 0
         
         for bar in bars:
-            close = float(bar.close)
-            vwap = float(bar.vwap) if hasattr(bar, 'vwap') and bar.vwap else close
-            volume = int(bar.volume)
+            close = _safe_float(getattr(bar, "close", None))
+            if close is None:
+                continue
+
+            vwap = _safe_float(getattr(bar, "vwap", None), default=close)
+            volume = _safe_int(getattr(bar, "volume", None), default=0)
             
             if vwap > 0:
                 deviation = ((close - vwap) / vwap) * 100
@@ -356,10 +442,15 @@ def get_multi_day_vwap_context(
                 "position": position,
                 "volume": volume,
             })
+
+        if len(daily_analysis) < 2:
+            return (
+                f"Insufficient valid daily bars for {symbol} after filtering missing/NaN values."
+            )
         
         # Summary stats
-        avg_volume = total_volume / len(bars)
-        pct_days_above = (days_above_vwap / len(bars)) * 100
+        avg_volume = total_volume / len(daily_analysis)
+        pct_days_above = (days_above_vwap / len(daily_analysis)) * 100
         
         # Multi-day VWAP approximation (volume-weighted average of daily VWAPs)
         total_vwap_volume = sum(d["vwap"] * d["volume"] for d in daily_analysis)
@@ -389,8 +480,8 @@ def get_multi_day_vwap_context(
         
         return f"""## Multi-Day VWAP Context: {symbol}
 
-### Summary ({len(bars)} trading days)
-- Days closing above VWAP: {days_above_vwap}/{len(bars)} ({pct_days_above:.0f}%)
+### Summary ({len(daily_analysis)} trading days)
+- Days closing above VWAP: {days_above_vwap}/{len(daily_analysis)} ({pct_days_above:.0f}%)
 - {lookback_days}-Day Volume-Weighted VWAP: ${multi_day_vwap:.2f}
 - Current price vs multi-day VWAP: {multi_day_deviation:+.2f}%
 - Trend Assessment: {trend}

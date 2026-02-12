@@ -14,3 +14,7 @@ tmp_*
 journal
 execution_*
 data_cache
+verify_*
+check_*
+test_*
+*_test

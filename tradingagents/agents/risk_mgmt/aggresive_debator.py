@@ -1,6 +1,6 @@
 import logging
 
-from tradingagents.agents.utils.context_budget import (
+from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
     get_budget_settings,

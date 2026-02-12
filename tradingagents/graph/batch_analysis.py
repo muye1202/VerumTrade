@@ -65,7 +65,7 @@ class BatchAnalyzer:
                 })
                 
             except Exception as e:
-                self.logger.error(f"Error analyzing {ticker}: {e}")
+                self.logger.exception(f"Error analyzing {ticker}: {e}")
                 continue
         
         # Rank by conviction score
