@@ -6,7 +6,7 @@ from .vendors.local.local import get_YFin_data, get_finnhub_news, get_finnhub_co
 from .vendors.yfinance.y_finance import get_YFin_data_online, get_stock_stats_indicators_window, get_balance_sheet as get_yfinance_balance_sheet, get_cashflow as get_yfinance_cashflow, get_income_statement as get_yfinance_income_statement, get_insider_transactions as get_yfinance_insider_transactions
 from .vendors.alpaca.alpaca import get_stock_data_alpaca, AlpacaConnectionError
 from .vendors.google.google import get_google_news, get_google_global_news
-from .vendors.openai.openai import get_stock_news_openai, get_global_news_openai, get_fundamentals_openai
+from .vendors.openai.openai import get_stock_news_openai, get_global_news_openai
 from .vendors.alpha_vantage.alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
     get_indicator as get_alpha_vantage_indicator,
@@ -150,7 +150,6 @@ VENDOR_METHODS = {
     # fundamental_data
     "get_fundamentals": {
         "alpha_vantage": get_alpha_vantage_fundamentals,
-        "openai": get_fundamentals_openai,
     },
     "get_balance_sheet": {
         "alpha_vantage": get_alpha_vantage_balance_sheet,

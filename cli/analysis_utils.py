@@ -1,6 +1,7 @@
 import datetime
 import json
 import time
+import asyncio
 from pathlib import Path
 from functools import wraps
 from typing import Optional
@@ -15,7 +16,7 @@ from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.agents.utils.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 
 # Injected from `cli/main.py` via `init_analysis_context`
 console = None
@@ -227,7 +228,7 @@ def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_
     Stream graph chunks and update the Live display.
 
     Args:
-        graph: TradingAgentsGraph instance (uses graph.graph.stream)
+        graph: TradingAgentsGraph instance (uses graph.graph.astream)
         init_agent_state: Initial state dict for the graph
         args: Graph invocation args from propagator.get_graph_args()
         mbuf: MessageBuffer instance
@@ -238,157 +239,160 @@ def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_
     Returns:
         (trace, final_state) tuple
     """
-    # Normalise analyst names to plain strings for comparison.
-    analyst_names = [
-        a.value if hasattr(a, "value") else str(a) for a in selected_analysts
-    ]
+    async def _run_stream():
+        # Normalise analyst names to plain strings for comparison.
+        analyst_names = [
+            a.value if hasattr(a, "value") else str(a) for a in selected_analysts
+        ]
 
-    trace = []
-    final_state = None
-    seen_messages = 0
+        trace = []
+        final_state = None
+        seen_messages = 0
 
-    for chunk in graph.graph.stream(init_agent_state, **args):
-        messages = chunk.get("messages") or []
-        new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
-        seen_messages = len(messages)
+        async for chunk in graph.graph.astream(init_agent_state, **args):
+            messages = chunk.get("messages") or []
+            new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
+            seen_messages = len(messages)
 
-        for msg in new_messages:
-            msg_type, content = _msg_type_and_content(msg)
-            mbuf.add_message(msg_type, content)
+            for msg in new_messages:
+                msg_type, content = _msg_type_and_content(msg)
+                mbuf.add_message(msg_type, content)
 
-            for tool_name, tool_args in _extract_tool_calls(msg):
-                mbuf.add_tool_call(tool_name, tool_args)
+                for tool_name, tool_args in _extract_tool_calls(msg):
+                    mbuf.add_tool_call(tool_name, tool_args)
 
-        # Update reports and agent status based on chunk content
-        # Analyst Team Reports
-        if "market_report" in chunk and chunk["market_report"]:
-            mbuf.update_report_section("market_report", chunk["market_report"])
-            mbuf.update_agent_status("Market Analyst", "completed")
-            if "social" in analyst_names:
-                mbuf.update_agent_status("Social Analyst", "in_progress")
+            # Update reports and agent status based on chunk content
+            # Analyst Team Reports
+            if "market_report" in chunk and chunk["market_report"]:
+                mbuf.update_report_section("market_report", chunk["market_report"])
+                mbuf.update_agent_status("Market Analyst", "completed")
+                if "social" in analyst_names:
+                    mbuf.update_agent_status("Social Analyst", "in_progress")
 
-        if "sentiment_report" in chunk and chunk["sentiment_report"]:
-            mbuf.update_report_section("sentiment_report", chunk["sentiment_report"])
-            mbuf.update_agent_status("Social Analyst", "completed")
-            if "news" in analyst_names:
-                mbuf.update_agent_status("News Analyst", "in_progress")
+            if "sentiment_report" in chunk and chunk["sentiment_report"]:
+                mbuf.update_report_section("sentiment_report", chunk["sentiment_report"])
+                mbuf.update_agent_status("Social Analyst", "completed")
+                if "news" in analyst_names:
+                    mbuf.update_agent_status("News Analyst", "in_progress")
 
-        if "news_report" in chunk and chunk["news_report"]:
-            mbuf.update_report_section("news_report", chunk["news_report"])
-            mbuf.update_agent_status("News Analyst", "completed")
-            if "fundamentals" in analyst_names:
-                mbuf.update_agent_status("Fundamentals Analyst", "in_progress")
+            if "news_report" in chunk and chunk["news_report"]:
+                mbuf.update_report_section("news_report", chunk["news_report"])
+                mbuf.update_agent_status("News Analyst", "completed")
+                if "fundamentals" in analyst_names:
+                    mbuf.update_agent_status("Fundamentals Analyst", "in_progress")
 
-        if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
-            mbuf.update_report_section("fundamentals_report", chunk["fundamentals_report"])
-            mbuf.update_agent_status("Fundamentals Analyst", "completed")
-            update_research_team_status("in_progress", mbuf=mbuf)
-
-        # Research Team - Handle Investment Debate State
-        if "investment_debate_state" in chunk and chunk["investment_debate_state"]:
-            debate_state = chunk["investment_debate_state"]
-
-            if "bull_history" in debate_state and debate_state["bull_history"]:
+            if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
+                mbuf.update_report_section("fundamentals_report", chunk["fundamentals_report"])
+                mbuf.update_agent_status("Fundamentals Analyst", "completed")
                 update_research_team_status("in_progress", mbuf=mbuf)
-                bull_responses = debate_state["bull_history"].split("\n")
-                latest_bull = bull_responses[-1] if bull_responses else ""
-                if latest_bull:
-                    mbuf.add_message("Reasoning", latest_bull)
+
+            # Research Team - Handle Investment Debate State
+            if "investment_debate_state" in chunk and chunk["investment_debate_state"]:
+                debate_state = chunk["investment_debate_state"]
+
+                if "bull_history" in debate_state and debate_state["bull_history"]:
+                    update_research_team_status("in_progress", mbuf=mbuf)
+                    bull_responses = debate_state["bull_history"].split("\n")
+                    latest_bull = bull_responses[-1] if bull_responses else ""
+                    if latest_bull:
+                        mbuf.add_message("Reasoning", latest_bull)
+                        mbuf.update_report_section(
+                            "investment_plan",
+                            f"### Bull Researcher Analysis\n{latest_bull}",
+                        )
+
+                if "bear_history" in debate_state and debate_state["bear_history"]:
+                    update_research_team_status("in_progress", mbuf=mbuf)
+                    bear_responses = debate_state["bear_history"].split("\n")
+                    latest_bear = bear_responses[-1] if bear_responses else ""
+                    if latest_bear:
+                        mbuf.add_message("Reasoning", latest_bear)
+                        mbuf.update_report_section(
+                            "investment_plan",
+                            f"{mbuf.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
+                        )
+
+                if "judge_decision" in debate_state and debate_state["judge_decision"]:
+                    update_research_team_status("in_progress", mbuf=mbuf)
+                    mbuf.add_message(
+                        "Reasoning",
+                        f"Research Manager: {debate_state['judge_decision']}",
+                    )
                     mbuf.update_report_section(
                         "investment_plan",
-                        f"### Bull Researcher Analysis\n{latest_bull}",
+                        f"{mbuf.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
                     )
+                    update_research_team_status("completed", mbuf=mbuf)
+                    mbuf.update_agent_status("Risky Analyst", "in_progress")
 
-            if "bear_history" in debate_state and debate_state["bear_history"]:
-                update_research_team_status("in_progress", mbuf=mbuf)
-                bear_responses = debate_state["bear_history"].split("\n")
-                latest_bear = bear_responses[-1] if bear_responses else ""
-                if latest_bear:
-                    mbuf.add_message("Reasoning", latest_bear)
+            # Trading Team
+            if "trader_investment_plan" in chunk and chunk["trader_investment_plan"]:
+                mbuf.update_report_section(
+                    "trader_investment_plan", chunk["trader_investment_plan"]
+                )
+                mbuf.update_agent_status("Risky Analyst", "in_progress")
+
+            # Risk Management Team - Handle Risk Debate State
+            if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
+                risk_state = chunk["risk_debate_state"]
+
+                if "current_risky_response" in risk_state and risk_state["current_risky_response"]:
+                    mbuf.update_agent_status("Risky Analyst", "in_progress")
+                    mbuf.add_message(
+                        "Reasoning",
+                        f"Risky Analyst: {risk_state['current_risky_response']}",
+                    )
                     mbuf.update_report_section(
-                        "investment_plan",
-                        f"{mbuf.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
+                        "final_trade_decision",
+                        f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
                     )
 
-            if "judge_decision" in debate_state and debate_state["judge_decision"]:
-                update_research_team_status("in_progress", mbuf=mbuf)
-                mbuf.add_message(
-                    "Reasoning",
-                    f"Research Manager: {debate_state['judge_decision']}",
-                )
-                mbuf.update_report_section(
-                    "investment_plan",
-                    f"{mbuf.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
-                )
-                update_research_team_status("completed", mbuf=mbuf)
-                mbuf.update_agent_status("Risky Analyst", "in_progress")
+                if "current_safe_response" in risk_state and risk_state["current_safe_response"]:
+                    mbuf.update_agent_status("Safe Analyst", "in_progress")
+                    mbuf.add_message(
+                        "Reasoning",
+                        f"Safe Analyst: {risk_state['current_safe_response']}",
+                    )
+                    mbuf.update_report_section(
+                        "final_trade_decision",
+                        f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
+                    )
 
-        # Trading Team
-        if "trader_investment_plan" in chunk and chunk["trader_investment_plan"]:
-            mbuf.update_report_section(
-                "trader_investment_plan", chunk["trader_investment_plan"]
-            )
-            mbuf.update_agent_status("Risky Analyst", "in_progress")
+                if "current_neutral_response" in risk_state and risk_state["current_neutral_response"]:
+                    mbuf.update_agent_status("Neutral Analyst", "in_progress")
+                    mbuf.add_message(
+                        "Reasoning",
+                        f"Neutral Analyst: {risk_state['current_neutral_response']}",
+                    )
+                    mbuf.update_report_section(
+                        "final_trade_decision",
+                        f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
+                    )
 
-        # Risk Management Team - Handle Risk Debate State
-        if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
-            risk_state = chunk["risk_debate_state"]
+                if "judge_decision" in risk_state and risk_state["judge_decision"]:
+                    mbuf.update_agent_status("Portfolio Manager", "in_progress")
+                    mbuf.add_message(
+                        "Reasoning",
+                        f"Portfolio Manager: {risk_state['judge_decision']}",
+                    )
+                    mbuf.update_report_section(
+                        "final_trade_decision",
+                        f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
+                    )
+                    mbuf.update_agent_status("Risky Analyst", "completed")
+                    mbuf.update_agent_status("Safe Analyst", "completed")
+                    mbuf.update_agent_status("Neutral Analyst", "completed")
+                    mbuf.update_agent_status("Portfolio Manager", "completed")
 
-            if "current_risky_response" in risk_state and risk_state["current_risky_response"]:
-                mbuf.update_agent_status("Risky Analyst", "in_progress")
-                mbuf.add_message(
-                    "Reasoning",
-                    f"Risky Analyst: {risk_state['current_risky_response']}",
-                )
-                mbuf.update_report_section(
-                    "final_trade_decision",
-                    f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
-                )
+            # Update the display
+            update_display_fn(layout)
 
-            if "current_safe_response" in risk_state and risk_state["current_safe_response"]:
-                mbuf.update_agent_status("Safe Analyst", "in_progress")
-                mbuf.add_message(
-                    "Reasoning",
-                    f"Safe Analyst: {risk_state['current_safe_response']}",
-                )
-                mbuf.update_report_section(
-                    "final_trade_decision",
-                    f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
-                )
+            trace.append(chunk)
+            final_state = chunk
 
-            if "current_neutral_response" in risk_state and risk_state["current_neutral_response"]:
-                mbuf.update_agent_status("Neutral Analyst", "in_progress")
-                mbuf.add_message(
-                    "Reasoning",
-                    f"Neutral Analyst: {risk_state['current_neutral_response']}",
-                )
-                mbuf.update_report_section(
-                    "final_trade_decision",
-                    f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
-                )
+        return trace, final_state
 
-            if "judge_decision" in risk_state and risk_state["judge_decision"]:
-                mbuf.update_agent_status("Portfolio Manager", "in_progress")
-                mbuf.add_message(
-                    "Reasoning",
-                    f"Portfolio Manager: {risk_state['judge_decision']}",
-                )
-                mbuf.update_report_section(
-                    "final_trade_decision",
-                    f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
-                )
-                mbuf.update_agent_status("Risky Analyst", "completed")
-                mbuf.update_agent_status("Safe Analyst", "completed")
-                mbuf.update_agent_status("Neutral Analyst", "completed")
-                mbuf.update_agent_status("Portfolio Manager", "completed")
-
-        # Update the display
-        update_display_fn(layout)
-
-        trace.append(chunk)
-        final_state = chunk
-
-    return trace, final_state
+    return asyncio.run(_run_stream())
 
 
 def run_single_ticker_analysis(

@@ -12,9 +12,8 @@ from datetime import datetime
 
 from langchain_openai import ChatOpenAI
 
-from tradingagents.agents.discovery.stock_recommender import (
-    StockRecommenderAgent,
-    create_stock_recommender,
+from tradingagents.agents.discovery.intelligence_integration import (
+    IntelligenceDrivenRecommender,
 )
 from tradingagents.default_config import DEFAULT_CONFIG
 
@@ -62,10 +61,11 @@ class StockDiscoveryGraph:
         # Initialize the deep-think LLM for discovery
         self.llm = self._create_llm()
 
-        # Create the recommender agent
-        self.recommender = create_stock_recommender(
+        # Create the recommender agent using new intelligence architecture
+        self.recommender = IntelligenceDrivenRecommender(
             llm=self.llm,
-            enable_web_search=self._supports_web_search(),
+            config=self.config,
+            screening_universe=self.config.get("screening_universe"),
         )
 
     def _create_llm(self) -> ChatOpenAI:
