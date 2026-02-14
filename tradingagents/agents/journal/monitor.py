@@ -82,6 +82,10 @@ class PositionMonitor:
         self.spy_ticker = spy_ticker
         self.semantic_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_SEMANTIC_LESSON_LIMIT", "3") or 3)
         self.ticker_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_TICKER_LESSON_LIMIT", "5") or 5)
+        max_rel_spread = _safe_float(os.getenv("JOURNAL_QUOTE_MAX_REL_SPREAD"))
+        if max_rel_spread is None:
+            max_rel_spread = 0.025
+        self.quote_max_rel_spread = min(1.0, max(0.0, float(max_rel_spread)))
 
         # Cached SPY data per tick (reset each run_tick)
         self._spy_cache: Dict[str, float] = {}
@@ -184,23 +188,45 @@ class PositionMonitor:
             thesis=thesis,
         )
 
-        # Fetch current price
-        current_price = self._fetch_current_price(ticker)
+        # Fetch current price + quote quality metadata
+        quote_data = self._fetch_current_price(ticker)
+        current_price = _safe_float(quote_data.get("price"))
         if current_price is None and pos_data:
             # Fallback: estimate from market_value / qty
             qty = pos_data.get("qty", 0)
             mv = pos_data.get("market_value", 0)
             if qty and float(qty) > 0:
                 current_price = float(mv) / float(qty)
+                quote_data["price"] = current_price
+                quote_data["source"] = "position_derived"
 
         if current_price is None:
             logger.warning(f"Could not get price for {ticker}, skipping snapshot")
             return
 
         # Build and save snapshot
-        snapshot = self._build_snapshot(thesis, pos_data, current_price)
+        snapshot = self._build_snapshot(
+            thesis,
+            pos_data,
+            current_price,
+            bid=_safe_float(quote_data.get("bid")),
+            ask=_safe_float(quote_data.get("ask")),
+        )
         self.store.save_snapshot(snapshot)
         summary["snapshots_taken"] += 1
+
+        market_session = self._get_market_session()
+        if bool(quote_data.get("unreliable_quote")):
+            logger.info(
+                "Skipping alerts/actions for %s due to unreliable quote "
+                "(session=%s source=%s rel_spread=%.4f threshold=%.4f)",
+                ticker,
+                market_session,
+                quote_data.get("source") or "unknown",
+                float(quote_data.get("relative_spread") or 0.0),
+                self.quote_max_rel_spread,
+            )
+            return
 
         # Check thesis parameters and fire alerts
         alerts = self._check_thesis_parameters(thesis, snapshot, current_price)
@@ -233,12 +259,16 @@ class PositionMonitor:
         thesis: TradeThesis,
         pos_data: Optional[Dict[str, Any]],
         current_price: float,
+        bid: Optional[float] = None,
+        ask: Optional[float] = None,
     ) -> PositionSnapshot:
         """Build a PositionSnapshot from thesis + live data."""
         snap = PositionSnapshot(
             thesis_id=thesis.id,
             ticker=thesis.ticker.upper(),
             current_price=current_price,
+            bid=bid,
+            ask=ask,
         )
 
         # Brokerage data
@@ -328,7 +358,8 @@ class PositionMonitor:
     ) -> List[JournalAlert]:
         """Check all thesis parameters and return any alerts that should fire."""
         alerts: List[JournalAlert] = []
-
+        market_session = self._get_market_session()
+        illiquid = market_session in {"weekend", "overnight", "afterhours"}
         # --- Stop-loss check ---
         if thesis.stop_loss:
             stop_breached = False
@@ -336,28 +367,40 @@ class PositionMonitor:
                 stop_breached = True
             elif thesis.action == "SELL" and current_price >= thesis.stop_loss:
                 stop_breached = True
-
             if stop_breached:
+                if illiquid:
+                    severity = "info"
+                    message = (
+                        f"STOP LEVEL TOUCHED ({market_session}): {thesis.ticker} at "
+                        f"${current_price:.2f} touched stop ${thesis.stop_loss:.2f} during "
+                        "an illiquid session. Action deferred until liquid market hours."
+                    )
+                    action_recommended = (
+                        "Monitor-only event: wait for a liquid session confirmation."
+                    )
+                else:
+                    severity = "critical"
+                    message = (
+                        f"STOP-LOSS BREACHED: {thesis.ticker} at ${current_price:.2f} "
+                        f"has {'fallen below' if thesis.action == 'BUY' else 'risen above'} "
+                        f"stop-loss at ${thesis.stop_loss:.2f}"
+                    )
+                    action_recommended = "EXIT POSITION - stop-loss hit per original thesis"
                 alerts.append(
                     JournalAlert(
                         thesis_id=thesis.id,
                         ticker=thesis.ticker,
                         alert_type=AlertType.STOP_HIT.value,
-                        severity="critical",
-                        message=(
-                            f"STOP-LOSS BREACHED: {thesis.ticker} at ${current_price:.2f} "
-                            f"has {'fallen below' if thesis.action == 'BUY' else 'risen above'} "
-                            f"stop-loss at ${thesis.stop_loss:.2f}"
-                        ),
+                        severity=severity,
+                        message=message,
                         trigger_price=current_price,
                         threshold_price=thesis.stop_loss,
                         current_price=current_price,
                         unrealized_pl_pct=snapshot.unrealized_pl_pct,
                         holding_days=snapshot.holding_days_elapsed,
-                        action_recommended="EXIT POSITION — stop-loss hit per original thesis",
+                        action_recommended=action_recommended,
                     )
                 )
-
         # --- Target checks ---
         for target_num, target_price in [
             (1, thesis.target_1),
@@ -369,31 +412,43 @@ class PositionMonitor:
                     target_reached = True
                 elif thesis.action == "SELL" and current_price <= target_price:
                     target_reached = True
-
                 if target_reached:
+                    if illiquid:
+                        severity = "info"
+                        message = (
+                            f"TARGET {target_num} TOUCHED ({market_session}): "
+                            f"{thesis.ticker} at ${current_price:.2f} touched target "
+                            f"${target_price:.2f} during an illiquid session."
+                        )
+                        action_recommended = (
+                            "Monitor-only event: wait for a liquid session confirmation."
+                        )
+                    else:
+                        severity = "warning" if target_num == 1 else "info"
+                        message = (
+                            f"TARGET {target_num} REACHED: {thesis.ticker} at "
+                            f"${current_price:.2f} hit target ${target_price:.2f}"
+                        )
+                        action_recommended = (
+                            f"Consider taking partial profits (target {target_num})"
+                            if target_num == 1
+                            else "Full target reached - consider closing position"
+                        )
                     alerts.append(
                         JournalAlert(
                             thesis_id=thesis.id,
                             ticker=thesis.ticker,
                             alert_type=AlertType.TARGET_HIT.value,
-                            severity="warning" if target_num == 1 else "info",
-                            message=(
-                                f"TARGET {target_num} REACHED: {thesis.ticker} at "
-                                f"${current_price:.2f} hit target ${target_price:.2f}"
-                            ),
+                            severity=severity,
+                            message=message,
                             trigger_price=current_price,
                             threshold_price=target_price,
                             current_price=current_price,
                             unrealized_pl_pct=snapshot.unrealized_pl_pct,
                             holding_days=snapshot.holding_days_elapsed,
-                            action_recommended=(
-                                f"Consider taking partial profits (target {target_num})"
-                                if target_num == 1
-                                else "Full target reached — consider closing position"
-                            ),
+                            action_recommended=action_recommended,
                         )
                     )
-
         # --- Time-stop check ---
         if thesis.time_stop_date:
             try:
@@ -414,14 +469,13 @@ class PositionMonitor:
                             unrealized_pl_pct=snapshot.unrealized_pl_pct,
                             holding_days=snapshot.holding_days_elapsed,
                             action_recommended=(
-                                "Review position — holding period expired. "
+                                "Review position - holding period expired. "
                                 "Close unless thesis has been explicitly updated."
                             ),
                         )
                     )
             except ValueError:
                 pass
-
         # --- Gap risk detection ---
         # If price moved > 3% since last snapshot, flag as gap risk
         last_snap = self.store.get_latest_snapshot(thesis.id)
@@ -436,17 +490,16 @@ class PositionMonitor:
                         severity="warning",
                         message=(
                             f"LARGE MOVE: {thesis.ticker} moved {pct_change:.1f}% since "
-                            f"last check (${last_snap.current_price:.2f} → ${current_price:.2f})"
+                            f"last check (${last_snap.current_price:.2f} -> ${current_price:.2f})"
                         ),
                         trigger_price=current_price,
                         threshold_price=last_snap.current_price,
                         current_price=current_price,
                         unrealized_pl_pct=snapshot.unrealized_pl_pct,
                         holding_days=snapshot.holding_days_elapsed,
-                        action_recommended="Review thesis — large price movement detected",
+                        action_recommended="Review thesis - large price movement detected",
                     )
                 )
-
         return alerts
 
     def _normalize_stop_orientation(
@@ -977,41 +1030,60 @@ class PositionMonitor:
             logger.error(f"Failed to fetch brokerage positions: {e}")
             return []
 
-    def _fetch_current_price(self, ticker: str) -> Optional[float]:
+    def _fetch_current_price(self, ticker: str) -> Dict[str, Any]:
         """
-        Fetch the current price for a ticker.
-
-        Priority: Alpaca quote → yfinance fast_info → None
+        Fetch the current quote metadata for a ticker.
+        Priority: Alpaca quote -> yfinance fast_info -> yfinance history.
         """
+        out: Dict[str, Any] = {
+            "price": None,
+            "bid": None,
+            "ask": None,
+            "relative_spread": None,
+            "unreliable_quote": False,
+            "source": "none",
+        }
         # Try Alpaca quote first (if executor available)
         if self.executor:
             try:
                 quote = self.executor._get_latest_quote(ticker)
                 if quote:
-                    price = quote.get("ask_price") or quote.get("bid_price")
+                    bid = _safe_float(quote.get("bid_price"))
+                    ask = _safe_float(quote.get("ask_price"))
+                    out["bid"] = bid
+                    out["ask"] = ask
+                    rel_spread = _relative_spread(bid=bid, ask=ask)
+                    out["relative_spread"] = rel_spread
+                    if rel_spread is not None and rel_spread > self.quote_max_rel_spread:
+                        out["unreliable_quote"] = True
+                    mid = ((bid + ask) / 2.0) if bid and ask else None
+                    price = ask or bid or mid
                     if price and float(price) > 0:
-                        return float(price)
+                        out["price"] = float(price)
+                        out["source"] = "alpaca_quote"
+                        return out
             except Exception:
                 pass
-
         # Fallback to yfinance
         try:
             import yfinance as yf
-
             t = yf.Ticker(ticker)
             # fast_info is the lightweight accessor
             price = getattr(t, "fast_info", {}).get("lastPrice")
             if price and float(price) > 0:
-                return float(price)
-
+                out["price"] = float(price)
+                out["source"] = "yfinance_fast_info"
+                return out
             # Fallback: last close from history
             hist = t.history(period="1d")
             if not hist.empty:
-                return float(hist["Close"].iloc[-1])
+                out["price"] = float(hist["Close"].iloc[-1])
+                out["source"] = "yfinance_history"
+                return out
         except Exception as e:
             logger.warning(f"yfinance price fetch failed for {ticker}: {e}")
 
-        return None
+        return out
 
     def _get_spy_return_since(self, trade_date: Optional[str]) -> Optional[float]:
         """Get SPY return from trade_date to now (cached per tick)."""
@@ -1053,3 +1125,16 @@ def _safe_float(value) -> Optional[float]:
         return float(value)
     except (ValueError, TypeError):
         return None
+
+
+def _relative_spread(*, bid: Optional[float], ask: Optional[float]) -> Optional[float]:
+    """Return (ask-bid)/mid when both quote sides are valid."""
+    if bid is None or ask is None:
+        return None
+    if bid <= 0 or ask <= 0:
+        return None
+    mid = (bid + ask) / 2.0
+    if mid <= 0:
+        return None
+    return (ask - bid) / mid
+
