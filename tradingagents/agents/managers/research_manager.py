@@ -93,7 +93,7 @@ Additionally, develop a detailed investment plan for the trader. This should inc
 Your Recommendation: A decisive stance supported by the most convincing arguments.
 Rationale: An explanation of why these arguments lead to your conclusion.
 Strategic Actions: Concrete steps for implementing the recommendation.
-Sizing Guidance: Recommend an appropriate position size. The system will NOT ask the user for a sizing percentage; the trader may either specify an explicit share QUANTITY or omit QUANTITY and instead provide POSITION_SIZE_PCT (interpreted as % of available cash).
+Sizing Guidance: Recommend an appropriate position size. The system will NOT ask the user for a sizing percentage; the trader may either specify an explicit share QUANTITY or omit QUANTITY and instead provide POSITION_SIZE_PCT (interpreted as % of available capital/effective buying power).
 Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting. 
  
 Here are your past reflections on mistakes:

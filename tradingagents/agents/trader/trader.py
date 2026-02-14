@@ -51,7 +51,7 @@ CRITICAL — CURRENT PORTFOLIO STATE:
 You MUST factor in the portfolio state above when making your decision:
 - If you hold ZERO shares, do NOT recommend SELL (there is nothing to sell).
 - If you already hold a large position, consider whether adding more increases concentration risk.
-- Size your recommendation relative to available cash and buying power.
+- Size your recommendation relative to available capital (effective buying power) and concentration risk.
 """
 
         context = {
@@ -100,7 +100,7 @@ Leverage these insights to make an informed and strategic decision.""",
   - TRAIL_PRICE: [for TRAILING_STOP, dollars like 1.25; otherwise "N/A"]
   - STOP_LOSS: [REQUIRED numeric price for BUY/SELL/HOLD]
   - TAKE_PROFIT: [REQUIRED numeric price for BUY/SELL/HOLD]
-  - POSITION_SIZE_PCT: [for BUY only: percent of available cash (e.g., 10 for 10%); otherwise "N/A"]
+  - POSITION_SIZE_PCT: [for BUY only: percent of available capital/effective buying power (e.g., 10 for 10%); otherwise "N/A"]
   - TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks", "swing trade"]
   - CONFIDENCE: HIGH / MEDIUM / LOW
   - RATIONALE: [one-sentence summary]
@@ -121,9 +121,9 @@ Leverage these insights to make an informed and strategic decision.""",
   - If you are unsure about conditional order parameters, use MARKET or LIMIT with a clear LIMIT_PRICE.
   - If you have ZERO position and the analysis is bearish, recommend HOLD (pass), NOT SELL.
   - SELL is only valid if you currently hold shares.
-  - SIZING: You may either (A) provide QUANTITY as an integer number of shares, or (B) set QUANTITY to "N/A" and provide POSITION_SIZE_PCT for BUY sizing. POSITION_SIZE_PCT is interpreted as % of available cash (e.g., 10 means 10%). The executor will compute an integer share quantity based on the latest quote and apply concentration/max-size caps.
+  - SIZING: You may either (A) provide QUANTITY as an integer number of shares, or (B) set QUANTITY to "N/A" and provide POSITION_SIZE_PCT for BUY sizing. POSITION_SIZE_PCT is interpreted as % of available capital/effective buying power (e.g., 10 means 10%). The executor will compute an integer share quantity based on the latest quote and apply concentration/max-size caps.
   - If ACTION is SELL, you MUST provide QUANTITY explicitly (otherwise execution may default to selling the full position).
-  - If you provide QUANTITY, size it based on available cash/buying power (suggest 5-15% for medium confidence, up to 20% for high confidence).
+  - If you provide QUANTITY, size it based on available capital/effective buying power (suggest 5-15% for medium confidence, up to 20% for high confidence).
   - QUANTITY must be a single integer on that line (e.g., "37"). Do NOT include percentages, ranges, approximations, or any other numbers on the QUANTITY line.
   - If you want to fully exit a position, set QUANTITY equal to the exact number of shares currently held (from the portfolio state above).""",
             },

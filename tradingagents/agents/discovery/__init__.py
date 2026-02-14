@@ -17,12 +17,21 @@ from .intelligence_sub_agents import (
     TechnicalSignal,
 )
 from .intelligence_integration import IntelligenceDrivenRecommender
-from .stock_recommender import StockRecommenderAgent, create_stock_recommender
-from .stock_screener import (
-    scan_sector_performance,
-    screen_technical_breakouts,
-    scan_news_catalysts,
-)
+
+# Optional legacy imports (can require extra market-data dependencies).
+try:
+    from .stock_recommender import StockRecommenderAgent, create_stock_recommender
+    from .stock_screener import (
+        scan_sector_performance,
+        screen_technical_breakouts,
+        scan_news_catalysts,
+    )
+except Exception:  # pragma: no cover - optional dependency path
+    StockRecommenderAgent = None
+    create_stock_recommender = None
+    scan_sector_performance = None
+    screen_technical_breakouts = None
+    scan_news_catalysts = None
 
 __all__ = [
     # Intelligence architecture (new)

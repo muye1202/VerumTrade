@@ -140,12 +140,14 @@ class StockDiscoveryGraph:
     def run_discovery(
         self,
         trade_date: Optional[str] = None,
+        exclude_tickers: Optional[List[str]] = None,
     ) -> DiscoveryResult:
         """
         Run the stock discovery process.
 
         Args:
             trade_date: Target date (defaults to today)
+            exclude_tickers: Optional list of symbols to exclude from recommendations
 
         Returns:
             DiscoveryResult with recommended tickers and report
@@ -159,6 +161,7 @@ class StockDiscoveryGraph:
             result = self.recommender.recommend(
                 trade_date=trade_date,
                 max_iterations=5,
+                excluded_tickers=exclude_tickers,
             )
 
             self.logger.info(f"Discovery complete. Found {len(result['tickers'])} recommendations")

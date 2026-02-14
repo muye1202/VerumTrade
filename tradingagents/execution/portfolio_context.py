@@ -1,5 +1,5 @@
 """
-Lightweight Alpaca portfolio fetcher — works independently of AlpacaExecutor.
+Lightweight Alpaca portfolio fetcher - works independently of AlpacaExecutor.
 
 Called before graph execution to inject live portfolio state into agent prompts,
 so the Trader and Risk Manager nodes can make portfolio-aware decisions.
@@ -8,7 +8,32 @@ so the Trader and Risk Manager nodes can make portfolio-aware decisions.
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Any, Dict, List, Optional
+
+
+def fetch_portfolio_capital(
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    paper: bool = True,
+) -> Dict[str, Any]:
+    """
+    Fetch normalized account capital fields from Alpaca.
+
+    Returns:
+        dict with equity, cash, buying_power, effective_buying_power, positions_count.
+        On failure, returns zeroed fields plus an error string.
+    """
+    try:
+        return _fetch_portfolio_capital_from_alpaca(api_key, secret_key, paper)
+    except Exception as e:
+        return {
+            "equity": 0.0,
+            "cash": 0.0,
+            "buying_power": 0.0,
+            "effective_buying_power": 0.0,
+            "positions_count": 0,
+            "error": str(e),
+        }
 
 
 def fetch_portfolio_context(
@@ -27,7 +52,7 @@ def fetch_portfolio_context(
     - Actionability guidance (can we BUY/SELL this ticker?)
 
     If Alpaca is unavailable, returns a minimal fallback string so the pipeline
-    never crashes — it just operates without portfolio awareness.
+    never crashes - it just operates without portfolio awareness.
     """
     try:
         return _fetch_from_alpaca(ticker, api_key, secret_key, paper)
@@ -35,12 +60,36 @@ def fetch_portfolio_context(
         return _fallback_context(ticker, str(e))
 
 
-def _fetch_from_alpaca(
-    ticker: str,
+def fetch_portfolio_symbols(
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    paper: bool = True,
+) -> List[str]:
+    """
+    Fetch currently open portfolio position symbols from Alpaca.
+
+    Returns:
+        Uppercased ticker symbols. Returns an empty list on any failure.
+    """
+    try:
+        client = _build_trading_client(api_key, secret_key, paper)
+        positions = client.get_all_positions()
+        symbols: List[str] = []
+        for p in positions:
+            symbol = str(getattr(p, "symbol", "") or "").strip().upper()
+            if symbol:
+                symbols.append(symbol)
+        # Deduplicate while preserving order
+        return list(dict.fromkeys(symbols))
+    except Exception:
+        return []
+
+
+def _build_trading_client(
     api_key: Optional[str],
     secret_key: Optional[str],
     paper: bool,
-) -> str:
+):
     try:
         from alpaca.trading.client import TradingClient
     except ImportError:
@@ -62,29 +111,70 @@ def _fetch_from_alpaca(
         base_url = base_url.strip()
         if base_url.endswith("/v2"):
             base_url = base_url[: -len("/v2")]
-        client = TradingClient(api_key=ak, secret_key=sk, paper=paper, url_override=base_url)
-    else:
-        client = TradingClient(api_key=ak, secret_key=sk, paper=paper)
+        return TradingClient(api_key=ak, secret_key=sk, paper=paper, url_override=base_url)
+    return TradingClient(api_key=ak, secret_key=sk, paper=paper)
+
+
+def _normalize_portfolio_capital(account, positions_count: int) -> Dict[str, Any]:
+    equity = _safe_float(getattr(account, "equity", None), default=0.0)
+    cash = _safe_float(getattr(account, "cash", None), default=0.0)
+    buying_power_raw = _safe_float(getattr(account, "buying_power", None), default=None)
+    buying_power = cash if buying_power_raw is None else float(buying_power_raw)
+    effective_buying_power = max(float(cash), float(buying_power))
+    return {
+        "equity": float(equity),
+        "cash": float(cash),
+        "buying_power": float(buying_power),
+        "effective_buying_power": float(effective_buying_power),
+        "positions_count": int(positions_count),
+    }
+
+
+def _fetch_portfolio_capital_from_alpaca(
+    api_key: Optional[str],
+    secret_key: Optional[str],
+    paper: bool,
+) -> Dict[str, Any]:
+    client = _build_trading_client(api_key, secret_key, paper)
+    account = client.get_account()
+    positions = client.get_all_positions()
+    return _normalize_portfolio_capital(account, positions_count=len(positions))
+
+
+def _fetch_from_alpaca(
+    ticker: str,
+    api_key: Optional[str],
+    secret_key: Optional[str],
+    paper: bool,
+) -> str:
+    client = _build_trading_client(api_key, secret_key, paper)
 
     account = client.get_account()
     positions = client.get_all_positions()
+    capital = _normalize_portfolio_capital(account, positions_count=len(positions))
 
-    return _format_portfolio_string(ticker, account, positions)
+    return _format_portfolio_string(ticker, positions, capital)
 
 
-def _format_portfolio_string(ticker: str, account, positions) -> str:
+def _format_portfolio_string(
+    ticker: str,
+    positions,
+    capital: Dict[str, Any],
+) -> str:
     ticker_upper = ticker.upper()
 
-    equity = float(account.equity)
-    cash = float(account.cash)
-    buying_power = float(account.buying_power)
+    equity = float(capital["equity"])
+    cash = float(capital["cash"])
+    buying_power = float(capital["buying_power"])
+    effective_buying_power = float(capital["effective_buying_power"])
 
     lines = []
     lines.append("## Current Portfolio State (Live from Brokerage)")
     lines.append(f"- Account Equity: ${equity:,.2f}")
     lines.append(f"- Cash Available: ${cash:,.2f}")
     lines.append(f"- Buying Power: ${buying_power:,.2f}")
-    lines.append(f"- Number of Open Positions: {len(positions)}")
+    lines.append(f"- Effective Buying Power: ${effective_buying_power:,.2f}")
+    lines.append(f"- Number of Open Positions: {int(capital['positions_count'])}")
     lines.append("")
 
     if positions:
@@ -104,7 +194,7 @@ def _format_portfolio_string(ticker: str, account, positions) -> str:
                 if qty
                 else 0
             )
-            marker = " **◄ TARGET**" if sym.upper() == ticker_upper else ""
+            marker = " **< TARGET**" if sym.upper() == ticker_upper else ""
             lines.append(
                 f"| {sym}{marker} | {qty:,.0f} | ${avg_cost:,.2f} | ${mkt_val:,.2f} | "
                 f"{'+'if upl >= 0 else ''}${upl:,.2f} | {'+'if uplpc >= 0 else ''}{uplpc:.2f}% |"
@@ -142,23 +232,30 @@ def _format_portfolio_string(ticker: str, account, positions) -> str:
         )
         lines.append("")
         lines.append("**ACTIONABILITY:**")
-        lines.append(f"- BUY → Will ADD to existing {qty:,.0f}-share position (cash: ${cash:,.2f})")
-        lines.append(f"- SELL → Will LIQUIDATE some or all of your {qty:,.0f} shares")
-        lines.append(f"- HOLD → Maintain current {qty:,.0f}-share position")
+        lines.append(
+            f"- BUY -> Will ADD to existing {qty:,.0f}-share position "
+            f"(effective buying power: ${effective_buying_power:,.2f})"
+        )
+        lines.append(f"- SELL -> Will LIQUIDATE some or all of your {qty:,.0f} shares")
+        lines.append(f"- HOLD -> Maintain current {qty:,.0f}-share position")
     else:
         lines.append(f"- **You have ZERO shares of {ticker_upper}.**")
-        lines.append(f"- No existing position to sell or hold.")
+        lines.append("- No existing position to sell or hold.")
         lines.append("")
         lines.append("**ACTIONABILITY:**")
-        lines.append(f"- BUY → Open a NEW position (cash available: ${cash:,.2f})")
-        lines.append(f"- SELL → **NOT POSSIBLE** — you own zero shares. Do NOT recommend SELL.")
         lines.append(
-            f"- HOLD → No position exists; this means PASS on this opportunity."
+            f"- BUY -> Open a NEW position "
+            f"(effective buying power: ${effective_buying_power:,.2f})"
+        )
+        lines.append("- SELL -> **NOT POSSIBLE** - you own zero shares. Do NOT recommend SELL.")
+        lines.append(
+            "- HOLD -> No position exists; this means PASS on this opportunity."
         )
 
     lines.append("")
     lines.append(
-        f"**Available capital: ${cash:,.2f} cash, ${buying_power:,.2f} buying power**"
+        f"**Available capital: ${effective_buying_power:,.2f} effective buying power "
+        f"(cash ${cash:,.2f}, buying power ${buying_power:,.2f})**"
     )
 
     return "\n".join(lines)
@@ -171,3 +268,12 @@ def _fallback_context(ticker: str, error_reason: str) -> str:
         f"Assume NO existing position in {ticker.upper()} unless evidence suggests otherwise.\n"
         f"Do NOT recommend SELL if there is no confirmed existing position.\n"
     )
+
+
+def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default

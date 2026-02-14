@@ -652,7 +652,10 @@ class AlpacaExecutor:
     ) -> Dict[str, Any]:
         """Execute BUY signal."""
         # Portfolio-aware sizing: allow adds, but enforce concentration cap.
-        cash_available = float(getattr(account, "cash", 0.0) or 0.0)
+        capital = self._resolve_account_capital(account)
+        cash_available = float(capital["cash"])
+        buying_power_available = float(capital["buying_power"])
+        effective_buying_power = float(capital["effective_buying_power"])
         equity = float(getattr(account, "equity", 0.0) or 0.0)
         ticker_u = str(ticker or "").strip().upper()
 
@@ -671,7 +674,7 @@ class AlpacaExecutor:
         max_position_value = max(0.0, equity * float(self.max_concentration_pct))
         max_additional_value = max(0.0, max_position_value - held_value) if max_position_value else None
 
-        # Determine target notional from cash, then apply hard caps.
+        # Determine target notional from effective buying power, then apply hard caps.
         effective_pct = float(self.position_size_pct)
         if agent_position_size_pct is not None:
             try:
@@ -684,7 +687,7 @@ class AlpacaExecutor:
             except Exception:
                 pass
 
-        target_value = cash_available * effective_pct
+        target_value = effective_buying_power * effective_pct
         if self.max_position_size_usd:
             target_value = min(target_value, float(self.max_position_size_usd))
         if max_additional_value is not None:
@@ -763,9 +766,9 @@ class AlpacaExecutor:
         # Use agent-specified quantity if provided, otherwise calculate
         if agent_quantity and agent_quantity > 0:
             qty = int(agent_quantity)
-            # If we have a meaningful price reference, enforce cash/concentration caps.
+            # If we have a meaningful price reference, enforce capital/concentration caps.
             if quote_error_hint != "quote_unavailable_market_qty_only":
-                max_affordable = int(cash_available / float(current_price))
+                max_affordable = int(effective_buying_power / float(current_price))
                 qty = min(qty, max_affordable)
                 if max_additional_value is not None:
                     max_additional_qty = int(max_additional_value / float(current_price))
@@ -775,7 +778,8 @@ class AlpacaExecutor:
             else:
                 self.logger.info(
                     f"{ticker}: Agent requested {agent_quantity} shares, "
-                    f"capped to {qty} by available cash ${cash_available:,.2f}"
+                    f"capped to {qty} by effective buying power ${effective_buying_power:,.2f} "
+                    f"(cash=${cash_available:,.2f}, buying_power=${buying_power_available:,.2f})"
                 )
         else:
             qty = int(target_value / float(current_price))
@@ -1619,15 +1623,37 @@ class AlpacaExecutor:
             except Exception:
                 pass
 
+    @staticmethod
+    def _resolve_account_capital(account: Any) -> Dict[str, float]:
+        """Normalize account capital fields with buying-power fallback to cash."""
+        cash = _parse_floatish(getattr(account, "cash", None))
+        if cash is None:
+            cash = 0.0
+        buying_power = _parse_floatish(getattr(account, "buying_power", None))
+        if buying_power is None:
+            buying_power = cash
+        return {
+            "cash": float(cash),
+            "buying_power": float(buying_power),
+            "effective_buying_power": float(max(cash, buying_power)),
+        }
+
+    def get_buying_power_info(self) -> Dict[str, float]:
+        """Return normalized buying-power information for account-level sizing."""
+        account = self.trading_client.get_account()
+        return self._resolve_account_capital(account)
+
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """Get current portfolio summary."""
         account = self.trading_client.get_account()
         positions = self.trading_client.get_all_positions()
+        capital = self._resolve_account_capital(account)
 
         return {
             "account_value": float(account.equity),
-            "cash": float(account.cash),
-            "buying_power": float(account.buying_power),
+            "cash": float(capital["cash"]),
+            "buying_power": float(capital["buying_power"]),
+            "effective_buying_power": float(capital["effective_buying_power"]),
             "positions_count": len(positions),
             "positions": [
                 {

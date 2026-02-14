@@ -94,6 +94,11 @@ def get_stock_stats_indicators_window(
             "Usage: Apply 70/30 thresholds and watch for divergence to signal reversals. "
             "Tips: In strong trends, RSI may remain extreme; always cross-check with trend analysis."
         ),
+        "adx": (
+            "ADX: Average Directional Index measures trend strength (0-100) regardless of direction. "
+            "Usage: Values above ~25 indicate a meaningful trend; combine with price structure or moving averages for direction. "
+            "Tips: ADX can lag at turning points; use with momentum and volume confirmation."
+        ),
         # Volatility Indicators
         "boll": (
             "Bollinger Middle: A 20 SMA serving as the basis for Bollinger Bands. "

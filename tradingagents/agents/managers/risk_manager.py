@@ -118,7 +118,7 @@ def create_risk_manager(llm, memory):
 CRITICAL PORTFOLIO RULES:
 1. If the portfolio shows ZERO shares, SELL is NOT valid. Choose BUY or HOLD only.
 2. If there is an existing position, factor in unrealized P&L when deciding.
-3. Size the recommendation relative to available cash and concentration limits.
+3. Size the recommendation relative to available capital (effective buying power) and concentration limits.
 4. Do not recommend adding to a position exceeding 20% of portfolio value.
 ---
 """

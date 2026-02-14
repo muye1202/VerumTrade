@@ -18,6 +18,7 @@ from rich.align import Align
 
 from tradingagents.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.execution import fetch_portfolio_symbols
 from cli.discovery_report_logger import (
     write_deep_analysis_report,
     write_discovery_report,
@@ -325,6 +326,23 @@ def run_discovery_flow(selections: Dict[str, Any]):
 
     console.print(f"[cyan]Starting discovery for date: {trade_date}[/cyan]")
     console.print(f"[dim]Using LLM: {config['deep_think_llm']} ({config['llm_provider']})[/dim]")
+    excluded_tickers = []
+    try:
+        excluded_tickers = sorted(
+            {
+                str(t).strip().upper()
+                for t in fetch_portfolio_symbols()
+                if str(t).strip()
+            }
+        )
+        if excluded_tickers:
+            console.print(
+                f"[dim]Skipping existing portfolio positions in discovery: {', '.join(excluded_tickers)}[/dim]"
+            )
+    except Exception as e:
+        console.print(
+            f"[yellow]Warning: could not fetch current portfolio positions for discovery exclusion ({e})[/yellow]"
+        )
     console.print()
 
     # Run discovery
@@ -333,7 +351,10 @@ def run_discovery_flow(selections: Dict[str, Any]):
             config=config,
             debug=False,
         )
-        result = discovery_graph.run_discovery(trade_date=trade_date)
+        result = discovery_graph.run_discovery(
+            trade_date=trade_date,
+            exclude_tickers=excluded_tickers,
+        )
 
     # Persist discovery report regardless of success/failure.
     try:

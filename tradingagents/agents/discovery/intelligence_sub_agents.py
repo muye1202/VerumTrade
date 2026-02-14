@@ -38,12 +38,21 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool
 from typing import Annotated
 
 logger = logging.getLogger(__name__)
+
+# Local default universe to avoid importing legacy discovery modules at runtime.
+DEFAULT_SCREENING_UNIVERSE = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+    "JPM", "BAC", "GS", "MS", "V", "MA",
+    "JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY",
+    "WMT", "HD", "MCD", "NKE", "SBUX", "COST",
+    "XOM", "CVX", "CAT", "BA", "GE", "UPS",
+    "AMD", "INTC", "AVGO", "QCOM", "MU",
+]
 
 
 # =============================================================================
@@ -316,13 +325,11 @@ class MacroSectorScanner:
             )
 
         # LLM call — pure interpretation, no tool calls
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", SECTOR_SCANNER_SYSTEM_PROMPT),
-            ("human", f"Date: {trade_date}\n\n{table}"),
-        ])
-
         try:
-            result = (prompt | self.llm).invoke({})
+            result = self.llm.invoke([
+                SystemMessage(content=SECTOR_SCANNER_SYSTEM_PROMPT),
+                HumanMessage(content=f"Date: {trade_date}\n\n{table}"),
+            ])
             content = result.content if hasattr(result, "content") else str(result)
             signals = self._parse_sector_response(content, sector_data)
             if signals:
@@ -534,13 +541,11 @@ class CatalystNewsScanner:
             news_text = news_text[:MAX_NEWS_CHARS] + "\n\n[... truncated for brevity ...]"
 
         # LLM call — classification and sentiment, no tool calls
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", CATALYST_SCANNER_SYSTEM_PROMPT),
-            ("human", f"Date: {trade_date}\nLookback: {look_back_days} days\n\n{news_text}"),
-        ])
-
         try:
-            result = (prompt | self.llm).invoke({})
+            result = self.llm.invoke([
+                SystemMessage(content=CATALYST_SCANNER_SYSTEM_PROMPT),
+                HumanMessage(content=f"Date: {trade_date}\nLookback: {look_back_days} days\n\n{news_text}"),
+            ])
             content = result.content if hasattr(result, "content") else str(result)
             signals = self._parse_catalyst_response(content)
             if signals:
@@ -918,14 +923,12 @@ class TechnicalMomentumScanner:
             table += f"{t['ticker']}: prices=[{p_str}] volumes=[{v_str}]\n"
 
         # LLM call for scoring and OBV interpretation
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", TECHNICAL_SCANNER_SYSTEM_PROMPT),
-            ("human", table),
-        ])
-
         signals = None
         try:
-            result = (prompt | self.llm).invoke({})
+            result = self.llm.invoke([
+                SystemMessage(content=TECHNICAL_SCANNER_SYSTEM_PROMPT),
+                HumanMessage(content=table),
+            ])
             content = result.content if hasattr(result, "content") else str(result)
             signals = self._parse_technical_response(content)
         except Exception as e:
@@ -1088,7 +1091,6 @@ class IntelligenceScanner:
             IntelligenceResult with all signals merged
         """
         import time
-        from tradingagents.agents.discovery.stock_recommender import DEFAULT_SCREENING_UNIVERSE
 
         start_time = time.time()
         universe = universe or DEFAULT_SCREENING_UNIVERSE
@@ -1149,6 +1151,7 @@ class IntelligenceScanner:
         self,
         trade_date: str,
         base_universe: Optional[List[str]] = None,
+        excluded_tickers: Optional[List[str]] = None,
     ) -> IntelligenceResult:
         """
         Two-phase scan: first gather sector + catalyst intelligence,
@@ -1159,9 +1162,15 @@ class IntelligenceScanner:
         It addresses the static-universe problem by adapting the screening
         universe to current market conditions.
         """
-        from tradingagents.agents.discovery.stock_recommender import DEFAULT_SCREENING_UNIVERSE
-
-        base_universe = base_universe or DEFAULT_SCREENING_UNIVERSE
+        excluded_set = {
+            str(t).strip().upper()
+            for t in (excluded_tickers or [])
+            if str(t).strip()
+        }
+        base_universe = [
+            t for t in (base_universe or DEFAULT_SCREENING_UNIVERSE)
+            if str(t).strip().upper() not in excluded_set
+        ]
 
         # Phase 1: Sector + Catalyst scans (parallel)
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -1189,7 +1198,9 @@ class IntelligenceScanner:
         # Add tickers from catalyst signals
         for c in catalyst_signals:
             if c.ticker and len(c.ticker) <= 5 and c.ticker.isalpha():
-                expanded_universe.add(c.ticker.upper())
+                t = c.ticker.upper()
+                if t not in excluded_set:
+                    expanded_universe.add(t)
 
         self.logger.info(
             f"Universe expanded from {len(base_universe)} to {len(expanded_universe)} "
@@ -1199,11 +1210,22 @@ class IntelligenceScanner:
         # Phase 3: Technical scan on expanded universe
         try:
             technical_signals = self.technical_scanner.scan(
-                list(expanded_universe), trade_date
+                [
+                    t
+                    for t in expanded_universe
+                    if str(t).strip().upper() not in excluded_set
+                ],
+                trade_date,
             )
         except Exception as e:
             self.logger.error(f"Phase 2 technical scan failed: {e}")
             technical_signals = []
+
+        if excluded_set:
+            technical_signals = [
+                s for s in technical_signals
+                if str(getattr(s, "ticker", "")).upper() not in excluded_set
+            ]
 
         # Assemble result
         result = IntelligenceResult(
