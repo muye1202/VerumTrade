@@ -160,14 +160,31 @@ class BatchAnalyzer:
 
         for pick in top_picks:
             try:
-                structured = self.graph.extract_structured_decision(
-                    pick.get("final_decision")
-                    or pick.get("final_state", {}).get("final_trade_decision", "")
-                )
+                final_state = pick.get("final_state", {}) or {}
+                structured = final_state.get("final_trade_decision_structured")
+                validation_error = final_state.get("final_trade_decision_validation_error", "")
+                if not isinstance(structured, dict):
+                    execution_results.append(
+                        {
+                            **pick,
+                            "execution": {
+                                "ticker": pick["ticker"],
+                                "signal": pick["decision"],
+                                "trade_date": trade_date,
+                                "executed": False,
+                                "error": "Structured decision missing or invalid; execution aborted",
+                                "decision_source": "final_trade_decision_structured",
+                                "decision_version": None,
+                                "decision_validation_ok": False,
+                                "decision_validation_error": validation_error or "structured decision unavailable",
+                            },
+                        }
+                    )
+                    continue
                 result = self.executor.execute_signal(
                     ticker=pick["ticker"],
                     signal=pick["decision"],
-                    analysis_state=pick["final_state"],
+                    analysis_state=final_state,
                     trade_date=trade_date,
                     agent_quantity=structured.get("quantity"),
                     agent_limit_price=structured.get("limit_price"),

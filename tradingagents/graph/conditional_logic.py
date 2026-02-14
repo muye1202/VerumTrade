@@ -10,7 +10,7 @@ class ConditionalLogic:
         self,
         max_debate_rounds=1,
         max_risk_discuss_rounds=1,
-        max_tool_calls_per_analyst=8,
+        max_tool_calls_per_analyst=2,
         max_tool_calls_total=50,
     ):
         """Initialize with configuration parameters."""
@@ -19,63 +19,82 @@ class ConditionalLogic:
         self.max_tool_calls_per_analyst = max_tool_calls_per_analyst
         self.max_tool_calls_total = max_tool_calls_total
 
-    def _should_use_tools(self, state: AgentState, analyst_key: str) -> bool:
-        # Initialize fields for older saved states.
-        state.setdefault("tool_call_counts", {})
-        state.setdefault("tool_call_total", 0)
+    def _can_use_tools(self, state: AgentState, analyst_key: str) -> bool:
+        """
+        Read-only tool-loop guard.
 
-        per = state["tool_call_counts"].get(analyst_key, 0)
-        total = state["tool_call_total"]
+        Counter mutation is handled in analyst node return payloads so state updates
+        are deterministic under LangGraph reducers.
+        """
+        rounds = (
+            state.get("tool_round_counts")
+            or state.get("tool_call_counts")
+            or {}
+        )
+        per = int(rounds.get(analyst_key, 0) or 0)
+        total = int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0)
 
-        if total >= self.max_tool_calls_total:
+        if total > self.max_tool_calls_total:
             return False
-        if per >= self.max_tool_calls_per_analyst:
+        if per > self.max_tool_calls_per_analyst:
             return False
-
-        # Mutate counters in-state so the guard is effective across loop iterations.
-        state["tool_call_counts"][analyst_key] = per + 1
-        state["tool_call_total"] = total + 1
         return True
+
+    def _tool_route(
+        self,
+        state: AgentState,
+        analyst_key: str,
+        tools_node: str,
+        clear_node: str,
+        force_finalize_node: str,
+    ) -> str:
+        messages = state["messages"]
+        last_message = messages[-1]
+        if getattr(last_message, "tool_calls", None):
+            if self._can_use_tools(state, analyst_key):
+                return tools_node
+            return force_finalize_node
+        return clear_node
 
     def should_continue_market(self, state: AgentState):
         """Determine if market analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            if self._should_use_tools(state, "market"):
-                return "tools_market"
-            return "Msg Clear Market"
-        return "Msg Clear Market"
+        return self._tool_route(
+            state,
+            analyst_key="market",
+            tools_node="tools_market",
+            clear_node="Msg Clear Market",
+            force_finalize_node="Force Finalize Market",
+        )
 
     def should_continue_social(self, state: AgentState):
         """Determine if social media analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            if self._should_use_tools(state, "social"):
-                return "tools_social"
-            return "Msg Clear Social"
-        return "Msg Clear Social"
+        return self._tool_route(
+            state,
+            analyst_key="social",
+            tools_node="tools_social",
+            clear_node="Msg Clear Social",
+            force_finalize_node="Force Finalize Social",
+        )
 
     def should_continue_news(self, state: AgentState):
         """Determine if news analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            if self._should_use_tools(state, "news"):
-                return "tools_news"
-            return "Msg Clear News"
-        return "Msg Clear News"
+        return self._tool_route(
+            state,
+            analyst_key="news",
+            tools_node="tools_news",
+            clear_node="Msg Clear News",
+            force_finalize_node="Force Finalize News",
+        )
 
     def should_continue_fundamentals(self, state: AgentState):
         """Determine if fundamentals analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            if self._should_use_tools(state, "fundamentals"):
-                return "tools_fundamentals"
-            return "Msg Clear Fundamentals"
-        return "Msg Clear Fundamentals"
+        return self._tool_route(
+            state,
+            analyst_key="fundamentals",
+            tools_node="tools_fundamentals",
+            clear_node="Msg Clear Fundamentals",
+            force_finalize_node="Force Finalize Fundamentals",
+        )
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""

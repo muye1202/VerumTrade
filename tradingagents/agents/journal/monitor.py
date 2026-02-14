@@ -14,9 +14,12 @@ The JournalScheduler calls monitor.run_tick() on a timer.
 
 from __future__ import annotations
 
+import json
 import logging
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
+from zoneinfo import ZoneInfo
 
 from tradingagents.agents.journal.models import (
     TradeThesis,
@@ -24,10 +27,28 @@ from tradingagents.agents.journal.models import (
     JournalAlert,
     AlertType,
     ThesisStatus,
+    ActionDecisionType,
+    ActionReasonCode,
+    JournalActionDecision,
+    JournalActionExecution,
 )
 from tradingagents.agents.journal.store import JournalStore
+from tradingagents.agents.journal.execution_advisor import (
+    ActionContext,
+    JournalExecutionAdvisor,
+)
+from tradingagents.agents.journal.execution_policy import (
+    JournalExecutionPolicy,
+    PolicyResult,
+)
 
 logger = logging.getLogger(__name__)
+
+ET = ZoneInfo("America/New_York")
+PREMARKET_OPEN = time(8, 0)
+MARKET_OPEN = time(9, 30)
+MARKET_CLOSE = time(16, 0)
+AFTERHOURS_CLOSE = time(20, 0)
 
 
 class PositionMonitor:
@@ -46,13 +67,21 @@ class PositionMonitor:
         self,
         store: JournalStore,
         executor: Any = None,  # AlpacaExecutor (optional — can work without brokerage)
+        lesson_memory: Any = None,
+        execution_advisor: Optional[JournalExecutionAdvisor] = None,
+        execution_policy: Optional[JournalExecutionPolicy] = None,
         alert_dedup_hours: float = 4.0,
         spy_ticker: str = "SPY",
     ):
         self.store = store
         self.executor = executor
+        self.lesson_memory = lesson_memory
+        self.execution_advisor = execution_advisor or JournalExecutionAdvisor.from_env()
+        self.execution_policy = execution_policy or JournalExecutionPolicy.from_env()
         self.alert_dedup_hours = alert_dedup_hours
         self.spy_ticker = spy_ticker
+        self.semantic_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_SEMANTIC_LESSON_LIMIT", "3") or 3)
+        self.ticker_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_TICKER_LESSON_LIMIT", "5") or 5)
 
         # Cached SPY data per tick (reset each run_tick)
         self._spy_cache: Dict[str, float] = {}
@@ -75,6 +104,12 @@ class PositionMonitor:
             "snapshots_taken": 0,
             "alerts_fired": 0,
             "positions_closed": 0,
+            "actions_evaluated": 0,
+            "actions_recommended": 0,
+            "actions_blocked": 0,
+            "actions_executed": 0,
+            "actions_failed": 0,
+            "action_decision_rows": [],
             "errors": [],
             "dedup_closed": 0,
         }
@@ -145,6 +180,9 @@ class PositionMonitor:
             (p for p in brokerage_positions if p["symbol"].upper() == ticker),
             None,
         )
+        thesis, thesis_execution_eligible, ineligibility_reason = self._normalize_stop_orientation(
+            thesis=thesis,
+        )
 
         # Fetch current price
         current_price = self._fetch_current_price(ticker)
@@ -166,6 +204,7 @@ class PositionMonitor:
 
         # Check thesis parameters and fire alerts
         alerts = self._check_thesis_parameters(thesis, snapshot, current_price)
+        persisted_alerts: List[JournalAlert] = []
         for alert in alerts:
             # Dedup: don't fire the same alert type repeatedly
             if not self.store.has_recent_alert(
@@ -173,6 +212,17 @@ class PositionMonitor:
             ):
                 self.store.save_alert(alert)
                 summary["alerts_fired"] += 1
+                persisted_alerts.append(alert)
+
+        self._evaluate_action_pipeline(
+            thesis=thesis,
+            snapshot=snapshot,
+            pos_data=pos_data,
+            recent_alerts=persisted_alerts,
+            thesis_execution_eligible=thesis_execution_eligible,
+            ineligibility_reason=ineligibility_reason,
+            summary=summary,
+        )
 
     # ------------------------------------------------------------------
     # Snapshot building
@@ -399,6 +449,404 @@ class PositionMonitor:
 
         return alerts
 
+    def _normalize_stop_orientation(
+        self,
+        *,
+        thesis: TradeThesis,
+    ) -> tuple[TradeThesis, bool, Optional[str]]:
+        """
+        Enforce valid stop orientation.
+
+        BUY: stop must be below entry.
+        SELL: stop must be above entry.
+        If invalid, reset stop to 5% directional from entry and persist.
+        If entry is missing/invalid, block execution for this thesis and emit alert.
+        """
+        action = str(thesis.action or "").upper()
+        if action not in {"BUY", "SELL"}:
+            return thesis, True, None
+        if thesis.stop_loss is None:
+            return thesis, True, None
+
+        entry = _safe_float(thesis.entry_price)
+        stop = _safe_float(thesis.stop_loss)
+        if stop is None:
+            return thesis, True, None
+
+        if entry is None or entry <= 0:
+            marker = "[STOP_ORIENTATION_BLOCKED_NO_ENTRY]"
+            if not self._has_recent_custom_marker(thesis.id, marker, within_hours=24.0):
+                self.store.save_alert(
+                    JournalAlert(
+                        thesis_id=thesis.id,
+                        ticker=thesis.ticker,
+                        alert_type=AlertType.CUSTOM.value,
+                        severity="critical",
+                        message=(
+                            f"{marker} Cannot validate/fix stop orientation for {thesis.ticker}: "
+                            "entry_price is missing or invalid. Execution is blocked for this thesis."
+                        ),
+                        action_recommended="Set a valid entry_price and stop_loss orientation.",
+                    )
+                )
+            return thesis, False, "invalid_stop_no_entry"
+
+        invalid = (action == "BUY" and stop >= entry) or (action == "SELL" and stop <= entry)
+        if not invalid:
+            return thesis, True, None
+
+        corrected = round(entry * (0.95 if action == "BUY" else 1.05), 6)
+        # Idempotence: if already corrected (or very close), skip duplicate writes/alerts.
+        if abs(stop - corrected) <= 1e-6:
+            return thesis, True, None
+
+        old = thesis.stop_loss
+        thesis.stop_loss = corrected
+        self.store.save_thesis(thesis)
+
+        marker = "[STOP_ORIENTATION_AUTOCORRECTED]"
+        if not self._has_recent_custom_marker(thesis.id, marker, within_hours=24.0):
+            self.store.save_alert(
+                JournalAlert(
+                    thesis_id=thesis.id,
+                    ticker=thesis.ticker,
+                    alert_type=AlertType.CUSTOM.value,
+                    severity="warning",
+                    message=(
+                        f"{marker} {thesis.ticker} {action} stop was invalid (old={old}, entry={entry}). "
+                        f"Replaced with 5% directional stop={corrected}."
+                    ),
+                    action_taken=f"Persisted corrected stop_loss={corrected}",
+                    action_recommended="Review thesis risk parameters.",
+                )
+            )
+        return thesis, True, None
+
+    def _has_recent_custom_marker(
+        self,
+        thesis_id: str,
+        marker: str,
+        within_hours: float = 24.0,
+    ) -> bool:
+        alerts = self.store.get_alerts(thesis_id=thesis_id, unacknowledged_only=False, limit=100)
+        if not alerts:
+            return False
+        cutoff = datetime.utcnow().timestamp() - (within_hours * 3600.0)
+        marker_l = str(marker or "").lower()
+        for a in alerts:
+            msg = str(a.message or "").lower()
+            if marker_l not in msg:
+                continue
+            try:
+                ts = datetime.fromisoformat(str(a.timestamp).replace("Z", "+00:00"))
+                if ts.tzinfo is not None:
+                    ts = ts.astimezone().replace(tzinfo=None)
+                if ts.timestamp() > cutoff:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _evaluate_action_pipeline(
+        self,
+        *,
+        thesis: TradeThesis,
+        snapshot: PositionSnapshot,
+        pos_data: Optional[Dict[str, Any]],
+        recent_alerts: List[JournalAlert],
+        thesis_execution_eligible: bool,
+        ineligibility_reason: Optional[str],
+        summary: Dict[str, Any],
+    ) -> None:
+        """Evaluate deterministic action rules and optionally execute guarded actions."""
+        summary["actions_evaluated"] += 1
+
+        ticker_lessons, semantic_lessons, memory_unavailable = self._fetch_memory_context(
+            thesis=thesis,
+            snapshot=snapshot,
+        )
+        market_session = self._get_market_session()
+
+        context = ActionContext(
+            thesis=thesis,
+            snapshot=snapshot,
+            market_session=market_session,
+            recent_alerts=[a.to_dict() for a in recent_alerts],
+            ticker_lessons=ticker_lessons,
+            semantic_lessons=semantic_lessons,
+            memory_unavailable=memory_unavailable,
+        )
+
+        cooldown_hit = self.store.has_recent_action_decision(
+            thesis.id,
+            self._reason_code_for_snapshot(thesis=thesis, snapshot=snapshot),
+            within_minutes=self.execution_policy.cooldown_minutes,
+        )
+
+        decision = self.execution_advisor.evaluate(
+            context=context,
+            cooldown_hit=cooldown_hit,
+        )
+        if memory_unavailable:
+            decision.context_summary = self._annotate_context_summary(
+                decision.context_summary, "memory_unavailable", True
+            )
+
+        is_actionable = self.execution_advisor.is_actionable(decision)
+        if is_actionable:
+            summary["actions_recommended"] += 1
+
+        position_qty = _safe_float((pos_data or {}).get("qty")) if pos_data else None
+        policy_result = self.execution_policy.evaluate(
+            thesis=thesis,
+            decision=decision,
+            store=self.store,
+            position_qty=position_qty,
+            market_session=market_session,
+            thesis_execution_eligible=thesis_execution_eligible,
+            ineligibility_reason=ineligibility_reason,
+        )
+        decision.dry_run = bool(policy_result.dry_run)
+        decision.gates_passed = bool(policy_result.allowed)
+        decision.gate_block_reasons = json.dumps(policy_result.block_reasons)
+        self.store.save_action_decision(decision)
+
+        if not is_actionable:
+            return
+
+        row = {
+            "ticker": thesis.ticker.upper(),
+            "decision_type": decision.decision_type,
+            "reason_code": decision.reason_code,
+            "confidence": round(float(decision.confidence or 0.0), 1),
+            "gates_passed": bool(policy_result.allowed),
+            "block_reasons": list(policy_result.block_reasons),
+            "recommended_qty_pct": decision.recommended_qty_pct,
+            "execution_status": "blocked",
+        }
+
+        if not policy_result.allowed:
+            summary["actions_blocked"] += 1
+            summary.setdefault("action_decision_rows", []).append(row)
+            return
+
+        execution = self._execute_decision(
+            thesis=thesis,
+            decision=decision,
+            position_qty=position_qty,
+            dry_run=policy_result.dry_run,
+        )
+        self.store.save_action_execution(execution)
+        row["execution_status"] = execution.status
+        summary.setdefault("action_decision_rows", []).append(row)
+
+        if execution.status in {"dry_run", "submitted"}:
+            summary["actions_executed"] += 1
+            self._annotate_alert_action_taken(
+                alerts=recent_alerts,
+                action_note=f"journal_action:{decision.decision_type}:{execution.status}",
+            )
+        else:
+            summary["actions_failed"] += 1
+            self._create_execution_failure_alert(thesis=thesis, execution=execution)
+
+    def _execute_decision(
+        self,
+        *,
+        thesis: TradeThesis,
+        decision: JournalActionDecision,
+        position_qty: Optional[float],
+        dry_run: bool,
+    ) -> JournalActionExecution:
+        """Execute a decision through AlpacaExecutor or produce a dry-run artifact."""
+        qty = self._resolve_exec_qty(
+            position_qty=position_qty,
+            recommended_qty_pct=decision.recommended_qty_pct,
+        )
+        if qty <= 0:
+            return JournalActionExecution(
+                decision_id=decision.id,
+                thesis_id=thesis.id,
+                ticker=thesis.ticker.upper(),
+                submitted_signal="SELL",
+                submitted_qty=0,
+                status="rejected",
+                error="resolved_qty_is_zero",
+                created_at=datetime.utcnow().isoformat(),
+            )
+
+        if dry_run or self.executor is None:
+            return JournalActionExecution(
+                decision_id=decision.id,
+                thesis_id=thesis.id,
+                ticker=thesis.ticker.upper(),
+                submitted_signal="SELL",
+                submitted_qty=qty,
+                order_type="MARKET",
+                status="dry_run",
+                raw_result_json=json.dumps(
+                    {
+                        "decision_type": decision.decision_type,
+                        "reason_code": decision.reason_code,
+                        "dry_run": True,
+                        "executor_available": self.executor is not None,
+                    }
+                ),
+                created_at=datetime.utcnow().isoformat(),
+            )
+
+        try:
+            result = self.executor.execute_signal(
+                ticker=thesis.ticker.upper(),
+                signal="SELL",
+                analysis_state={
+                    "journal_action_decision_id": decision.id,
+                    "journal_decision_type": decision.decision_type,
+                    "journal_reason_code": decision.reason_code,
+                    "journal_confidence": decision.confidence,
+                },
+                trade_date=datetime.utcnow().date().isoformat(),
+                agent_quantity=int(qty),
+                agent_order_type="MARKET",
+            )
+            executed = bool((result or {}).get("executed"))
+            status = "submitted" if executed else "rejected"
+            order_id = (result or {}).get("order_id")
+            return JournalActionExecution(
+                decision_id=decision.id,
+                thesis_id=thesis.id,
+                ticker=thesis.ticker.upper(),
+                submitted_signal="SELL",
+                submitted_qty=qty,
+                order_type="MARKET",
+                status=status,
+                broker_order_id=str(order_id) if order_id else None,
+                error=None if executed else str((result or {}).get("reason") or "execution_rejected"),
+                raw_result_json=json.dumps(result or {}),
+                created_at=datetime.utcnow().isoformat(),
+            )
+        except Exception as e:
+            return JournalActionExecution(
+                decision_id=decision.id,
+                thesis_id=thesis.id,
+                ticker=thesis.ticker.upper(),
+                submitted_signal="SELL",
+                submitted_qty=qty,
+                order_type="MARKET",
+                status="failed",
+                error=str(e),
+                created_at=datetime.utcnow().isoformat(),
+            )
+
+    def _fetch_memory_context(
+        self,
+        *,
+        thesis: TradeThesis,
+        snapshot: PositionSnapshot,
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], bool]:
+        """Return (ticker_lessons, semantic_lessons, memory_unavailable)."""
+        if self.lesson_memory is None:
+            return [], [], False
+
+        try:
+            ticker_lessons = self.lesson_memory.get_lessons_by_ticker(
+                thesis.ticker.upper(),
+                limit=self.ticker_lesson_limit,
+            )
+            query = (
+                f"{thesis.ticker} {thesis.action} regime={thesis.regime or 'unknown'} "
+                f"pl={snapshot.unrealized_pl_pct or 0:.2f} rs={snapshot.relative_strength or 0:.2f}"
+            )
+            semantic_lessons = self.lesson_memory.query_similar(
+                query,
+                n_results=self.semantic_lesson_limit,
+            )
+            return ticker_lessons or [], semantic_lessons or [], False
+        except Exception as e:
+            logger.warning("Lesson memory unavailable for %s: %s", thesis.ticker, e)
+            return [], [], True
+
+    def _resolve_exec_qty(
+        self,
+        *,
+        position_qty: Optional[float],
+        recommended_qty_pct: Optional[float],
+    ) -> int:
+        qty = abs(_safe_float(position_qty) or 0.0)
+        if qty <= 0:
+            return 0
+        pct = _safe_float(recommended_qty_pct) or 1.0
+        pct = min(1.0, max(0.01, pct))
+        resolved = int(round(qty * pct))
+        return max(1, resolved)
+
+    def _annotate_context_summary(
+        self,
+        raw_json: Optional[str],
+        key: str,
+        value: Any,
+    ) -> str:
+        payload: Dict[str, Any]
+        try:
+            payload = json.loads(raw_json or "{}")
+            if not isinstance(payload, dict):
+                payload = {}
+        except Exception:
+            payload = {}
+        payload[key] = value
+        return json.dumps(payload)
+
+    def _create_execution_failure_alert(
+        self,
+        *,
+        thesis: TradeThesis,
+        execution: JournalActionExecution,
+    ) -> None:
+        alert = JournalAlert(
+            thesis_id=thesis.id,
+            ticker=thesis.ticker,
+            alert_type=AlertType.CUSTOM.value,
+            severity="critical",
+            message=(
+                f"JOURNAL EXECUTION FAILED: {thesis.ticker} action submission failed "
+                f"({execution.status})"
+            ),
+            action_taken=f"Execution failure: {execution.error or 'unknown_error'}",
+        )
+        self.store.save_alert(alert)
+
+    def _annotate_alert_action_taken(self, *, alerts: List[JournalAlert], action_note: str) -> None:
+        for alert in alerts:
+            self.store.update_alert_action_taken(alert.id, action_note)
+
+    def _reason_code_for_snapshot(self, *, thesis: TradeThesis, snapshot: PositionSnapshot):
+        price = _safe_float(snapshot.current_price)
+        if price is None:
+            return ActionReasonCode.NONE
+        if thesis.stop_loss and (
+            (thesis.action == "BUY" and price <= thesis.stop_loss)
+            or (thesis.action == "SELL" and price >= thesis.stop_loss)
+        ):
+            return ActionReasonCode.STOP_BREACH
+        if thesis.target_2 and (
+            (thesis.action == "BUY" and price >= thesis.target_2)
+            or (thesis.action == "SELL" and price <= thesis.target_2)
+        ):
+            return ActionReasonCode.TARGET2_REACHED
+        if thesis.target_1 and (
+            (thesis.action == "BUY" and price >= thesis.target_1)
+            or (thesis.action == "SELL" and price <= thesis.target_1)
+        ):
+            return ActionReasonCode.TARGET1_REACHED
+        if thesis.time_stop_date:
+            try:
+                stop = datetime.strptime(thesis.time_stop_date, "%Y-%m-%d")
+                if datetime.utcnow() >= stop:
+                    return ActionReasonCode.TIME_STOP_EXPIRED
+            except ValueError:
+                pass
+        return ActionReasonCode.NONE
+
     def _reconcile_pending_entry(self, thesis: TradeThesis) -> bool:
         """Update pending entry prices using order status (if available). Returns True if thesis was closed."""
         if not thesis.entry_price_pending or not thesis.order_id or not self.executor:
@@ -501,6 +949,22 @@ class PositionMonitor:
     # ------------------------------------------------------------------
     # Data fetching (lazy imports for optional deps)
     # ------------------------------------------------------------------
+
+    def _get_market_session(self) -> str:
+        """Best-effort market session classification used by execution policy."""
+        now_et = datetime.now(ET)
+        if now_et.weekday() >= 5:
+            return "weekend"
+        t = now_et.time()
+        if t < PREMARKET_OPEN:
+            return "overnight"
+        if t < MARKET_OPEN:
+            return "premarket"
+        if t < MARKET_CLOSE:
+            return "market_hours"
+        if t < AFTERHOURS_CLOSE:
+            return "afterhours"
+        return "overnight"
 
     def _fetch_brokerage_positions(self) -> List[Dict[str, Any]]:
         """Fetch all positions from the brokerage."""

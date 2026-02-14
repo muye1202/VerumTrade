@@ -3,6 +3,10 @@ import time
 import json
 from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window, get_global_news
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.market_data.bundle_tools import get_news_data_bundle
+from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.llm.tool_binding import bind_tools_parallel_safe
+from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 
 def create_news_analyst(llm):
@@ -14,11 +18,19 @@ def create_news_analyst(llm):
         holding_text = spec.label
         window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
+        enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
+        tool_round_cap = int(get_config().get("analyst_tool_round_cap", 2) or 2)
+        global_tool_round_cap = int(get_config().get("max_tool_calls_total", 50) or 50)
+        rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
+        rounds_used = int(rounds.get("news", 0) or 0)
+        total_rounds_used = int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0)
         tools = [
             get_news,
             get_company_news_window,
             get_global_news,
         ]
+        if enable_bundle_tools:
+            tools = [get_news_data_bundle, *tools]
 
         system_message = (
             f"You are a news + macro analyst supporting a {holding_text} swing trade decision. Your job is to identify *trade-relevant* catalysts and risks for {window_text}, not to produce a long general news recap."
@@ -26,6 +38,8 @@ def create_news_analyst(llm):
             f"\n1) Pull company-specific news/sentiment for the last ~{spec.company_news_lookback_days} days using `get_company_news_window(ticker=<ticker>, curr_date=<current_date>, look_back_days={spec.company_news_lookback_days})` (fallback: `get_news`)."
             f"\n2) Pull macro/regime headlines using `get_global_news(curr_date=<current_date>, look_back_days={spec.global_news_lookback_days}, limit=10)`."
             "\n3) After you have data, write the final report **without** further tool calls."
+            "\n4) Prefer one batched tool-call response. If `get_news_data_bundle` is available, use it first."
+            "\n5) Allow at most one fallback tool round if data is missing/invalid."
             "\n\nReport requirements (to-the-point, trading oriented):"
             "\n- Company catalysts: summarize key storylines; map each to likely price impact direction and time window."
             "\n- Macro/regime: risk-on/off tone, rates/inflation themes, and how they could affect the ticker/sector."
@@ -64,17 +78,28 @@ def create_news_analyst(llm):
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
 
-        chain = prompt | llm.bind_tools(tools)
+        force_no_tools = (
+            state.get("force_no_tools_for") == "news"
+            or rounds_used >= tool_round_cap
+            or total_rounds_used >= global_tool_round_cap
+        )
+        chain = prompt | (
+            llm if force_no_tools else bind_tools_parallel_safe(llm, tools)
+        )
         result = chain.invoke(state["messages"])
+        tool_calls_count = len(getattr(result, "tool_calls", None) or [])
+        tooling_state = build_tooling_state_update(state, "news", tool_calls_count)
 
         report = ""
 
-        if len(result.tool_calls) == 0:
+        if tool_calls_count == 0:
             report = result.content
 
         return {
             "messages": [result],
             "news_report": report,
+            "force_no_tools_for": "",
+            **tooling_state,
         }
 
     return news_analyst_node

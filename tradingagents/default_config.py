@@ -63,9 +63,19 @@ DEFAULT_CONFIG = {
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
     "max_recur_limit": int(os.getenv("TRADINGAGENTS_MAX_RECUR_LIMIT", "100")),
+    # Hard cap for analyst tool rounds (LLM -> tools -> LLM loop control)
+    "analyst_tool_round_cap": int(os.getenv("TRADINGAGENTS_ANALYST_TOOL_ROUND_CAP", "2")),
     # Guardrails to prevent infinite analyst->tools loops (LangGraph recursion errors)
     "max_tool_calls_per_analyst": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_PER_ANALYST", "8")),
     "max_tool_calls_total": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_TOTAL", "50")),
+    # When true, expose bundled one-shot tools per analyst to reduce extra LLM turns.
+    "enable_bundle_tools": _env_flag("TRADINGAGENTS_ENABLE_BUNDLE_TOOLS", True),
+    # Decision integrity hardening
+    "decision_price_guard_enabled": _env_flag("TRADINGAGENTS_DECISION_PRICE_GUARD_ENABLED", True),
+    "decision_price_guard_band_pct": float(os.getenv("TRADINGAGENTS_DECISION_PRICE_GUARD_BAND_PCT", "30")),
+    "decision_price_guard_mode": os.getenv("TRADINGAGENTS_DECISION_PRICE_GUARD_MODE", "repair_then_abort"),
+    "decision_repair_max_attempts": int(os.getenv("TRADINGAGENTS_DECISION_REPAIR_MAX_ATTEMPTS", "1")),
+    "decision_snapshot_source": os.getenv("TRADINGAGENTS_DECISION_SNAPSHOT_SOURCE", "executor_quote_first"),
 
     # LLM burst/rate-limit mitigation for "manager" (deep-think) nodes.
     # These are particularly likely to hit HTTP 429 when the backend enforces RPM/TPM limits.

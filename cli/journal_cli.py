@@ -78,6 +78,20 @@ def status(
     active = store.get_active_theses()
     unacked_alerts = store.get_alerts(unacknowledged_only=True, limit=100)
     perf = store.get_performance_summary()
+    recent_decisions = store.get_action_decisions(limit=500)
+    recent_execs = store.get_action_executions(limit=500)
+    now = datetime.utcnow()
+    decisions_24h = [
+        d for d in recent_decisions
+        if _ts_within_hours(d.created_at, now=now, hours=24)
+    ]
+    execs_24h = [
+        e for e in recent_execs
+        if _ts_within_hours(e.created_at, now=now, hours=24)
+    ]
+    blocked_24h = sum(1 for d in decisions_24h if not d.gates_passed)
+    executed_24h = sum(1 for e in execs_24h if e.status in {"dry_run", "submitted"})
+    failed_24h = sum(1 for e in execs_24h if e.status in {"failed", "rejected"})
 
     # Status panel
     status_lines = [
@@ -85,6 +99,10 @@ def status(
         f"[bold]Active theses:[/bold] {len(active)}",
         f"[bold]Unacknowledged alerts:[/bold] {len(unacked_alerts)}",
         f"[bold]Total closed trades:[/bold] {perf.get('total_trades', 0)}",
+        f"[bold]Action decisions (24h):[/bold] {len(decisions_24h)}",
+        f"[bold]Blocked decisions (24h):[/bold] {blocked_24h}",
+        f"[bold]Executions (24h):[/bold] {executed_24h}",
+        f"[bold]Execution failures (24h):[/bold] {failed_24h}",
     ]
 
     if active:
@@ -229,6 +247,11 @@ def check_now(
             f"[bold]Alerts fired:[/bold] {summary['alerts_fired']}\n"
             f"[bold]Positions closed:[/bold] {summary['positions_closed']}\n"
             f"[bold]Outcomes recorded:[/bold] {summary.get('outcomes_recorded', 0)}\n"
+            f"[bold]Actions evaluated:[/bold] {summary.get('actions_evaluated', 0)}\n"
+            f"[bold]Actions recommended:[/bold] {summary.get('actions_recommended', 0)}\n"
+            f"[bold]Actions executed:[/bold] {summary.get('actions_executed', 0)}\n"
+            f"[bold]Actions blocked:[/bold] {summary.get('actions_blocked', 0)}\n"
+            f"[bold]Actions failed:[/bold] {summary.get('actions_failed', 0)}\n"
             f"[bold]Duration:[/bold] {summary.get('duration_seconds', 0):.1f}s\n"
             f"[bold]Market session:[/bold] {summary.get('market_session', 'unknown')}\n"
             + (
@@ -266,10 +289,13 @@ def daemon(
         alerts = summary.get("alerts_fired", 0)
         checked = summary.get("theses_checked", 0)
         session = summary.get("market_session", "?")
+        actions_exec = summary.get("actions_executed", 0)
+        actions_blocked = summary.get("actions_blocked", 0)
         alert_icon = f" 🚨 {alerts} alert(s)" if alerts > 0 else ""
+        action_suffix = f", actions={actions_exec}/{actions_blocked} (exec/blocked)"
         console.print(
             f"[dim]{ts}[/dim] tick: {checked} theses, "
-            f"session={session}{alert_icon}"
+            f"session={session}{alert_icon}{action_suffix}"
         )
 
     scheduler = JournalScheduler(
@@ -347,6 +373,84 @@ def outcomes(
     console.print(
         Panel(table, title="[bold]Trade Outcomes[/bold]", border_style="blue")
     )
+
+
+@journal_app.command()
+def decisions(
+    db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
+    ticker: Optional[str] = typer.Option(None, "--ticker", "-t", help="Filter by ticker"),
+    thesis_id: Optional[str] = typer.Option(None, "--thesis-id", help="Filter by thesis id"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
+):
+    """List journal action decisions."""
+    store = _get_store(db_path)
+    rows = store.get_action_decisions(thesis_id=thesis_id, ticker=ticker, limit=limit)
+    if not rows:
+        console.print("[dim]No action decisions found.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, expand=True)
+    table.add_column("Time", width=19)
+    table.add_column("Ticker", width=8, style="cyan")
+    table.add_column("Decision", width=20)
+    table.add_column("Reason", width=24)
+    table.add_column("Conf", width=6, justify="right")
+    table.add_column("Qty %", width=6, justify="right")
+    table.add_column("Gate", width=8)
+    table.add_column("Dry", width=5, justify="center")
+
+    for d in rows:
+        gate = "[green]pass[/green]" if d.gates_passed else "[red]block[/red]"
+        table.add_row(
+            (d.created_at or "")[:19],
+            d.ticker,
+            d.decision_type,
+            d.reason_code,
+            f"{d.confidence:.0f}",
+            f"{(d.recommended_qty_pct or 0):.2f}" if d.recommended_qty_pct is not None else "—",
+            gate,
+            "Y" if d.dry_run else "N",
+        )
+    console.print(Panel(table, title="[bold]Journal Action Decisions[/bold]", border_style="cyan"))
+
+
+@journal_app.command()
+def executions(
+    db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
+    ticker: Optional[str] = typer.Option(None, "--ticker", "-t", help="Filter by ticker"),
+    decision_id: Optional[str] = typer.Option(None, "--decision-id", help="Filter by decision id"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
+):
+    """List journal action executions."""
+    store = _get_store(db_path)
+    rows = store.get_action_executions(decision_id=decision_id, ticker=ticker, limit=limit)
+    if not rows:
+        console.print("[dim]No action executions found.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, expand=True)
+    table.add_column("Time", width=19)
+    table.add_column("Ticker", width=8, style="cyan")
+    table.add_column("Decision ID", width=12)
+    table.add_column("Signal", width=6)
+    table.add_column("Qty", width=8, justify="right")
+    table.add_column("Status", width=10)
+    table.add_column("Order ID", width=14)
+    table.add_column("Error", no_wrap=False)
+
+    for e in rows:
+        status_color = "green" if e.status in {"dry_run", "submitted"} else "red"
+        table.add_row(
+            (e.created_at or "")[:19],
+            e.ticker,
+            e.decision_id,
+            e.submitted_signal,
+            f"{e.submitted_qty:.2f}" if e.submitted_qty is not None else "—",
+            f"[{status_color}]{e.status}[/{status_color}]",
+            e.broker_order_id or "—",
+            (e.error or "")[:80],
+        )
+    console.print(Panel(table, title="[bold]Journal Action Executions[/bold]", border_style="cyan"))
 
 
 @journal_app.command()
@@ -746,3 +850,14 @@ def _display_alerts(alert_list, title="Alerts"):
         Panel(table, title=f"[bold]{title}[/bold]", border_style="magenta")
     )
 
+
+def _ts_within_hours(ts: Optional[str], *, now: datetime, hours: int) -> bool:
+    if not ts:
+        return False
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    return (now - dt).total_seconds() <= hours * 3600

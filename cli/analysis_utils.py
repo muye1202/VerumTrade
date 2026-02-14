@@ -17,6 +17,10 @@ from tradingagents.execution.execution_kwargs import executor_kwargs_from_struct
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.utils.llm.llm_metrics import (
+    snapshot_llm_api_calls,
+    diff_llm_api_calls,
+)
 
 # Injected from `cli/main.py` via `init_analysis_context`
 console = None
@@ -588,18 +592,42 @@ def run_single_ticker_analysis(
         execution_result = None
         execution_error: Optional[str] = None
         execution_portfolio_summary: Optional[dict] = None
+        llm_snapshot_before = snapshot_llm_api_calls()
         trace, final_state = process_analysis_stream(
             graph, init_agent_state, args,
             message_buffer, update_display, layout,
             selections["analysts"],
         )
+        llm_snapshot_after = snapshot_llm_api_calls()
 
         # Get final state and decision
         if final_state:
-            structured = graph.extract_structured_decision(
-                final_state["final_trade_decision"]
+            llm_metrics = diff_llm_api_calls(llm_snapshot_before, llm_snapshot_after)
+            rounds = final_state.get("tool_round_counts") or final_state.get("tool_call_counts") or {}
+            issued = final_state.get("tool_calls_issued_by_agent") or {}
+            llm_metrics.update(
+                {
+                    "analyst_tool_rounds_by_agent": dict(rounds),
+                    "analyst_tool_rounds_total": int(
+                        final_state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0
+                    ),
+                    "tool_calls_issued_by_agent": dict(issued),
+                    "tool_calls_issued_total": int(
+                        final_state.get("tool_calls_issued_total", sum(int(v or 0) for v in issued.values())) or 0
+                    ),
+                }
             )
-            decision = structured.get("action") or graph.process_signal(
+            final_state["llm_metrics"] = llm_metrics
+            graph._attach_canonical_decision(
+                final_state, expected_ticker=selections["ticker"]
+            )
+            graph._enforce_decision_guard(
+                final_state,
+                expected_ticker=selections["ticker"],
+                executor=executor,
+            )
+            structured = final_state.get("final_trade_decision_structured")
+            decision = (structured or {}).get("action") or graph.process_signal(
                 final_state["final_trade_decision"]
             )
 
@@ -610,16 +638,67 @@ def run_single_ticker_analysis(
                     console.print(Rule("[bold yellow]Executing Trade[/bold yellow]"))
                     console.print()
 
-                    # Execute the signal
-                    execution_result = executor.execute_signal(
-                        ticker=selections["ticker"],
-                        signal=decision,
-                        analysis_state=final_state,
-                        trade_date=selections["analysis_date"],
-                        agent_quantity=structured.get("quantity"),
-                        agent_limit_price=structured.get("limit_price"),
-                        **executor_kwargs_from_structured(structured),
-                    )
+                    if not isinstance(structured, dict):
+                        execution_result = {
+                            "ticker": selections["ticker"],
+                            "signal": decision,
+                            "trade_date": selections["analysis_date"],
+                            "executed": False,
+                            "error": "Structured decision missing or invalid; execution aborted",
+                            "decision_source": "final_trade_decision_structured",
+                            "decision_version": None,
+                            "decision_validation_ok": False,
+                            "decision_validation_error": (
+                                final_state.get("final_trade_decision_validation_error", "")
+                                or "structured decision unavailable"
+                            ),
+                            "decision_price_guard_error": (
+                                (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+                            ),
+                            "market_snapshot_reference_price": (
+                                (final_state.get("market_snapshot") or {}).get("reference_price")
+                            ),
+                            "market_snapshot_source": (
+                                (final_state.get("market_snapshot") or {}).get("source")
+                            ),
+                        }
+                    elif (final_state.get("decision_guard") or {}).get("price_guard_error"):
+                        execution_result = {
+                            "ticker": selections["ticker"],
+                            "signal": decision,
+                            "trade_date": selections["analysis_date"],
+                            "executed": False,
+                            "error": "Decision failed price guard; execution aborted",
+                            "decision_source": "final_trade_decision_structured",
+                            "decision_version": (
+                                (final_state.get("final_trade_decision_structured") or {}).get("decision_version")
+                            ),
+                            "decision_validation_ok": False,
+                            "decision_validation_error": (
+                                final_state.get("final_trade_decision_validation_error", "")
+                                or "decision failed price guard"
+                            ),
+                            "decision_price_guard_error": (
+                                (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+                            ),
+                            "market_snapshot_reference_price": (
+                                (final_state.get("market_snapshot") or {}).get("reference_price")
+                            ),
+                            "market_snapshot_source": (
+                                (final_state.get("market_snapshot") or {}).get("source")
+                            ),
+                        }
+                    else:
+                        # Execute the signal
+                        execution_result = executor.execute_signal(
+                            ticker=selections["ticker"],
+                            signal=decision,
+                            analysis_state=final_state,
+                            trade_date=selections["analysis_date"],
+                            agent_quantity=structured.get("quantity"),
+                            agent_limit_price=structured.get("limit_price"),
+                            **executor_kwargs_from_structured(structured),
+                        )
 
                     # Display execution results
                     if execution_result.get("executed"):
@@ -760,6 +839,22 @@ def run_single_ticker_analysis(
                     exec_lines.append(f"- Price: `{execution_result.get('price')}`")
                 if execution_result.get("requested_limit_price") is not None:
                     exec_lines.append(f"- Requested limit: `{execution_result.get('requested_limit_price')}`")
+                if execution_result.get("decision_source"):
+                    exec_lines.append(f"- Decision source: `{execution_result.get('decision_source')}`")
+                if execution_result.get("decision_validation_ok") is not None:
+                    exec_lines.append(f"- Decision validation ok: `{execution_result.get('decision_validation_ok')}`")
+                if execution_result.get("decision_validation_error"):
+                    exec_lines.append(f"- Decision validation error: `{execution_result.get('decision_validation_error')}`")
+                if execution_result.get("decision_price_guard_error"):
+                    exec_lines.append(f"- Decision price guard error: `{execution_result.get('decision_price_guard_error')}`")
+                if execution_result.get("market_snapshot_reference_price") is not None:
+                    exec_lines.append(
+                        f"- Snapshot reference price: `{execution_result.get('market_snapshot_reference_price')}`"
+                    )
+                if execution_result.get("market_snapshot_source"):
+                    exec_lines.append(
+                        f"- Snapshot source: `{execution_result.get('market_snapshot_source')}`"
+                    )
 
                 quote = execution_result.get("quote") or {}
                 if quote.get("bid_price") is not None or quote.get("ask_price") is not None:
@@ -791,7 +886,16 @@ def run_single_ticker_analysis(
             update_display(layout)
 
         final_state = trace[-1]
-        decision = graph.process_signal(final_state["final_trade_decision"])
+        graph._attach_canonical_decision(final_state, expected_ticker=selections["ticker"])
+        graph._enforce_decision_guard(
+            final_state,
+            expected_ticker=selections["ticker"],
+            executor=executor,
+        )
+        decision = (
+            (final_state.get("final_trade_decision_structured") or {}).get("action")
+            or graph.process_signal(final_state["final_trade_decision"])
+        )
 
         # Update all agent statuses to completed
         for agent in message_buffer.agent_status:
@@ -806,6 +910,26 @@ def run_single_ticker_analysis(
             if section in final_state:
                 message_buffer.update_report_section(section, final_state[section])
 
+        # Append canonical structured decision payload for traceability.
+        try:
+            structured_for_report = final_state.get("final_trade_decision_structured")
+            if isinstance(structured_for_report, dict):
+                decision_path = report_dir / "final_trade_decision.md"
+                if decision_path.exists():
+                    with open(decision_path, "a", encoding="utf-8") as f:
+                        f.write("\n\n## Canonical Decision JSON\n\n```json\n")
+                        f.write(
+                            json.dumps(
+                                structured_for_report,
+                                indent=2,
+                                ensure_ascii=False,
+                                default=str,
+                            )
+                        )
+                        f.write("\n```\n")
+        except Exception:
+            pass
+
         # Persist a single consolidated report + final state snapshot for later review.
         final_report_path = report_dir / "final_report.md"
         if message_buffer.final_report:
@@ -817,8 +941,14 @@ def run_single_ticker_analysis(
             run_finished_at = datetime.datetime.now()
             elapsed_s = (run_finished_at - run_started_at).total_seconds()
 
-            tool_calls_count = len(message_buffer.tool_calls)
-            llm_calls_count = sum(
+            llm_metrics = (final_state or {}).get("llm_metrics", {}) if final_state else {}
+            tool_calls_count = int(
+                llm_metrics.get("tool_calls_issued_total", len(message_buffer.tool_calls))
+            )
+            llm_calls_exact = int(
+                llm_metrics.get("llm_api_calls_total", 0)
+            )
+            llm_calls_heuristic = sum(
                 1 for _, msg_type, _ in message_buffer.messages if msg_type == "Reasoning"
             )
             reports_count = sum(
@@ -877,6 +1007,20 @@ def run_single_ticker_analysis(
                     spec = execution_result.get("order_spec") or {}
                     if isinstance(spec, dict) and spec.get("order_type"):
                         lines.append(f"- Requested order type: `{spec.get('order_type')}`")
+                    if execution_result.get("decision_source"):
+                        lines.append(f"- Decision source: `{execution_result.get('decision_source')}`")
+                    if execution_result.get("decision_version") is not None:
+                        lines.append(f"- Decision version: `{execution_result.get('decision_version')}`")
+                    if execution_result.get("decision_validation_ok") is not None:
+                        lines.append(f"- Decision validation ok: `{execution_result.get('decision_validation_ok')}`")
+                    if execution_result.get("decision_validation_error"):
+                        lines.append(f"- Decision validation error: `{execution_result.get('decision_validation_error')}`")
+                    if execution_result.get("decision_price_guard_error"):
+                        lines.append(f"- Decision price guard error: `{execution_result.get('decision_price_guard_error')}`")
+                    if execution_result.get("market_snapshot_reference_price") is not None:
+                        lines.append(f"- Snapshot reference price: `{execution_result.get('market_snapshot_reference_price')}`")
+                    if execution_result.get("market_snapshot_source"):
+                        lines.append(f"- Snapshot source: `{execution_result.get('market_snapshot_source')}`")
 
                     quote = execution_result.get("quote") or {}
                     if quote:
@@ -918,8 +1062,25 @@ def run_single_ticker_analysis(
             lines.append(f"- Duration (s): `{elapsed_s:.2f}`")
             lines.append(f"- Stream chunks: `{len(trace)}`")
             lines.append(f"- Tool calls: `{tool_calls_count}`")
-            lines.append(f"- LLM calls: `{llm_calls_count}`")
+            lines.append(f"- LLM calls (exact API): `{llm_calls_exact}`")
+            lines.append(f"- LLM calls (heuristic debug): `{llm_calls_heuristic}`")
+            by_model = llm_metrics.get("llm_api_calls_by_model") or {}
+            if by_model:
+                lines.append(f"- LLM calls by model: `{by_model}`")
             lines.append(f"- Reports generated: `{reports_count}`")
+            guard = (final_state or {}).get("decision_guard", {}) if final_state else {}
+            snapshot = (final_state or {}).get("market_snapshot", {}) if final_state else {}
+            if guard:
+                lines.append(f"- Decision guard validation ok: `{guard.get('validation_ok')}`")
+                lines.append(f"- Decision guard repair attempted: `{guard.get('repair_attempted')}`")
+                lines.append(f"- Decision guard repair success: `{guard.get('repair_success')}`")
+                if guard.get("violations"):
+                    lines.append(f"- Decision guard violations: `{guard.get('violations')}`")
+                if guard.get("abort_reason"):
+                    lines.append(f"- Decision guard abort reason: `{guard.get('abort_reason')}`")
+            if snapshot:
+                lines.append(f"- Market snapshot source: `{snapshot.get('source')}`")
+                lines.append(f"- Market snapshot ref: `{snapshot.get('reference_price')}`")
             lines.append("")
 
             execution_report_path = report_dir / "execution_report.md"

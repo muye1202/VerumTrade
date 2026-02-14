@@ -39,7 +39,7 @@ except Exception as e:  # pragma: no cover
     _ALPACA_IMPORT_ERROR = e
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, Literal, Mapping
+from typing import Dict, Any, Optional, Literal
 import os
 import logging
 from pathlib import Path
@@ -124,120 +124,6 @@ def _parse_floatish(value: Any) -> Optional[float]:
         return float(m.group(1).replace(",", ""))
     except Exception:
         return None
-
-
-def _parse_structured_decision_text(text: Optional[str]) -> Dict[str, Any]:
-    """
-    Best-effort parser for FINAL TRADING DECISION / FINAL TRANSACTION PROPOSAL blocks.
-
-    Used by executor as a fallback when `analysis_state["structured_decision"]` is
-    missing, so execution can still consume stop/target and sizing hints.
-    """
-    if not text:
-        return {}
-
-    patterns = [
-        r"(?:^|\n)\s*(?:#+\s*)?FINAL TRADING DECISION\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
-        r"(?:^|\n)\s*(?:#+\s*)?FINAL TRANSACTION PROPOSAL\s*:?\s*\n(.*?)(?:(?:\n\s*---\s*\n)|(?:\n\s*#{1,6}\s+)|\Z)",
-    ]
-
-    block = None
-    for pattern in patterns:
-        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        if match:
-            block = match.group(1)
-            break
-
-    if not block:
-        return {}
-
-    field_map = {
-        "ACTION": "action",
-        "TICKER": "ticker",
-        "QUANTITY": "quantity",
-        "ORDER_TYPE": "order_type",
-        "TIME_IN_FORCE": "time_in_force",
-        "EXTENDED_HOURS": "extended_hours",
-        "LIMIT_PRICE": "limit_price",
-        "STOP_PRICE": "stop_price",
-        "TRAIL_PERCENT": "trail_percent",
-        "TRAIL_PRICE": "trail_price",
-        "STOP_LOSS": "stop_loss",
-        "TAKE_PROFIT": "take_profit",
-        "POSITION_SIZE_PCT": "position_size_pct",
-    }
-
-    out: Dict[str, Any] = {}
-    for field_key, result_key in field_map.items():
-        m = re.search(
-            rf"^\s*-\s*{field_key}\s*:\s*(.+?)\s*$",
-            block,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        if not m:
-            continue
-
-        value: Any = m.group(1).strip().strip("*").strip()
-        if str(value).upper() in {"N/A", "NA", "NONE", "-"}:
-            value = None
-
-        if result_key == "quantity":
-            if value is None:
-                out[result_key] = None
-                continue
-            nums = re.findall(r"(\d+)", str(value))
-            out[result_key] = int(nums[-1]) if nums else None
-            continue
-
-        if result_key in {
-            "limit_price",
-            "stop_price",
-            "trail_percent",
-            "trail_price",
-            "stop_loss",
-            "take_profit",
-            "position_size_pct",
-        }:
-            out[result_key] = _parse_floatish(value)
-            continue
-
-        if result_key == "action":
-            if value is None:
-                out[result_key] = None
-                continue
-            v = str(value).upper()
-            if "BUY" in v:
-                out[result_key] = "BUY"
-            elif "SELL" in v:
-                out[result_key] = "SELL"
-            else:
-                out[result_key] = "HOLD"
-            continue
-
-        if result_key == "order_type":
-            out[result_key] = _normalize_order_type(value) if value is not None else None
-            continue
-
-        if result_key == "time_in_force":
-            out[result_key] = _normalize_time_in_force(value) if value is not None else None
-            continue
-
-        if result_key == "extended_hours":
-            if value is None:
-                out[result_key] = None
-            else:
-                v = str(value).strip().lower()
-                if v in {"true", "t", "yes", "y", "1"}:
-                    out[result_key] = True
-                elif v in {"false", "f", "no", "n", "0"}:
-                    out[result_key] = False
-                else:
-                    out[result_key] = None
-            continue
-
-        out[result_key] = value
-
-    return out
 
 
 def normalize_order_inputs(
@@ -659,48 +545,19 @@ class AlpacaExecutor:
 
         self.logger.info(f"Processing signal for {ticker}: {signal}")
 
-        # Backfill missing agent params from analysis_state when callers only provide final text.
-        structured: Dict[str, Any] = {}
+        decision_version = None
+        decision_validation_ok = False
+        decision_validation_error = ""
         if isinstance(analysis_state, dict):
-            raw_structured = analysis_state.get("structured_decision")
-            if isinstance(raw_structured, Mapping):
-                structured.update(raw_structured)
-
-            parsed_text = _parse_structured_decision_text(
-                analysis_state.get("final_trade_decision")
+            sd = analysis_state.get("final_trade_decision_structured")
+            if isinstance(sd, dict):
+                decision_version = sd.get("decision_version")
+                decision_validation_ok = bool(sd) and not bool(
+                    analysis_state.get("final_trade_decision_validation_error")
+                )
+            decision_validation_error = str(
+                analysis_state.get("final_trade_decision_validation_error", "") or ""
             )
-            for k, v in parsed_text.items():
-                if k not in structured or structured.get(k) is None:
-                    structured[k] = v
-
-        if agent_quantity is None:
-            q = structured.get("quantity")
-            try:
-                agent_quantity = int(q) if q is not None else None
-            except Exception:
-                agent_quantity = None
-        if agent_limit_price is None:
-            agent_limit_price = _parse_floatish(structured.get("limit_price"))
-        if agent_order_type is None:
-            agent_order_type = structured.get("order_type")
-        if agent_time_in_force is None:
-            agent_time_in_force = structured.get("time_in_force")
-        if agent_extended_hours is None:
-            eh = structured.get("extended_hours")
-            if isinstance(eh, bool):
-                agent_extended_hours = eh
-        if agent_stop_price is None:
-            agent_stop_price = _parse_floatish(structured.get("stop_price"))
-        if agent_trail_percent is None:
-            agent_trail_percent = _parse_floatish(structured.get("trail_percent"))
-        if agent_trail_price is None:
-            agent_trail_price = _parse_floatish(structured.get("trail_price"))
-        if agent_position_size_pct is None:
-            agent_position_size_pct = _parse_floatish(structured.get("position_size_pct"))
-        if agent_stop_loss is None:
-            agent_stop_loss = _parse_floatish(structured.get("stop_loss"))
-        if agent_take_profit is None:
-            agent_take_profit = _parse_floatish(structured.get("take_profit"))
 
         # Get current position and account info
         current_position = self._get_position(ticker)
@@ -713,7 +570,11 @@ class AlpacaExecutor:
             "timestamp": datetime.now().isoformat(),
             "executed": False,
             "order": None,
-            "error": None
+            "error": None,
+            "decision_source": "final_trade_decision_structured",
+            "decision_version": decision_version,
+            "decision_validation_ok": decision_validation_ok,
+            "decision_validation_error": decision_validation_error,
         }
 
         try:

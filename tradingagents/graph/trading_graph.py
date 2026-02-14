@@ -2,8 +2,10 @@
 
 import os
 import inspect
+import re
 from pathlib import Path
 import json
+from datetime import datetime
 from contextlib import nullcontext
 from typing import Dict, Any, Tuple, List, Optional
 import asyncio
@@ -20,6 +22,11 @@ from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory.memory import FinancialSituationMemory
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
+from tradingagents.execution.decision_guard import (
+    attempt_repair_canonical_decision,
+    build_market_snapshot,
+    validate_decision_prices,
+)
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
@@ -53,6 +60,12 @@ from tradingagents.agents.utils.market_data.short_interest_tools import (
     get_short_interest_data,
     get_squeeze_candidates_assessment,
 )
+from tradingagents.agents.utils.market_data.bundle_tools import (
+    get_market_data_bundle,
+    get_news_data_bundle,
+    get_fundamentals_data_bundle,
+    get_sentiment_data_bundle,
+)
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -62,6 +75,11 @@ from .signal_processing import SignalProcessor
 from .openai_compat import sanitize_openai_compatible_response_dict
 from .glm_compat import sanitize_glm_chat_completion_response_dict
 from tradingagents.agents.utils.llm.llm_concurrency import llm_inflight_slot
+from tradingagents.agents.utils.llm.llm_metrics import (
+    attach_llm_metrics_handler,
+    snapshot_llm_api_calls,
+    diff_llm_api_calls,
+)
 
 class StreamCompatibleChatOpenAI(ChatOpenAI):
     """Handle OpenAI SDK Stream responses by aggregating them into a single ChatCompletion-like dict."""
@@ -435,6 +453,10 @@ class TradingAgentsGraph:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config['llm_provider']}")
 
+        # Attach global LLM-call instrumentation handlers.
+        attach_llm_metrics_handler(self.deep_thinking_llm)
+        attach_llm_metrics_handler(self.quick_thinking_llm)
+
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
@@ -449,7 +471,10 @@ class TradingAgentsGraph:
         self.conditional_logic = ConditionalLogic(
             max_debate_rounds=self.config.get("max_debate_rounds", 1),
             max_risk_discuss_rounds=self.config.get("max_risk_discuss_rounds", 1),
-            max_tool_calls_per_analyst=self.config.get("max_tool_calls_per_analyst", 8),
+            max_tool_calls_per_analyst=self.config.get(
+                "analyst_tool_round_cap",
+                self.config.get("max_tool_calls_per_analyst", 2),
+            ),
             max_tool_calls_total=self.config.get("max_tool_calls_total", 50),
         )
         self.graph_setup = GraphSetup(
@@ -478,65 +503,301 @@ class TradingAgentsGraph:
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
 
+    @staticmethod
+    def _build_run_metrics(before_snapshot: Dict[str, Any], after_snapshot: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
+        metrics = diff_llm_api_calls(before_snapshot, after_snapshot)
+        rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
+        issued = state.get("tool_calls_issued_by_agent") or {}
+        metrics.update(
+            {
+                "analyst_tool_rounds_by_agent": dict(rounds),
+                "analyst_tool_rounds_total": int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0),
+                "tool_calls_issued_by_agent": dict(issued),
+                "tool_calls_issued_total": int(state.get("tool_calls_issued_total", sum(int(v or 0) for v in issued.values())) or 0),
+            }
+        )
+        return metrics
+
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create tool nodes for different data sources using abstract methods."""
+        enable_bundle_tools = bool(self.config.get("enable_bundle_tools", True))
+
+        market_tools = [
+            # Core stock data tools
+            get_stock_data,
+            # Technical indicators
+            get_indicators,
+            # Short-term price action/risk metrics
+            get_price_action_summary,
+            # VWAP positioning (Alpaca free)
+            get_intraday_vwap_position,
+            get_multi_day_vwap_context,
+            # Options flow (Yahoo free)
+            get_unusual_options_activity,
+            get_options_sentiment_summary,
+            # Dark pool / off-exchange (FINRA free)
+            get_dark_pool_short_volume,
+            get_off_exchange_volume_context,
+            # Short interest (Yahoo + FINRA free)
+            get_short_interest_data,
+            get_squeeze_candidates_assessment,
+        ]
+        social_tools = [
+            # News tools for social media analysis
+            get_news,
+            get_company_news_window,
+        ]
+        news_tools = [
+            # News and insider information
+            get_news,
+            get_company_news_window,
+            get_global_news,
+            get_insider_sentiment,
+            get_insider_transactions,
+        ]
+        fundamentals_tools = [
+            # Fundamental analysis tools
+            get_fundamentals,
+            get_balance_sheet,
+            get_cashflow,
+            get_income_statement,
+            # Insider activity (fundamental catalyst context)
+            get_insider_sentiment,
+            get_insider_transactions,
+        ]
+
+        if enable_bundle_tools:
+            market_tools = [get_market_data_bundle, *market_tools]
+            social_tools = [get_sentiment_data_bundle, *social_tools]
+            news_tools = [get_news_data_bundle, *news_tools]
+            fundamentals_tools = [get_fundamentals_data_bundle, *fundamentals_tools]
+
         return {
-            "market": ToolNode(
-                [
-                    # Core stock data tools
-                    get_stock_data,
-                    # Technical indicators
-                    get_indicators,
-                    # Short-term price action/risk metrics
-                    get_price_action_summary,
-                    # VWAP positioning (Alpaca free)
-                    get_intraday_vwap_position,
-                    get_multi_day_vwap_context,
-                    # Options flow (Yahoo free)
-                    get_unusual_options_activity,
-                    get_options_sentiment_summary,
-                    # Dark pool / off-exchange (FINRA free)
-                    get_dark_pool_short_volume,
-                    get_off_exchange_volume_context,
-                    # Short interest (Yahoo + FINRA free)
-                    get_short_interest_data,
-                    get_squeeze_candidates_assessment,
-                ]
-            ),
-            "social": ToolNode(
-                [
-                    # News tools for social media analysis
-                    get_news,
-                    get_company_news_window,
-                ]
-            ),
-            "news": ToolNode(
-                [
-                    # News and insider information
-                    get_news,
-                    get_company_news_window,
-                    get_global_news,
-                    get_insider_sentiment,
-                    get_insider_transactions,
-                ]
-            ),
-            "fundamentals": ToolNode(
-                [
-                    # Fundamental analysis tools
-                    get_fundamentals,
-                    get_balance_sheet,
-                    get_cashflow,
-                    get_income_statement,
-                    # Insider activity (fundamental catalyst context)
-                    get_insider_sentiment,
-                    get_insider_transactions,
-                ]
-            ),
+            "market": ToolNode(market_tools),
+            "social": ToolNode(social_tools),
+            "news": ToolNode(news_tools),
+            "fundamentals": ToolNode(fundamentals_tools),
         }
 
     def extract_structured_decision(self, full_signal: str) -> dict:
         """Extract structured trading decision from signal text."""
         return self.signal_processor.extract_structured_decision(full_signal)
+
+    @staticmethod
+    def _merge_repaired_decision_text(existing_text: str, repaired_text: str) -> str:
+        """
+        Keep narrative text but ensure only one canonical decision block remains.
+        If repair output contains a canonical block, replace prior blocks with it.
+        """
+        if not repaired_text:
+            return str(existing_text or "")
+
+        pattern = r"BEGIN_DECISION_JSON\s*\{.*?\}\s*END_DECISION_JSON"
+        repaired_matches = list(
+            re.finditer(pattern, str(repaired_text), flags=re.DOTALL | re.IGNORECASE)
+        )
+        if not repaired_matches:
+            base = str(existing_text or "").strip()
+            extra = str(repaired_text).strip()
+            return f"{base}\n\n{extra}".strip()
+
+        latest_block = repaired_matches[-1].group(0).strip()
+        base = re.sub(
+            pattern,
+            "",
+            str(existing_text or ""),
+            flags=re.DOTALL | re.IGNORECASE,
+        ).strip()
+        return f"{base}\n\n{latest_block}".strip() if base else latest_block
+
+    def _attach_canonical_decision(
+        self,
+        final_state: Dict[str, Any],
+        *,
+        expected_ticker: Optional[str],
+    ) -> Dict[str, Any]:
+        market_snapshot = final_state.get("market_snapshot") or build_market_snapshot(
+            symbol=expected_ticker or final_state.get("company_of_interest", ""),
+            market_report=final_state.get("market_report", ""),
+            quote=None,
+            structured_decision=None,
+            snapshot_source=self.config.get("decision_snapshot_source", "executor_quote_first"),
+        )
+        final_state["market_snapshot"] = market_snapshot
+        structured, err = self.signal_processor.extract_canonical_decision(
+            final_state.get("final_trade_decision", ""),
+            expected_ticker=expected_ticker,
+        )
+        repair_attempted = False
+        repair_success = False
+        if (
+            not isinstance(structured, dict)
+            and int(self.config.get("decision_repair_max_attempts", 1) or 1) > 0
+        ):
+            repair_attempted = True
+            repaired, repair_err, repaired_text = attempt_repair_canonical_decision(
+                llm=self.quick_thinking_llm,
+                decision_text=final_state.get("final_trade_decision", ""),
+                expected_ticker=expected_ticker or final_state.get("company_of_interest", ""),
+                market_snapshot=market_snapshot,
+                validation_error=err or "",
+                price_violations=[],
+            )
+            if isinstance(repaired, dict):
+                structured = repaired
+                err = ""
+                repair_success = True
+                if repaired_text:
+                    final_state["final_trade_decision"] = self._merge_repaired_decision_text(
+                        final_state.get("final_trade_decision", ""),
+                        repaired_text,
+                    )
+            elif repair_err:
+                err = f"{err or ''}; {repair_err}".strip("; ").strip()
+
+        final_state["final_trade_decision_structured"] = structured
+        final_state["final_trade_decision_validation_error"] = err or ""
+        final_state["decision_guard"] = {
+            "validation_ok": isinstance(structured, dict) and not bool(err),
+            "violations": [] if not err else [err],
+            "repair_attempted": repair_attempted,
+            "repair_success": repair_success,
+            "abort_reason": "",
+        }
+        return final_state
+
+    def _enforce_decision_guard(
+        self,
+        final_state: Dict[str, Any],
+        *,
+        expected_ticker: str,
+        executor: Optional[AlpacaExecutor] = None,
+    ) -> Dict[str, Any]:
+        guard = dict(final_state.get("decision_guard") or {})
+        structured = final_state.get("final_trade_decision_structured")
+        validation_error = final_state.get("final_trade_decision_validation_error", "")
+
+        quote = None
+        if (
+            executor is not None
+            and str(self.config.get("decision_snapshot_source", "executor_quote_first")).strip().lower()
+            == "executor_quote_first"
+        ):
+            try:
+                quote = executor._get_latest_quote(expected_ticker)  # noqa: SLF001
+            except Exception:
+                quote = None
+
+        market_snapshot = build_market_snapshot(
+            symbol=expected_ticker,
+            market_report=final_state.get("market_report", ""),
+            quote=quote,
+            structured_decision=structured if isinstance(structured, dict) else None,
+            snapshot_source=self.config.get("decision_snapshot_source", "executor_quote_first"),
+        )
+        final_state["market_snapshot"] = market_snapshot
+
+        violations: List[str] = []
+        price_guard_error = ""
+        repair_attempted = bool(guard.get("repair_attempted"))
+        repair_success = bool(guard.get("repair_success"))
+
+        if isinstance(structured, dict) and bool(self.config.get("decision_price_guard_enabled", True)):
+            band_pct = float(self.config.get("decision_price_guard_band_pct", 30) or 30)
+            violations = validate_decision_prices(
+                decision=structured,
+                market_snapshot=market_snapshot,
+                band_pct=band_pct,
+            )
+            if violations:
+                price_guard_error = f"price_guard_violations: {violations}"
+
+        should_repair = (
+            int(self.config.get("decision_repair_max_attempts", 1) or 1) > 0
+            and (
+                not isinstance(structured, dict)
+                or bool(validation_error)
+                or bool(violations)
+            )
+            and str(self.config.get("decision_price_guard_mode", "repair_then_abort")).strip().lower()
+            == "repair_then_abort"
+        )
+
+        if should_repair:
+            repair_attempted = True
+            repaired, repair_err, repaired_text = attempt_repair_canonical_decision(
+                llm=self.quick_thinking_llm,
+                decision_text=final_state.get("final_trade_decision", ""),
+                expected_ticker=expected_ticker,
+                market_snapshot=market_snapshot,
+                validation_error=validation_error or price_guard_error,
+                price_violations=violations,
+            )
+            if isinstance(repaired, dict):
+                structured = repaired
+                validation_error = ""
+                repair_success = True
+                if repaired_text:
+                    final_state["final_trade_decision"] = self._merge_repaired_decision_text(
+                        final_state.get("final_trade_decision", ""),
+                        repaired_text,
+                    )
+                if bool(self.config.get("decision_price_guard_enabled", True)):
+                    violations = validate_decision_prices(
+                        decision=structured,
+                        market_snapshot=market_snapshot,
+                        band_pct=float(self.config.get("decision_price_guard_band_pct", 30) or 30),
+                    )
+                    price_guard_error = (
+                        f"price_guard_violations: {violations}" if violations else ""
+                    )
+            elif repair_err:
+                if validation_error:
+                    validation_error = f"{validation_error}; {repair_err}"
+                else:
+                    validation_error = repair_err
+
+        final_state["final_trade_decision_structured"] = structured
+        final_state["final_trade_decision_validation_error"] = validation_error or ""
+        guard.update(
+            {
+                "validation_ok": isinstance(structured, dict) and not validation_error and not violations,
+                "violations": list(violations),
+                "repair_attempted": repair_attempted,
+                "repair_success": repair_success,
+                "abort_reason": "",
+                "price_guard_error": price_guard_error,
+            }
+        )
+        final_state["decision_guard"] = guard
+        return final_state
+
+    @staticmethod
+    def _execution_abort_result(
+        ticker: str,
+        signal: str,
+        trade_date: str,
+        validation_error: str,
+        *,
+        price_guard_error: str = "",
+        market_snapshot: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "ticker": ticker,
+            "signal": signal,
+            "trade_date": trade_date,
+            "timestamp": datetime.now().isoformat(),
+            "executed": False,
+            "order": None,
+            "error": "Structured decision missing or invalid; execution aborted",
+            "decision_source": "final_trade_decision_structured",
+            "decision_version": None,
+            "decision_validation_ok": False,
+            "decision_validation_error": validation_error or "structured decision unavailable",
+            "decision_price_guard_error": price_guard_error or "",
+            "market_snapshot_reference_price": (market_snapshot or {}).get("reference_price"),
+            "market_snapshot_source": (market_snapshot or {}).get("source"),
+        }
 
     def propagate_and_execute(
         self,
@@ -563,9 +824,49 @@ class TradingAgentsGraph:
             if not executor:
                 raise ValueError("Executor required when execute=True")
 
-            structured = self.extract_structured_decision(
-                final_state.get("final_trade_decision", "")
+            self._enforce_decision_guard(
+                final_state, expected_ticker=company_name, executor=executor
             )
+            structured = final_state.get("final_trade_decision_structured")
+            validation_error = final_state.get("final_trade_decision_validation_error", "")
+            price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+            if not isinstance(structured, dict):
+                decision = self.process_signal(final_state.get("final_trade_decision", ""))
+                final_state["decision_guard"] = {
+                    **(final_state.get("decision_guard") or {}),
+                    "abort_reason": "invalid_or_missing_structured_decision",
+                }
+                return (
+                    final_state,
+                    decision,
+                    self._execution_abort_result(
+                        company_name,
+                        decision,
+                        trade_date,
+                        validation_error or "Structured decision missing.",
+                        price_guard_error=price_guard_error,
+                        market_snapshot=final_state.get("market_snapshot") or {},
+                    ),
+                )
+            if price_guard_error:
+                decision = structured.get("action") or decision
+                final_state["decision_guard"] = {
+                    **(final_state.get("decision_guard") or {}),
+                    "abort_reason": "price_guard_violation_after_repair",
+                }
+                return (
+                    final_state,
+                    decision,
+                    self._execution_abort_result(
+                        company_name,
+                        decision,
+                        trade_date,
+                        validation_error or "Decision failed price guard.",
+                        price_guard_error=price_guard_error,
+                        market_snapshot=final_state.get("market_snapshot") or {},
+                    ),
+                )
+            decision = structured.get("action") or decision
 
             execution_result = executor.execute_signal(
                 ticker=company_name,
@@ -608,9 +909,49 @@ class TradingAgentsGraph:
             if not executor:
                 raise ValueError("Executor required when execute=True")
 
-            structured = self.extract_structured_decision(
-                final_state.get("final_trade_decision", "")
+            self._enforce_decision_guard(
+                final_state, expected_ticker=company_name, executor=executor
             )
+            structured = final_state.get("final_trade_decision_structured")
+            validation_error = final_state.get("final_trade_decision_validation_error", "")
+            price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+            if not isinstance(structured, dict):
+                decision = self.process_signal(final_state.get("final_trade_decision", ""))
+                final_state["decision_guard"] = {
+                    **(final_state.get("decision_guard") or {}),
+                    "abort_reason": "invalid_or_missing_structured_decision",
+                }
+                return (
+                    final_state,
+                    decision,
+                    self._execution_abort_result(
+                        company_name,
+                        decision,
+                        trade_date,
+                        validation_error or "Structured decision missing.",
+                        price_guard_error=price_guard_error,
+                        market_snapshot=final_state.get("market_snapshot") or {},
+                    ),
+                )
+            if price_guard_error:
+                decision = structured.get("action") or decision
+                final_state["decision_guard"] = {
+                    **(final_state.get("decision_guard") or {}),
+                    "abort_reason": "price_guard_violation_after_repair",
+                }
+                return (
+                    final_state,
+                    decision,
+                    self._execution_abort_result(
+                        company_name,
+                        decision,
+                        trade_date,
+                        validation_error or "Decision failed price guard.",
+                        price_guard_error=price_guard_error,
+                        market_snapshot=final_state.get("market_snapshot") or {},
+                    ),
+                )
+            decision = structured.get("action") or decision
 
             # executor.execute_signal is currently sync.
             # If we want to make it async later, we'd await it.
@@ -660,6 +1001,7 @@ class TradingAgentsGraph:
         )
 
         args = self.propagator.get_graph_args()
+        llm_snapshot_before = snapshot_llm_api_calls()
 
         if self.debug:
             # Debug mode with tracing
@@ -676,17 +1018,21 @@ class TradingAgentsGraph:
             # Standard mode without tracing
             final_state = await self.graph.ainvoke(init_agent_state, **args)
 
+        llm_snapshot_after = snapshot_llm_api_calls()
+        final_state["llm_metrics"] = self._build_run_metrics(
+            llm_snapshot_before, llm_snapshot_after, final_state
+        )
+        self._attach_canonical_decision(final_state, expected_ticker=company_name)
+
         # Store current state for reflection
         self.curr_state = final_state
 
         # Log state
         self._log_state(trade_date, final_state)
 
-        # Prefer structured action if present; otherwise fall back to fast LLM extraction.
-        structured = self.extract_structured_decision(
-            final_state.get("final_trade_decision", "")
-        )
-        decision = structured.get("action") or self.process_signal(
+        # Prefer canonical structured action if present; otherwise fall back to fast LLM extraction.
+        structured = final_state.get("final_trade_decision_structured")
+        decision = (structured or {}).get("action") or self.process_signal(
             final_state.get("final_trade_decision", "")
         )
 
@@ -751,6 +1097,16 @@ class TradingAgentsGraph:
             },
             "investment_plan": final_state["investment_plan"],
             "final_trade_decision": final_state["final_trade_decision"],
+            "final_trade_decision_structured": final_state.get("final_trade_decision_structured"),
+            "final_trade_decision_validation_error": final_state.get("final_trade_decision_validation_error", ""),
+            "market_snapshot": final_state.get("market_snapshot", {}),
+            "decision_guard": final_state.get("decision_guard", {}),
+            "tool_round_counts": final_state.get("tool_round_counts", {}),
+            "tool_call_counts": final_state.get("tool_call_counts", {}),
+            "tool_call_total": final_state.get("tool_call_total", 0),
+            "tool_calls_issued_by_agent": final_state.get("tool_calls_issued_by_agent", {}),
+            "tool_calls_issued_total": final_state.get("tool_calls_issued_total", 0),
+            "llm_metrics": final_state.get("llm_metrics", {}),
         }
 
         # Save to file

@@ -11,7 +11,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -21,8 +21,11 @@ from tradingagents.agents.journal.models import (
     JournalAlert,
     TradeOutcome,
     TradeLesson,
+    JournalActionDecision,
+    JournalActionExecution,
     ThesisStatus,
     AlertType,
+    ActionReasonCode,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Default location next to execution logs
 DEFAULT_DB_PATH = Path("./journal/trade_journal.db")
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 class JournalStore:
@@ -227,6 +230,58 @@ class JournalStore:
                 CREATE INDEX IF NOT EXISTS idx_lessons_thesis ON trade_lessons(thesis_id);
                 CREATE INDEX IF NOT EXISTS idx_lessons_ticker ON trade_lessons(ticker);
                 CREATE INDEX IF NOT EXISTS idx_lessons_category ON trade_lessons(category);
+
+                CREATE TABLE IF NOT EXISTS journal_action_decisions (
+                    id              TEXT PRIMARY KEY,
+                    thesis_id       TEXT NOT NULL REFERENCES trade_theses(id),
+                    ticker          TEXT NOT NULL,
+                    tick_timestamp  TEXT NOT NULL,
+                    decision_type   TEXT NOT NULL,
+                    reason_code     TEXT NOT NULL,
+                    confidence      REAL NOT NULL DEFAULT 0,
+                    recommended_qty_pct REAL,
+                    dry_run         INTEGER NOT NULL DEFAULT 1,
+                    gates_passed    INTEGER NOT NULL DEFAULT 0,
+                    gate_block_reasons TEXT,
+                    context_summary TEXT,
+                    linked_alert_ids TEXT,
+                    created_at      TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_action_decisions_thesis
+                    ON journal_action_decisions(thesis_id);
+                CREATE INDEX IF NOT EXISTS idx_action_decisions_ticker
+                    ON journal_action_decisions(ticker);
+                CREATE INDEX IF NOT EXISTS idx_action_decisions_reason
+                    ON journal_action_decisions(reason_code);
+                CREATE INDEX IF NOT EXISTS idx_action_decisions_created
+                    ON journal_action_decisions(created_at);
+
+                CREATE TABLE IF NOT EXISTS journal_action_executions (
+                    id              TEXT PRIMARY KEY,
+                    decision_id     TEXT NOT NULL REFERENCES journal_action_decisions(id),
+                    thesis_id       TEXT NOT NULL REFERENCES trade_theses(id),
+                    ticker          TEXT NOT NULL,
+                    submitted_signal TEXT NOT NULL,
+                    submitted_qty   REAL,
+                    order_type      TEXT,
+                    limit_price     REAL,
+                    stop_price      REAL,
+                    status          TEXT NOT NULL,
+                    broker_order_id TEXT,
+                    error           TEXT,
+                    raw_result_json TEXT,
+                    created_at      TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_action_exec_decision
+                    ON journal_action_executions(decision_id);
+                CREATE INDEX IF NOT EXISTS idx_action_exec_thesis
+                    ON journal_action_executions(thesis_id);
+                CREATE INDEX IF NOT EXISTS idx_action_exec_ticker
+                    ON journal_action_executions(ticker);
+                CREATE INDEX IF NOT EXISTS idx_action_exec_created
+                    ON journal_action_executions(created_at);
 
                 CREATE TABLE IF NOT EXISTS journal_meta (
                     key   TEXT PRIMARY KEY,
@@ -566,6 +621,14 @@ class JournalStore:
                 (alert_id,),
             )
 
+    def update_alert_action_taken(self, alert_id: str, action_taken: str) -> None:
+        """Update action_taken for an existing alert."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE journal_alerts SET action_taken = ? WHERE id = ?",
+                (action_taken, alert_id),
+            )
+
     def has_recent_alert(
         self, thesis_id: str, alert_type: AlertType, within_hours: float = 4.0
     ) -> bool:
@@ -581,6 +644,132 @@ class JournalStore:
                 (thesis_id, alert_type.value, cutoff),
             ).fetchone()
         return (row["cnt"] if row else 0) > 0
+
+    # ------------------------------------------------------------------
+    # JournalActionDecision / JournalActionExecution
+    # ------------------------------------------------------------------
+
+    def save_action_decision(self, decision: JournalActionDecision) -> str:
+        """Insert or update an action decision."""
+        d = decision.to_dict()
+        d["dry_run"] = int(bool(d.get("dry_run")))
+        d["gates_passed"] = int(bool(d.get("gates_passed")))
+        cols = list(d.keys())
+        placeholders = ", ".join(["?"] * len(cols))
+        col_names = ", ".join(cols)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "id")
+
+        with self._conn() as conn:
+            conn.execute(
+                f"INSERT INTO journal_action_decisions ({col_names}) VALUES ({placeholders}) "
+                f"ON CONFLICT(id) DO UPDATE SET {updates}",
+                [d[c] for c in cols],
+            )
+        return decision.id
+
+    def save_action_execution(self, execution: JournalActionExecution) -> str:
+        """Insert or update an action execution record."""
+        d = execution.to_dict()
+        cols = list(d.keys())
+        placeholders = ", ".join(["?"] * len(cols))
+        col_names = ", ".join(cols)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "id")
+
+        with self._conn() as conn:
+            conn.execute(
+                f"INSERT INTO journal_action_executions ({col_names}) VALUES ({placeholders}) "
+                f"ON CONFLICT(id) DO UPDATE SET {updates}",
+                [d[c] for c in cols],
+            )
+        return execution.id
+
+    def get_action_decisions(
+        self,
+        thesis_id: Optional[str] = None,
+        ticker: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[JournalActionDecision]:
+        """Fetch recent action decisions with optional filters."""
+        conditions = []
+        params: list[Any] = []
+        if thesis_id:
+            conditions.append("thesis_id = ?")
+            params.append(thesis_id)
+        if ticker:
+            conditions.append("ticker = ?")
+            params.append(ticker.upper())
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM journal_action_decisions {where} "
+                "ORDER BY created_at DESC LIMIT ?",
+                params + [limit],
+            ).fetchall()
+
+        out: List[JournalActionDecision] = []
+        for r in rows:
+            d = dict(r)
+            d["dry_run"] = bool(d.get("dry_run"))
+            d["gates_passed"] = bool(d.get("gates_passed"))
+            out.append(JournalActionDecision.from_dict(d))
+        return out
+
+    def get_action_executions(
+        self,
+        decision_id: Optional[str] = None,
+        ticker: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[JournalActionExecution]:
+        """Fetch recent action executions with optional filters."""
+        conditions = []
+        params: list[Any] = []
+        if decision_id:
+            conditions.append("decision_id = ?")
+            params.append(decision_id)
+        if ticker:
+            conditions.append("ticker = ?")
+            params.append(ticker.upper())
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM journal_action_executions {where} "
+                "ORDER BY created_at DESC LIMIT ?",
+                params + [limit],
+            ).fetchall()
+
+        return [JournalActionExecution.from_dict(dict(r)) for r in rows]
+
+    def count_action_executions_for_day(self, day_utc: Optional[date] = None) -> int:
+        """Count action executions for a UTC day."""
+        target = (day_utc or datetime.utcnow().date()).isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM journal_action_executions "
+                "WHERE date(created_at) = date(?)",
+                (target,),
+            ).fetchone()
+        return int(row["cnt"] if row else 0)
+
+    def has_recent_action_decision(
+        self,
+        thesis_id: str,
+        reason_code: ActionReasonCode,
+        within_minutes: float = 30.0,
+    ) -> bool:
+        """Check if the same reason was recently decided for this thesis."""
+        cutoff = datetime.utcnow().timestamp() - (float(within_minutes) * 60.0)
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) as cnt FROM journal_action_decisions
+                WHERE thesis_id = ? AND reason_code = ?
+                AND datetime(created_at) > datetime(?, 'unixepoch')
+                """,
+                (thesis_id, reason_code.value, cutoff),
+            ).fetchone()
+        return int(row["cnt"] if row else 0) > 0
 
     # ------------------------------------------------------------------
     # TradeOutcome

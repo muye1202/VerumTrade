@@ -12,10 +12,12 @@ from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 import logging
 import time
+import asyncio
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.execution import AlpacaExecutor
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.agents.portfolio.triage_agent import PortfolioTriageAgent
+from tradingagents.agents.utils.llm.llm_metrics import snapshot_llm_api_calls
 
 
 class PortfolioAnalyzer:
@@ -239,9 +241,8 @@ class PortfolioAnalyzer:
         """
         Merge deep-analyzed positions with lightweight stubs for skipped ones.
 
-        Skipped positions get a default HOLD recommendation with zero
-        conviction so they still appear in the final report but don't trigger
-        any trades.
+        Skipped positions get a default HOLD recommendation so they still
+        appear in the final report but don't trigger any trades.
         """
         analyzed_tickers = {a["ticker"].upper() for a in deep_analyses}
 
@@ -264,7 +265,6 @@ class PortfolioAnalyzer:
                     "unrealized_plpc": p.get("unrealized_plpc", 0),
                     "decision": "HOLD",
                     "structured_decision": {},
-                    "conviction_score": 0,
                     "final_state": None,
                     "analysis_summary": (
                         f"Skipped during triage. "
@@ -331,10 +331,9 @@ class PortfolioAnalyzer:
                     ticker, portfolio_ctx, on_stock_chunk
                 )
 
-                # Extract structured decision
-                structured = self.graph.extract_structured_decision(
-                    final_state["final_trade_decision"]
-                )
+                # Extract canonical structured decision
+                structured = final_state.get("final_trade_decision_structured")
+                validation_error = final_state.get("final_trade_decision_validation_error", "")
 
                 analysis = {
                     "ticker": ticker,
@@ -343,8 +342,7 @@ class PortfolioAnalyzer:
                     "unrealized_pl": position["unrealized_pl"],
                     "unrealized_plpc": position["unrealized_plpc"],
                     "decision": decision,
-                    "structured_decision": structured,
-                    "conviction_score": 0,  # placeholder — conviction helpers removed
+                    "structured_decision": structured if isinstance(structured, dict) else {},
                     "final_state": final_state,
                     "analysis_summary": self._extract_summary(final_state),
                 }
@@ -356,6 +354,60 @@ class PortfolioAnalyzer:
                 # ---- Per-stock execution (matches single-ticker behaviour) ----
                 if execute_trades and executor is not None:
                     try:
+                        self.graph._enforce_decision_guard(
+                            final_state, expected_ticker=ticker, executor=executor
+                        )
+                        structured = final_state.get("final_trade_decision_structured")
+                        validation_error = final_state.get("final_trade_decision_validation_error", "")
+                        price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+                        if not isinstance(structured, dict):
+                            exec_result = {
+                                "ticker": ticker,
+                                "signal": decision,
+                                "trade_date": self.analysis_date,
+                                "executed": False,
+                                "error": "Structured decision missing or invalid; execution aborted",
+                                "decision_source": "final_trade_decision_structured",
+                                "decision_version": None,
+                                "decision_validation_ok": False,
+                                "decision_validation_error": validation_error or "structured decision unavailable",
+                                "decision_price_guard_error": price_guard_error or "",
+                                "market_snapshot_reference_price": (
+                                    (final_state.get("market_snapshot") or {}).get("reference_price")
+                                ),
+                                "market_snapshot_source": (
+                                    (final_state.get("market_snapshot") or {}).get("source")
+                                ),
+                            }
+                            analysis["execution_result"] = exec_result
+                            if on_stock_executed:
+                                on_stock_executed(ticker, exec_result)
+                            continue
+                        if price_guard_error:
+                            exec_result = {
+                                "ticker": ticker,
+                                "signal": decision,
+                                "trade_date": self.analysis_date,
+                                "executed": False,
+                                "error": "Decision failed price guard; execution aborted",
+                                "decision_source": "final_trade_decision_structured",
+                                "decision_version": (
+                                    (final_state.get("final_trade_decision_structured") or {}).get("decision_version")
+                                ),
+                                "decision_validation_ok": False,
+                                "decision_validation_error": validation_error or "decision failed price guard",
+                                "decision_price_guard_error": price_guard_error,
+                                "market_snapshot_reference_price": (
+                                    (final_state.get("market_snapshot") or {}).get("reference_price")
+                                ),
+                                "market_snapshot_source": (
+                                    (final_state.get("market_snapshot") or {}).get("source")
+                                ),
+                            }
+                            analysis["execution_result"] = exec_result
+                            if on_stock_executed:
+                                on_stock_executed(ticker, exec_result)
+                            continue
                         exec_result = executor.execute_signal(
                             ticker=ticker,
                             signal=decision,
@@ -407,7 +459,6 @@ class PortfolioAnalyzer:
                     "ticker": ticker,
                     "error": str(e),
                     "decision": "HOLD",
-                    "conviction_score": 0,
                 }
                 analyses.append(error_analysis)
 
@@ -429,7 +480,7 @@ class PortfolioAnalyzer:
     ) -> tuple:
         """Analyze a single position with streaming support for UI updates.
 
-        This method uses graph.stream() to get incremental updates that can be
+        This method uses graph.astream() to get incremental updates that can be
         passed to the UI callback for real-time progress display.
         """
         self.graph.ticker = ticker
@@ -441,29 +492,52 @@ class PortfolioAnalyzer:
             time_horizon=self.time_horizon,
         )
         args = self.graph.propagator.get_graph_args()
+        llm_snapshot_before = snapshot_llm_api_calls()
 
-        # Stream the graph execution to get incremental updates
-        trace = []
-        for chunk in self.graph.graph.stream(init_agent_state, **args):
-            trace.append(chunk)
+        async def _run_stream():
+            # Stream graph execution asynchronously so async-only tools are awaited properly.
+            trace = []
+            async for chunk in self.graph.graph.astream(init_agent_state, **args):
+                trace.append(chunk)
 
-            # Call the chunk callback if provided (for UI updates)
-            if on_chunk:
-                on_chunk(ticker, chunk)
+                # Call the chunk callback if provided (for UI updates)
+                if on_chunk:
+                    on_chunk(ticker, chunk)
+            return trace
+
+        # Portfolio analysis runs from sync CLI code; bridge into async streaming.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            raise RuntimeError(
+                "Event loop is running. Portfolio analyzer requires async invocation "
+                "for stock streaming; call from a sync CLI context."
+            )
+
+        trace = asyncio.run(_run_stream())
 
         if not trace:
             raise RuntimeError(f"No chunks received from graph for {ticker}")
 
         final_state = trace[-1]
+        llm_snapshot_after = snapshot_llm_api_calls()
+        final_state["llm_metrics"] = self.graph._build_run_metrics(
+            llm_snapshot_before, llm_snapshot_after, final_state
+        )
 
         # Store current state for reflection
         self.graph.curr_state = final_state
 
-        # Extract decision
-        structured = self.graph.extract_structured_decision(
-            final_state.get("final_trade_decision", "")
+        # Extract decision from canonical JSON block
+        self.graph._attach_canonical_decision(final_state, expected_ticker=ticker)
+        self.graph._enforce_decision_guard(
+            final_state, expected_ticker=ticker, executor=None
         )
-        decision = structured.get("action") or self.graph.process_signal(
+        structured = final_state.get("final_trade_decision_structured")
+        decision = (structured or {}).get("action") or self.graph.process_signal(
             final_state.get("final_trade_decision", "")
         )
 
@@ -490,12 +564,6 @@ class PortfolioAnalyzer:
         winners = sum(1 for p in positions if float(p["unrealized_pl"]) > 0)
         losers = sum(1 for p in positions if float(p["unrealized_pl"]) < 0)
 
-        avg_conviction = (
-            sum(a.get("conviction_score", 0) for a in analyses) / len(analyses)
-            if analyses
-            else 0
-        )
-
         sell_signals = sum(1 for a in analyses if a.get("decision") == "SELL")
         buy_signals = sum(1 for a in analyses if a.get("decision") == "BUY")
 
@@ -507,11 +575,10 @@ class PortfolioAnalyzer:
             "max_position_pct": round(max_position_pct, 2),
             "sector_allocation": sector_allocation,
             "win_loss_ratio": f"{winners}/{losers}",
-            "avg_conviction": round(avg_conviction, 2),
             "sell_signals": sell_signals,
             "buy_signals": buy_signals,
             "portfolio_health": self._assess_portfolio_health(
-                max_position_pct, avg_conviction, winners, losers
+                max_position_pct, winners, losers
             ),
         }
 
@@ -530,7 +597,6 @@ class PortfolioAnalyzer:
 
             ticker = analysis["ticker"]
             decision = analysis["decision"]
-            conviction = analysis["conviction_score"]
             current_value = analysis.get("current_value", 0)
 
             position_pct = (current_value / portfolio["account_value"]) * 100
@@ -538,11 +604,10 @@ class PortfolioAnalyzer:
             rec: Dict[str, Any] = {
                 "ticker": ticker,
                 "action": decision,
-                "conviction": conviction,
                 "current_position_pct": round(position_pct, 2),
                 "rationale": self._build_rationale(analysis, metrics),
                 "priority": self._calculate_priority(
-                    decision, conviction, position_pct
+                    decision, position_pct
                 ),
                 "suggested_action": None,
                 "decision_summary": None,
@@ -551,11 +616,11 @@ class PortfolioAnalyzer:
 
             if decision == "SELL":
                 qty = analysis.get("current_qty", 0)
-                if conviction > 70:
+                if position_pct >= 15:
                     rec["suggested_action"] = (
                         f"SELL ALL ({qty} shares)"
                     )
-                elif conviction > 50:
+                elif position_pct >= 8:
                     rec["suggested_action"] = (
                         f"SELL 50% ({int(float(qty) * 0.5)} shares)"
                     )
@@ -567,7 +632,7 @@ class PortfolioAnalyzer:
             elif decision == "BUY":
                 if position_pct > 15:
                     rec["suggested_action"] = "HOLD - Position already large"
-                elif conviction > 70 and portfolio["cash"] > 1000:
+                elif portfolio["cash"] > 1000:
                     add_pct = min(
                         5, portfolio["cash"] / portfolio["account_value"] * 100
                     )
@@ -650,6 +715,79 @@ class PortfolioAnalyzer:
                 analysis = analyses_by_ticker.get(ticker, {})
                 final_state = analysis.get("final_state")
                 structured = analysis.get("structured_decision", {})
+                validation_error = (
+                    (final_state or {}).get("final_trade_decision_validation_error", "")
+                    if isinstance(final_state, dict)
+                    else ""
+                )
+                if isinstance(final_state, dict):
+                    self.graph._enforce_decision_guard(
+                        final_state, expected_ticker=ticker, executor=self.executor
+                    )
+                    structured = final_state.get("final_trade_decision_structured", {})
+                    validation_error = final_state.get("final_trade_decision_validation_error", "")
+                price_guard_error = (
+                    ((final_state or {}).get("decision_guard") or {}).get("price_guard_error", "")
+                    if isinstance(final_state, dict)
+                    else ""
+                )
+
+                if not isinstance(structured, dict) or not structured:
+                    results.append(
+                        {
+                            "ticker": ticker,
+                            "action": action,
+                            "execution_result": {
+                                "ticker": ticker,
+                                "signal": action,
+                                "trade_date": self.analysis_date,
+                                "executed": False,
+                                "error": "Structured decision missing or invalid; execution aborted",
+                                "decision_source": "final_trade_decision_structured",
+                                "decision_version": None,
+                                "decision_validation_ok": False,
+                                "decision_validation_error": validation_error or "structured decision unavailable",
+                                "decision_price_guard_error": price_guard_error or "",
+                                "market_snapshot_reference_price": (
+                                    ((final_state or {}).get("market_snapshot") or {}).get("reference_price")
+                                ),
+                                "market_snapshot_source": (
+                                    ((final_state or {}).get("market_snapshot") or {}).get("source")
+                                ),
+                            },
+                        }
+                    )
+                    continue
+                if price_guard_error:
+                    results.append(
+                        {
+                            "ticker": ticker,
+                            "action": action,
+                            "execution_result": {
+                                "ticker": ticker,
+                                "signal": action,
+                                "trade_date": self.analysis_date,
+                                "executed": False,
+                                "error": "Decision failed price guard; execution aborted",
+                                "decision_source": "final_trade_decision_structured",
+                                "decision_version": (
+                                    (structured or {}).get("decision_version")
+                                    if isinstance(structured, dict)
+                                    else None
+                                ),
+                                "decision_validation_ok": False,
+                                "decision_validation_error": validation_error or "decision failed price guard",
+                                "decision_price_guard_error": price_guard_error,
+                                "market_snapshot_reference_price": (
+                                    ((final_state or {}).get("market_snapshot") or {}).get("reference_price")
+                                ),
+                                "market_snapshot_source": (
+                                    ((final_state or {}).get("market_snapshot") or {}).get("source")
+                                ),
+                            },
+                        }
+                    )
+                    continue
 
                 result = self.executor.execute_signal(
                     ticker=ticker,
@@ -690,7 +828,6 @@ class PortfolioAnalyzer:
                     {
                         "ticker": ticker,
                         "action": action,
-                        "conviction": rec["conviction"],
                         "execution_result": result,
                     }
                 )
@@ -741,17 +878,14 @@ class PortfolioAnalyzer:
     def _assess_portfolio_health(
         self,
         max_position_pct: float,
-        avg_conviction: float,
         winners: int,
         losers: int,
     ) -> str:
         if max_position_pct > 20:
             return "ATTENTION: Over-concentrated"
-        if avg_conviction < 50:
-            return "CAUTION: Low average conviction"
         if winners < losers:
             return "CAUTION: More losers than winners"
-        if avg_conviction > 70 and winners > losers:
+        if winners > losers:
             return "HEALTHY: Strong positions"
         return "FAIR: Mixed signals"
 
@@ -759,7 +893,6 @@ class PortfolioAnalyzer:
         self, analysis: Dict[str, Any], metrics: Dict[str, Any]
     ) -> str:
         decision = analysis["decision"]
-        conviction = analysis["conviction_score"]
         pl_pct = analysis.get("unrealized_plpc", 0) * 100
         parts: list[str] = []
 
@@ -769,26 +902,30 @@ class PortfolioAnalyzer:
                 f"Triage note: {analysis.get('analysis_summary', '')}"
             )
         elif decision == "SELL":
-            parts.append(f"Agent recommends SELL with {conviction}% conviction.")
+            parts.append("Agent recommends SELL.")
             if pl_pct < -10:
                 parts.append(f"Position down {abs(pl_pct):.1f}%, cutting losses.")
             elif pl_pct > 20:
                 parts.append(f"Position up {pl_pct:.1f}%, taking profits.")
         elif decision == "BUY":
-            parts.append(f"Agent recommends BUY with {conviction}% conviction.")
+            parts.append("Agent recommends BUY.")
             if pl_pct > 0:
                 parts.append(f"Position up {pl_pct:.1f}%, adding to winner.")
             else:
                 parts.append("Opportunity to average up position.")
         else:
-            parts.append(f"Agent recommends HOLD ({conviction}% conviction).")
+            parts.append("Agent recommends HOLD.")
 
         return " ".join(parts)
 
     def _calculate_priority(
-        self, decision: str, conviction: float, position_pct: float
+        self, decision: str, position_pct: float
     ) -> float:
-        priority = conviction
+        priority = 50.0
+        if decision == "SELL":
+            priority += 20
+        elif decision == "BUY":
+            priority += 10
         if decision == "SELL" and position_pct > 15:
             priority += 20
         if position_pct < 5:
@@ -822,11 +959,6 @@ class PortfolioAnalyzer:
             risks.append(
                 f"Significant losses in {len(tickers)} positions: {', '.join(tickers)}"
             )
-        if metrics["avg_conviction"] < 50:
-            risks.append(
-                f"Low average conviction ({metrics['avg_conviction']:.1f}) "
-                "suggests weak portfolio positioning"
-            )
         return risks or ["No major risks identified"]
 
     def _identify_opportunities(
@@ -836,12 +968,12 @@ class PortfolioAnalyzer:
         strong_buys = [
             a
             for a in analyses
-            if a.get("decision") == "BUY" and a.get("conviction_score", 0) > 70
+            if a.get("decision") == "BUY" and a.get("unrealized_plpc", 0) > 0
         ]
         if strong_buys:
             tickers = [a["ticker"] for a in strong_buys]
             opportunities.append(
-                f"Strong BUY signals in existing positions: {', '.join(tickers)}"
+                f"Strong BUY signals in existing winners: {', '.join(tickers)}"
             )
         turnarounds = [
             a
@@ -849,7 +981,6 @@ class PortfolioAnalyzer:
             if (
                 a.get("unrealized_plpc", 0) < 0
                 and a.get("decision") == "BUY"
-                and a.get("conviction_score", 0) > 60
             )
         ]
         if turnarounds:
@@ -860,7 +991,7 @@ class PortfolioAnalyzer:
         cash_pct = (portfolio["cash"] / portfolio["account_value"]) * 100
         if cash_pct > 10:
             opportunities.append(
-                f"{cash_pct:.1f}% cash available for deployment in high-conviction ideas"
+                f"{cash_pct:.1f}% cash available for deployment"
             )
         return opportunities or ["No immediate opportunities identified"]
 
@@ -896,17 +1027,20 @@ class PortfolioAnalyzer:
             )
         elif cash_pct > 20:
             suggestions.append(
-                f"Deploy excess cash ({cash_pct:.1f}%) into high-conviction opportunities"
+                f"Deploy excess cash ({cash_pct:.1f}%) into prioritized opportunities"
             )
-        low_conviction = [
-            a for a in analyses if a.get("conviction_score", 0) < 40
+        low_momentum = [
+            a
+            for a in analyses
+            if a.get("decision") == "HOLD" and a.get("unrealized_plpc", 0) < 0
         ]
-        if low_conviction:
-            tickers = [a["ticker"] for a in low_conviction]
+        if low_momentum:
+            tickers = [a["ticker"] for a in low_momentum]
             suggestions.append(
-                f"Monitor low-conviction positions closely: {', '.join(tickers)}"
+                f"Monitor weak HOLD positions closely: {', '.join(tickers)}"
             )
         suggestions.append(
             "Schedule monthly portfolio review to maintain optimal allocation"
         )
         return suggestions
+

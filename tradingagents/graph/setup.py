@@ -55,6 +55,7 @@ class GraphSetup:
         # Create analyst nodes
         analyst_nodes = {}
         delete_nodes = {}
+        force_finalize_nodes = {}
         tool_nodes = {}
 
         if "market" in selected_analysts:
@@ -62,6 +63,7 @@ class GraphSetup:
                 self.quick_thinking_llm
             )
             delete_nodes["market"] = create_msg_delete()
+            force_finalize_nodes["market"] = create_force_finalize("market")
             tool_nodes["market"] = self.tool_nodes["market"]
 
         if "social" in selected_analysts:
@@ -69,6 +71,7 @@ class GraphSetup:
                 self.quick_thinking_llm
             )
             delete_nodes["social"] = create_msg_delete()
+            force_finalize_nodes["social"] = create_force_finalize("social")
             tool_nodes["social"] = self.tool_nodes["social"]
 
         if "news" in selected_analysts:
@@ -76,6 +79,7 @@ class GraphSetup:
                 self.quick_thinking_llm
             )
             delete_nodes["news"] = create_msg_delete()
+            force_finalize_nodes["news"] = create_force_finalize("news")
             tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
@@ -83,6 +87,7 @@ class GraphSetup:
                 self.quick_thinking_llm
             )
             delete_nodes["fundamentals"] = create_msg_delete()
+            force_finalize_nodes["fundamentals"] = create_force_finalize("fundamentals")
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         # Create researcher and manager nodes
@@ -114,6 +119,10 @@ class GraphSetup:
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
+            workflow.add_node(
+                f"Force Finalize {analyst_type.capitalize()}",
+                force_finalize_nodes[analyst_type],
+            )
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
 
         # Add other nodes
@@ -136,14 +145,20 @@ class GraphSetup:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            current_force_finalize = f"Force Finalize {analyst_type.capitalize()}"
 
             # Add conditional edges for current analyst
             workflow.add_conditional_edges(
                 current_analyst,
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
+                {
+                    current_tools: current_tools,
+                    current_clear: current_clear,
+                    current_force_finalize: current_force_finalize,
+                },
             )
             workflow.add_edge(current_tools, current_analyst)
+            workflow.add_edge(current_force_finalize, current_analyst)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:

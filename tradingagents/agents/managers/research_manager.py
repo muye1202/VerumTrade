@@ -10,6 +10,7 @@ from tradingagents.agents.utils.agent_runtime.context_budget import (
     get_budget_settings,
     prompt_diagnostics,
 )
+from tradingagents.execution.decision_guard import build_market_snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,13 @@ def create_research_manager(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+        market_snapshot = state.get("market_snapshot") or build_market_snapshot(
+            symbol=state.get("company_of_interest", ""),
+            market_report=market_research_report,
+            quote=None,
+            structured_decision=None,
+            snapshot_source=config.get("decision_snapshot_source", "executor_quote_first"),
+        )
 
         settings = get_budget_settings()
         sections_before = {
@@ -94,6 +102,9 @@ Here are your past reflections on mistakes:
 Here are compacted analyst reports:
 {sections["reports"]}
 
+Canonical market snapshot for price anchoring:
+{market_snapshot}
+
 Here is the debate:
 Debate History:
 {sections["history_tail"]}"""
@@ -120,6 +131,7 @@ Debate History:
         return {
             "investment_debate_state": new_investment_debate_state,
             "investment_plan": response.content,
+            "market_snapshot": market_snapshot,
         }
 
     return research_manager_node

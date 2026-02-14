@@ -18,6 +18,10 @@ from tradingagents.agents.utils.market_data.short_interest_tools import (
     get_short_interest_data,
     get_squeeze_candidates_assessment,
 )
+from tradingagents.agents.utils.market_data.bundle_tools import get_market_data_bundle
+from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.llm.tool_binding import bind_tools_parallel_safe
+from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 
 def create_market_analyst(llm):
@@ -34,6 +38,12 @@ def create_market_analyst(llm):
             f"~{spec.trading_days_range[0]}–{spec.trading_days_range[1]} trading days"
         )
 
+        enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
+        tool_round_cap = int(get_config().get("analyst_tool_round_cap", 2) or 2)
+        global_tool_round_cap = int(get_config().get("max_tool_calls_total", 50) or 50)
+        rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
+        rounds_used = int(rounds.get("market", 0) or 0)
+        total_rounds_used = int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0)
         tools = [
             # Core tools
             get_stock_data,
@@ -52,6 +62,8 @@ def create_market_analyst(llm):
             get_short_interest_data,
             get_squeeze_candidates_assessment,
         ]
+        if enable_bundle_tools:
+            tools = [get_market_data_bundle, *tools]
 
         system_message = (
             f"""You are a swing-trade market analyst supporting a {holding_text} hold. Your goal is to produce a concise, decision-grade technical + price-action report for the target ticker using daily data.
@@ -74,6 +86,12 @@ Workflow (tool-first, then write):
    - `get_dark_pool_short_volume(symbol, curr_date)` for off-exchange activity
    - `get_short_interest_data(symbol, curr_date)` for squeeze risk assessment
 6) After gathering data, write the final report **without** further tool calls.
+
+Hard constraint for this run:
+- Emit one batched tool-call response whenever possible.
+- If `get_market_data_bundle` is available, use it first.
+- You may use one fallback tool round only if data is missing/invalid.
+- After tool data is available, do not emit more tool calls.
 
 Allowed indicators (exact names):
 
@@ -174,18 +192,29 @@ Report requirements (keep it to-the-point, but specific):
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
 
-        chain = prompt | llm.bind_tools(tools)
+        force_no_tools = (
+            state.get("force_no_tools_for") == "market"
+            or rounds_used >= tool_round_cap
+            or total_rounds_used >= global_tool_round_cap
+        )
+        chain = prompt | (
+            llm if force_no_tools else bind_tools_parallel_safe(llm, tools)
+        )
 
         result = chain.invoke(state["messages"])
+        tool_calls_count = len(getattr(result, "tool_calls", None) or [])
+        tooling_state = build_tooling_state_update(state, "market", tool_calls_count)
 
         report = ""
 
-        if len(result.tool_calls) == 0:
+        if tool_calls_count == 0:
             report = result.content
        
         return {
             "messages": [result],
             "market_report": report,
+            "force_no_tools_for": "",
+            **tooling_state,
         }
 
     return market_analyst_node

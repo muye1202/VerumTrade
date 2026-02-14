@@ -58,20 +58,24 @@ class StockDiscoveryGraph:
         if debug:
             logging.basicConfig(level=logging.DEBUG)
 
-        # Initialize the deep-think LLM for discovery
-        self.llm = self._create_llm()
+        # Initialize discovery LLMs with the same model split as analysis mode:
+        # quick_think_llm for Stage 1 scanners, deep_think_llm for Stage 2 synthesis.
+        self.deep_llm = self._create_llm(self.config.get("deep_think_llm", "gpt-4o"))
+        self.quick_llm = self._create_llm(self.config.get("quick_think_llm", "gpt-4o-mini"))
+        # Backward-compatible alias used by older patching code.
+        self.llm = self.deep_llm
 
         # Create the recommender agent using new intelligence architecture
         self.recommender = IntelligenceDrivenRecommender(
-            llm=self.llm,
+            deep_llm=self.deep_llm,
+            quick_llm=self.quick_llm,
             config=self.config,
             screening_universe=self.config.get("screening_universe"),
         )
 
-    def _create_llm(self) -> ChatOpenAI:
+    def _create_llm(self, model: str) -> ChatOpenAI:
         """Create the LLM instance based on config."""
         provider = self.config.get("llm_provider", "openai").lower()
-        model = self.config.get("deep_think_llm", "gpt-4o")
         backend_url = self.config.get("backend_url")
 
         # Determine API key and base URL based on provider

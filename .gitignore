@@ -18,3 +18,6 @@ verify_*
 check_*
 test_*
 *_test
+
+tests
+tmp*

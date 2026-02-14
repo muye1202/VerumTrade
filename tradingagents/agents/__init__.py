@@ -14,6 +14,7 @@ from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "create_msg_delete": ("tradingagents.agents.utils.agent_runtime.agent_utils", "create_msg_delete"),
+    "create_force_finalize": ("tradingagents.agents.utils.agent_runtime.agent_utils", "create_force_finalize"),
     "AgentState": ("tradingagents.agents.utils.agent_runtime.agent_states", "AgentState"),
     "InvestDebateState": ("tradingagents.agents.utils.agent_runtime.agent_states", "InvestDebateState"),
     "RiskDebateState": ("tradingagents.agents.utils.agent_runtime.agent_states", "RiskDebateState"),

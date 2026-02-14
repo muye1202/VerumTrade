@@ -80,10 +80,22 @@ class AgentState(_MessagesState):
         RiskDebateState, "Current state of the debate on evaluating risk"
     ]
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
+    final_trade_decision_structured: Annotated[dict, "Canonical validated JSON decision payload"]
+    final_trade_decision_validation_error: Annotated[str, "Validation error for canonical decision payload"]
+    market_snapshot: Annotated[dict, "Canonical market price snapshot used for decision anchoring and validation"]
+    decision_guard: Annotated[dict, "Decision validation/repair telemetry and guardrail outcomes"]
 
-    # Tool-call guardrails (prevents infinite tool loops hitting LangGraph recursion limit)
-    tool_call_counts: Annotated[dict, "Tool-call cycles per analyst (e.g., market/social/news/fundamentals)"]
-    tool_call_total: Annotated[int, "Total number of tool-call cycles across analysts"]
+    # Tool-loop guardrails and telemetry
+    force_no_tools_for: Annotated[str, "Analyst key that must synthesize without tools for this turn"]
+    tool_round_counts: Annotated[dict, "Tool rounds per analyst (e.g., market/social/news/fundamentals)"]
+    # Backward-compatible alias for tool_round_counts.
+    tool_call_counts: Annotated[dict, "Alias of tool_round_counts for legacy readers"]
+    tool_call_total: Annotated[int, "Total number of tool rounds across analysts"]
+    tool_calls_issued_by_agent: Annotated[dict, "Number of individual tool calls emitted by each analyst"]
+    tool_calls_issued_total: Annotated[int, "Total individual tool calls emitted by analysts"]
+
+    # Exact run-level LLM telemetry.
+    llm_metrics: Annotated[dict, "Exact LLM/API usage counters for this run"]
 
     # Portfolio awareness (injected at graph init from brokerage API)
     portfolio_context: Annotated[str, "Current portfolio state from brokerage (positions, cash, buying power)"]

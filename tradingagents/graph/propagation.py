@@ -33,8 +33,13 @@ class Propagator:
             "time_horizon": horizon,
             "market_session": market_session,
             "market_session_context": format_market_session_context(market_session),
+            "force_no_tools_for": "",
+            "tool_round_counts": {},
             "tool_call_counts": {},
             "tool_call_total": 0,
+            "tool_calls_issued_by_agent": {},
+            "tool_calls_issued_total": 0,
+            "llm_metrics": {},
             "investment_debate_state": {"history": "", "current_response": "", "count": 0},
             "risk_debate_state": {
                 "history": "",
@@ -47,6 +52,11 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            "final_trade_decision": "",
+            "final_trade_decision_structured": None,
+            "final_trade_decision_validation_error": "",
+            "market_snapshot": {},
+            "decision_guard": {},
         }
 
     def get_graph_args(self) -> Dict[str, Any]:

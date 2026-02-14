@@ -35,9 +35,31 @@ def create_msg_delete():
         # Add a minimal placeholder message
         placeholder = HumanMessage(content="Continue")
         
-        return {"messages": removal_operations + [placeholder]}
+        return {
+            "messages": removal_operations + [placeholder],
+            "force_no_tools_for": "",
+        }
     
     return delete_messages
+
+
+def create_force_finalize(analyst_key: str):
+    def force_finalize(state):
+        """Inject a hard instruction to synthesize final output without more tool calls."""
+        return {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        f"Tool round cap reached for {analyst_key} analyst. "
+                        "Using only already-collected tool outputs in the conversation, "
+                        "produce your final report now and do not call any tools."
+                    )
+                )
+            ],
+            "force_no_tools_for": analyst_key,
+        }
+
+    return force_finalize
 
 
         

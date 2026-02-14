@@ -78,7 +78,6 @@ class PortfolioMessageBuffer:
         self.total_stocks: int = 0
         self.stock_statuses: Dict[str, str] = {}  # ticker -> pending | in_progress | completed | error
         self.stock_decisions: Dict[str, str] = {}  # ticker -> BUY | SELL | HOLD
-        self.stock_convictions: Dict[str, float] = {}  # ticker -> conviction score
 
         # Current stock's agent statuses (reset for each stock)
         self.agent_status: Dict[str, str] = {name: "pending" for name in self.AGENT_NAMES}
@@ -202,7 +201,6 @@ def update_portfolio_display(
     stocks_table.add_column("Ticker", style="cyan", width=8)
     stocks_table.add_column("Status", style="white", width=12, justify="center")
     stocks_table.add_column("Decision", style="white", width=8, justify="center")
-    stocks_table.add_column("Conv.", style="white", width=6, justify="center")
 
     # Add triage row if applicable
     if buffer.triage_status != "pending" or buffer.triage_result:
@@ -212,14 +210,13 @@ def update_portfolio_display(
             "completed": "[green]done[/green]",
         }.get(buffer.triage_status, buffer.triage_status)
 
-        stocks_table.add_row("T", "[bold]TRIAGE[/bold]", triage_status_display, "-", "-")
-        stocks_table.add_row("─" * 3, "─" * 8, "─" * 12, "─" * 8, "─" * 6, style="dim")
+        stocks_table.add_row("T", "[bold]TRIAGE[/bold]", triage_status_display, "-")
+        stocks_table.add_row("─" * 3, "─" * 8, "─" * 12, "─" * 8, style="dim")
 
     # Add stock rows
     for idx, ticker in enumerate(buffer.stocks_to_analyze):
         status = buffer.stock_statuses.get(ticker, "pending")
         decision = buffer.stock_decisions.get(ticker, "-")
-        conviction = buffer.stock_convictions.get(ticker)
 
         if status == "in_progress":
             status_display = Spinner("dots", text="[blue]analyzing[/blue]", style="bold cyan")
@@ -233,9 +230,7 @@ def update_portfolio_display(
         decision_color = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}.get(decision, "white")
         decision_display = f"[{decision_color}]{decision}[/{decision_color}]" if decision != "-" else "-"
 
-        conv_display = f"{conviction:.0f}" if conviction is not None else "-"
-
-        stocks_table.add_row(str(idx + 1), ticker, status_display, decision_display, conv_display)
+        stocks_table.add_row(str(idx + 1), ticker, status_display, decision_display)
 
     layout["stocks"].update(
         Panel(stocks_table, title="Stock Progress", border_style="cyan", padding=(0, 1))
@@ -393,7 +388,7 @@ def analyze_portfolio(execute_trades: bool,
     3. Analyze selected positions using the agent framework
     4. Calculate portfolio-level metrics
     5. Generate BUY/SELL/HOLD recommendations
-    6. (Optional) Execute trades (no conviction gating)
+    6. (Optional) Execute trades
     7. Provide strategic insights and future recommendations
     """
     console.print("\n")
@@ -580,16 +575,13 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
         if "error" in analysis:
             buffer.stock_statuses[ticker] = "error"
             buffer.stock_decisions[ticker] = "HOLD"
-            buffer.stock_convictions[ticker] = 0
             buffer.add_message("System", f"Error analyzing {ticker}: {analysis.get('error', 'Unknown error')}")
         else:
             buffer.stock_statuses[ticker] = "completed"
             buffer.stock_decisions[ticker] = analysis.get("decision", "HOLD")
-            buffer.stock_convictions[ticker] = analysis.get("conviction_score", 0)
             buffer.add_message(
                 "System",
-                f"Completed {ticker}: {analysis.get('decision', 'HOLD')} "
-                f"(conviction: {analysis.get('conviction_score', 0):.0f})"
+                f"Completed {ticker}: {analysis.get('decision', 'HOLD')}"
             )
 
         # Mark all agents as completed for this stock
@@ -987,7 +979,6 @@ def _display_portfolio_analysis_results(results: Dict[str, Any], executed: bool)
     summary_table.add_row("Cash", f"${summary.get('cash', 0):,.2f}")
     summary_table.add_row("Positions", str(summary.get('positions_count', 0)))
     summary_table.add_row("Max Position %", f"{metrics.get('max_position_pct', 0)}%")
-    summary_table.add_row("Avg Conviction", f"{metrics.get('avg_conviction', 0)}/100")
     summary_table.add_row("Health Status", metrics.get('portfolio_health', 'Unknown'))
     
     console.print(Panel(
@@ -1003,7 +994,6 @@ def _display_portfolio_analysis_results(results: Dict[str, Any], executed: bool)
         rec_table.add_column("Priority", style="yellow", justify="center", width=8)
         rec_table.add_column("Ticker", style="cyan", width=8)
         rec_table.add_column("Action", style="green", justify="center", width=8)
-        rec_table.add_column("Conviction", style="magenta", justify="center", width=10)
         rec_table.add_column("Position %", justify="center", width=10)
         rec_table.add_column("Summary", style="white", no_wrap=False)
         
@@ -1022,7 +1012,6 @@ def _display_portfolio_analysis_results(results: Dict[str, Any], executed: bool)
                 str(i),
                 f"{ticker_style}{rec['ticker']}{ticker_end}",
                 f"[{action_color}]{rec['action']}[/{action_color}]",
-                f"{rec['conviction']:.0f}/100",
                 f"{rec['current_position_pct']:.1f}%",
                 (rec.get("decision_summary") or rec.get("rationale") or rec.get("suggested_action") or ""),
             )
@@ -1136,7 +1125,6 @@ def _save_portfolio_analysis_results(results: Dict[str, Any], results_dir: Path)
 
             if rec.get("decision_summary"):
                 f.write(f"- **Summary:** {rec['decision_summary']}\n")
-            f.write(f"- **Conviction:** {rec['conviction']}/100\n")
             f.write(f"- **Current Position:** {rec['current_position_pct']:.1f}%\n")
             f.write(f"- **Suggested Action:** {rec['suggested_action']}\n")
             f.write(f"- **Rationale:** {rec['rationale']}\n\n")
@@ -1162,3 +1150,4 @@ def create_question_box(title, prompt, default=None):
     if default:
         box_content += f"\n[dim]Default: {default}[/dim]"
     return Panel(box_content, border_style="blue", padding=(1, 2))
+

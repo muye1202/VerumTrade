@@ -4,6 +4,10 @@ import json
 from tradingagents.agents.utils.agent_runtime.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.utils.agent_runtime.context_budget import cap_section, get_budget_settings
+from tradingagents.agents.utils.market_data.bundle_tools import get_fundamentals_data_bundle
+from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.llm.tool_binding import bind_tools_parallel_safe
+from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 
 def create_fundamentals_analyst(llm):
@@ -16,6 +20,12 @@ def create_fundamentals_analyst(llm):
         holding_text = spec.label
         window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
+        enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
+        tool_round_cap = int(get_config().get("analyst_tool_round_cap", 2) or 2)
+        global_tool_round_cap = int(get_config().get("max_tool_calls_total", 50) or 50)
+        rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
+        rounds_used = int(rounds.get("fundamentals", 0) or 0)
+        total_rounds_used = int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0)
         tools = [
             get_fundamentals,
             get_balance_sheet,
@@ -24,6 +34,8 @@ def create_fundamentals_analyst(llm):
             get_insider_sentiment,
             get_insider_transactions,
         ]
+        if enable_bundle_tools:
+            tools = [get_fundamentals_data_bundle, *tools]
 
         system_message = (
             f"You are a fundamentals analyst supporting a {holding_text} swing trade decision. Focus on what can plausibly matter over {window_text} (quality, liquidity/financing risk, earnings sensitivity, and any near-term fundamental catalysts)."
@@ -32,6 +44,8 @@ def create_fundamentals_analyst(llm):
             "\n2) Call `get_income_statement`, `get_balance_sheet`, and `get_cashflow` (quarterly) to identify recent acceleration/deceleration and balance-sheet constraints."
             "\n3) Call `get_insider_transactions` and `get_insider_sentiment` if available; if a vendor/tool returns missing data, note it and proceed."
             "\n4) Write the final report **without** further tool calls."
+            "\n5) Prefer one batched tool-call response. If `get_fundamentals_data_bundle` is available, use it first."
+            "\n6) Allow at most one fallback tool round if data is missing/invalid."
             "\n\nReport requirements (keep it to-the-point and trade-relevant):"
             "\n- Near-term fundamental narrative: what changed recently and what could change next (don’t invent dates)."
             "\n- Earnings sensitivity: which line items/segments/margins matter most; what the market is likely keying on."
@@ -71,18 +85,29 @@ def create_fundamentals_analyst(llm):
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
 
-        chain = prompt | llm.bind_tools(tools)
+        force_no_tools = (
+            state.get("force_no_tools_for") == "fundamentals"
+            or rounds_used >= tool_round_cap
+            or total_rounds_used >= global_tool_round_cap
+        )
+        chain = prompt | (
+            llm if force_no_tools else bind_tools_parallel_safe(llm, tools)
+        )
 
         result = chain.invoke(state["messages"])
+        tool_calls_count = len(getattr(result, "tool_calls", None) or [])
+        tooling_state = build_tooling_state_update(state, "fundamentals", tool_calls_count)
 
         report = ""
 
-        if len(result.tool_calls) == 0:
+        if tool_calls_count == 0:
             report = result.content
 
         return {
             "messages": [result],
             "fundamentals_report": report,
+            "force_no_tools_for": "",
+            **tooling_state,
         }
 
     return fundamentals_analyst_node

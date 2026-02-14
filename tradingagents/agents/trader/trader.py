@@ -3,6 +3,8 @@ import time
 import json
 
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.dataflows.config import get_config
+from tradingagents.execution.decision_guard import build_market_snapshot
 
 
 def create_trader(llm, memory):
@@ -15,6 +17,13 @@ def create_trader(llm, memory):
         fundamentals_report = state["fundamentals_report"]
         portfolio_context = state.get("portfolio_context", "")
         market_session_context = state.get("market_session_context", "")
+        market_snapshot = state.get("market_snapshot", {}) or build_market_snapshot(
+            symbol=company_name,
+            market_report=market_research_report,
+            quote=None,
+            structured_decision=None,
+            snapshot_source=get_config().get("decision_snapshot_source", "executor_quote_first"),
+        )
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
         trading_days_text = (
@@ -57,6 +66,12 @@ Leverage these insights to make an informed and strategic decision.""",
         market_session_block = ""
         if market_session_context:
             market_session_block = f"\n\n{market_session_context}\n"
+        market_snapshot_block = ""
+        if market_snapshot:
+            market_snapshot_block = (
+                "\n\nCANONICAL MARKET SNAPSHOT (anchor all numeric levels to this):\n"
+                f"{market_snapshot}\n"
+            )
 
         messages = [
             {
@@ -68,6 +83,7 @@ Leverage these insights to make an informed and strategic decision.""",
   Based on your analysis, provide a specific, actionable recommendation. Do not forget to utilize lessons from past decisions. Here are reflections from similar situations: {past_memory_str}
 
   {market_session_block}
+  {market_snapshot_block}
 
   YOUR OUTPUT MUST END WITH A STRUCTURED TRADING DECISION in exactly this format:
 
@@ -91,6 +107,9 @@ Leverage these insights to make an informed and strategic decision.""",
   ---
 
   IMPORTANT RULES:
+  - **CRITICAL**: Anchor LIMIT/STOP/STOP_LOSS/TAKE_PROFIT to `market_snapshot.reference_price` when available.
+  - **CRITICAL**: Any numeric level must be within +/-30% of `market_snapshot.reference_price` when that reference exists.
+  - **CRITICAL**: Briefly justify numeric levels as % distance from reference in your narrative.
   - **CRITICAL**: For EVERY action (BUY/SELL/HOLD), you MUST provide concrete numeric STOP_LOSS and TAKE_PROFIT prices. Do NOT output N/A for either field.
   - **CRITICAL**: For HOLD with an existing position, STOP_LOSS and TAKE_PROFIT are hold-management boundaries.
   - **CRITICAL**: For HOLD with ZERO shares, STOP_LOSS and TAKE_PROFIT are watch levels (invalidation/trigger levels for potential future activation), and must still be numeric.
@@ -116,6 +135,7 @@ Leverage these insights to make an informed and strategic decision.""",
         return {
             "messages": [result],
             "trader_investment_plan": result.content,
+            "market_snapshot": market_snapshot,
             "sender": name,
         }
 

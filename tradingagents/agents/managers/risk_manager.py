@@ -9,6 +9,7 @@ from tradingagents.agents.utils.agent_runtime.context_budget import (
     get_budget_settings,
     prompt_diagnostics,
 )
+from tradingagents.execution.decision_guard import build_market_snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,13 @@ def create_risk_manager(llm, memory):
             past_memory_str += rec["recommendation"] + "\n\n"
 
         portfolio_context = state.get("portfolio_context", "")
+        market_snapshot = state.get("market_snapshot", {}) or build_market_snapshot(
+            symbol=company_name,
+            market_report=market_research_report,
+            quote=None,
+            structured_decision=None,
+            snapshot_source=config.get("decision_snapshot_source", "executor_quote_first"),
+        )
 
         settings = get_budget_settings()
         sections_before = {
@@ -114,6 +122,14 @@ CRITICAL PORTFOLIO RULES:
 4. Do not recommend adding to a position exceeding 20% of portfolio value.
 ---
 """
+        snapshot_block = ""
+        if market_snapshot:
+            snapshot_block = f"""
+---
+CANONICAL MARKET SNAPSHOT (anchor all prices to this):
+{market_snapshot}
+---
+"""
 
         prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts-Risky, Neutral, and Safe/Conservative-and determine the best course of action for the trader.
 Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
@@ -127,6 +143,7 @@ TARGET HOLDING PERIOD (user-selected):
 CURRENT MARKET SESSION CONTEXT:
 {sections["current_response"]}
 {portfolio_block}
+{snapshot_block}
 
 Guidelines for Decision-Making:
 1. **Summarize Key Arguments**: Extract the strongest points from each analyst, focusing on relevance to the context.
@@ -150,40 +167,53 @@ Deliverables:
 
 Focus on actionable insights and continuous improvement.
 
-YOUR OUTPUT MUST END WITH a structured decision:
+OUTPUT CONTRACT (STRICT):
+- Provide your normal reasoning narrative first.
+- Then END your response with exactly one canonical JSON block between tags:
+  BEGIN_DECISION_JSON
+  {{ ... }}
+  END_DECISION_JSON
+- The executor uses ONLY this JSON block for trading execution.
 
----
-  FINAL TRADING DECISION:
-  - ACTION: BUY / SELL / HOLD
-  - TICKER: [symbol]
-  - QUANTITY: [INTEGER number of shares, or "N/A" for HOLD]
-  - ORDER_TYPE: MARKET / LIMIT / STOP / STOP_LIMIT / TRAILING_STOP
-  - TIME_IN_FORCE: DAY / GTC
-  - LIMIT_PRICE: [required for LIMIT and STOP_LIMIT; otherwise "N/A"]
-  - STOP_PRICE: [required for STOP and STOP_LIMIT; otherwise "N/A"]
-  - TRAIL_PERCENT: [for TRAILING_STOP, percent like 3 for 3%; otherwise "N/A"]
-  - TRAIL_PRICE: [for TRAILING_STOP, dollars like 1.25; otherwise "N/A"]
-  - STOP_LOSS: [REQUIRED numeric price for BUY/SELL/HOLD]
-  - TAKE_PROFIT: [REQUIRED numeric price for BUY/SELL/HOLD]
-  - POSITION_SIZE_PCT: [% of portfolio]
-  - TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks"]
-  - CONFIDENCE: HIGH / MEDIUM / LOW
-  - RATIONALE: [2-3 sentence summary]
-  ---
+JSON RULES:
+- Valid JSON only (no markdown inside JSON, no comments, no trailing commas).
+- Use `null` for missing values (never "N/A", "NA", "-", or "NONE").
+- Numeric fields must be numbers, not formatted strings (no `%`, commas, or currency symbols).
+- `quantity` must be an integer or null.
+- `decision_version` must be "v1".
+- If `market_snapshot.reference_price` exists, all numeric prices (limit/stop/stop_loss/take_profit) must stay within +/-30% of that reference.
 
-  QUANTITY RULES:
-  - **CRITICAL**: For EVERY action (BUY/SELL/HOLD), you MUST provide concrete numeric STOP_LOSS and TAKE_PROFIT prices. Do NOT output N/A for either field.
-  - **CRITICAL**: For HOLD with an existing position, STOP_LOSS and TAKE_PROFIT are hold-management boundaries.
-  - **CRITICAL**: For HOLD with ZERO shares, STOP_LOSS and TAKE_PROFIT are watch levels (invalidation/trigger levels for potential future activation), and must still be numeric.
-  - **CRITICAL**: If you cannot justify concrete numeric STOP_LOSS/TAKE_PROFIT levels from the analysis, output HOLD with conservative numeric watch levels rather than omitting prices.
-  - MARKET means execute now (immediate attempt). LIMIT/STOP/STOP_LIMIT/TRAILING_STOP may execute later if triggered/filled.
-  - If the regular market is CLOSED (pre-market/after-market/overnight/weekend), do NOT use MARKET; use LIMIT + TIME_IN_FORCE=DAY and provide a concrete LIMIT_PRICE.
-  - For TRAILING_STOP you MUST set exactly ONE of TRAIL_PERCENT or TRAIL_PRICE (the other must be N/A).
-  - For STOP you MUST set STOP_PRICE. For STOP_LIMIT you MUST set both STOP_PRICE and LIMIT_PRICE. For LIMIT you MUST set LIMIT_PRICE.
-  - For BUY sizing, you may either provide QUANTITY as an integer number of shares OR set QUANTITY to "N/A" and set POSITION_SIZE_PCT (interpreted as % of available cash, e.g., 10 means 10%).
-  - If ACTION is SELL, you MUST set QUANTITY explicitly if you intend anything other than a full exit.
-  - QUANTITY must be a single integer on that line (e.g., "37"). Do NOT include any other numbers (no %s, no ranges, no "10% (~37 shares)").
-  - SELL must not default to liquidating the whole position unless explicitly intended; if fully exiting, set QUANTITY equal to the exact number of shares currently held.
+Required JSON shape:
+{{
+  "action": "BUY | SELL | HOLD",
+  "ticker": "{company_name}",
+  "quantity": 37,
+  "order_type": "MARKET | LIMIT | STOP | STOP_LIMIT | TRAILING_STOP",
+  "time_in_force": "DAY | GTC",
+  "extended_hours": false,
+  "limit_price": 179.0,
+  "stop_price": null,
+  "trail_percent": null,
+  "trail_price": null,
+  "stop_loss": 165.0,
+  "take_profit": 200.0,
+  "position_size_pct": 0.08,
+  "time_horizon": "{holding_text}",
+  "confidence": "HIGH | MEDIUM | LOW",
+  "rationale": "2-3 sentence summary",
+  "decision_version": "v1"
+}}
+
+Validation-critical constraints:
+- For EVERY action (BUY/SELL/HOLD), provide numeric `stop_loss` and `take_profit`.
+- BUY requires at least one of: `quantity` or `position_size_pct`.
+- SELL requires explicit `quantity`.
+- LIMIT requires `limit_price`.
+- STOP requires `stop_price`.
+- STOP_LIMIT requires BOTH `stop_price` and `limit_price`.
+- TRAILING_STOP requires exactly one of `trail_percent` or `trail_price`.
+- If market is closed, do not use MARKET; use LIMIT with a concrete `limit_price` and DAY tif.
+- Include a short "price anchor rationale" in your narrative before the JSON block, describing % distance from the snapshot reference.
   """
 
         response = invoke_with_backoff(
@@ -212,6 +242,7 @@ YOUR OUTPUT MUST END WITH a structured decision:
         return {
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": response.content,
+            "market_snapshot": market_snapshot,
         }
 
     return risk_manager_node

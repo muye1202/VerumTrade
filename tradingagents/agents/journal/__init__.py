@@ -23,6 +23,10 @@ from tradingagents.agents.journal.models import (
     TradeLesson,
     AlertType,
     ThesisStatus,
+    ActionDecisionType,
+    ActionReasonCode,
+    JournalActionDecision,
+    JournalActionExecution,
 )
 from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
@@ -49,6 +53,24 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     LessonMemory = None  # type: ignore[assignment]
 
+try:  # pragma: no cover
+    from tradingagents.agents.journal.execution_advisor import (
+        JournalExecutionAdvisor,
+        ActionContext,
+    )
+except Exception:  # pragma: no cover
+    JournalExecutionAdvisor = None  # type: ignore[assignment]
+    ActionContext = None  # type: ignore[assignment]
+
+try:  # pragma: no cover
+    from tradingagents.agents.journal.execution_policy import (
+        JournalExecutionPolicy,
+        PolicyResult,
+    )
+except Exception:  # pragma: no cover
+    JournalExecutionPolicy = None  # type: ignore[assignment]
+    PolicyResult = None  # type: ignore[assignment]
+
 __all__ = [
     "TradeThesis",
     "PositionSnapshot",
@@ -57,6 +79,10 @@ __all__ = [
     "TradeLesson",
     "AlertType",
     "ThesisStatus",
+    "ActionDecisionType",
+    "ActionReasonCode",
+    "JournalActionDecision",
+    "JournalActionExecution",
     "JournalStore",
     "ThesisExtractor",
     "PositionMonitor",
@@ -65,4 +91,8 @@ __all__ = [
     "ReflectionAgent",
     "LessonMemory",
     "create_reflection_callback",
+    "JournalExecutionAdvisor",
+    "ActionContext",
+    "JournalExecutionPolicy",
+    "PolicyResult",
 ]

@@ -30,6 +30,8 @@ from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.monitor import PositionMonitor
 from tradingagents.agents.journal.outcome import OutcomeRecorder
 from tradingagents.agents.journal.models import TradeThesis, TradeOutcome
+from tradingagents.agents.journal.execution_advisor import JournalExecutionAdvisor
+from tradingagents.agents.journal.execution_policy import JournalExecutionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,9 @@ class JournalScheduler:
         self,
         store: JournalStore,
         executor: Any = None,  # AlpacaExecutor
+        lesson_memory: Any = None,
+        execution_advisor: Optional[JournalExecutionAdvisor] = None,
+        execution_policy: Optional[JournalExecutionPolicy] = None,
         market_interval_minutes: int = 15,
         off_hours_interval_minutes: int = 120,
         extended_hours_interval_minutes: int = 30,
@@ -77,7 +82,13 @@ class JournalScheduler:
             on_outcome_recorded: Callback fired for each newly recorded outcome (thesis, outcome)
         """
         self.store = store
-        self.monitor = PositionMonitor(store=store, executor=executor)
+        self.monitor = PositionMonitor(
+            store=store,
+            executor=executor,
+            lesson_memory=lesson_memory,
+            execution_advisor=execution_advisor,
+            execution_policy=execution_policy,
+        )
         self.outcome_recorder = OutcomeRecorder(store=store)
 
         self.market_interval = market_interval_minutes * 60  # Convert to seconds
@@ -204,6 +215,11 @@ class JournalScheduler:
                 "snapshots_taken": 0,
                 "alerts_fired": 0,
                 "positions_closed": 0,
+                "actions_evaluated": 0,
+                "actions_recommended": 0,
+                "actions_blocked": 0,
+                "actions_executed": 0,
+                "actions_failed": 0,
                 "errors": [str(e)],
             }
 

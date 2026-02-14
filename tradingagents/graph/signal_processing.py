@@ -1,7 +1,9 @@
 # TradingAgents/graph/signal_processing.py
 
 import re
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Dict, Any, Optional, TYPE_CHECKING, Tuple
+
+from .decision_schema import extract_decision_json_block, validate_structured_decision
 
 if TYPE_CHECKING:  # pragma: no cover
     from langchain_openai import ChatOpenAI
@@ -36,46 +38,25 @@ class SignalProcessor:
 
     def extract_structured_decision(self, full_signal: str) -> Dict[str, Any]:
         """
-        Extract a structured trading decision from the full signal text.
-
-        Parses the FINAL TRADING DECISION / FINAL TRANSACTION PROPOSAL block
-        if present, otherwise falls back to LLM extraction for the action only.
-
-        Returns:
-            Dict with keys: action, ticker, quantity, order_type, limit_price,
-            stop_loss, take_profit, position_size_pct, time_horizon, confidence, rationale
+        Backward-compatible parser for non-execution call sites.
+        Prefer `extract_canonical_decision` for execution.
         """
-        result = {
-            "action": "HOLD",
-            "ticker": None,
-            "quantity": None,
-            "order_type": "MARKET",
-            "time_in_force": None,
-            "extended_hours": None,
-            "limit_price": None,
-            "stop_price": None,
-            "trail_percent": None,
-            "trail_price": None,
-            "stop_loss": None,
-            "take_profit": None,
-            "position_size_pct": None,
-            "time_horizon": None,
-            "confidence": None,
-            "rationale": None,
-        }
-
-        if not full_signal:
-            return result
-
-        # Try to parse structured block first
-        parsed = self._parse_structured_block(full_signal)
+        parsed, _ = self.extract_canonical_decision(full_signal)
         if parsed:
-            result.update(parsed)
-        else:
-            # Fallback: extract just the action via LLM
-            result["action"] = self.process_signal(full_signal)
+            return parsed
+        return {"action": self.process_signal(full_signal)}
 
-        return result
+    def extract_canonical_decision(
+        self, full_signal: str, expected_ticker: Optional[str] = None
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Extract and validate the canonical JSON decision block.
+        Returns (normalized_decision, validation_error).
+        """
+        raw, raw_err = extract_decision_json_block(full_signal)
+        if raw_err:
+            return None, raw_err
+        return validate_structured_decision(raw or {}, expected_ticker=expected_ticker)
 
     @staticmethod
     def _normalize_order_type(value: Optional[str]) -> Optional[str]:

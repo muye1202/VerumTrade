@@ -103,13 +103,27 @@ class IntelligenceDrivenRecommender:
 
     def __init__(
         self,
-        llm,
+        llm=None,
+        deep_llm=None,
+        quick_llm=None,
         config: Optional[Dict[str, Any]] = None,
         screening_universe: Optional[List[str]] = None,
     ):
-        self.llm = llm
+        # Backward compatibility:
+        # - Older callers pass `llm` only.
+        # - New callers can split models by responsibility:
+        #   quick_llm for Stage 1 scanners, deep_llm for Stage 2 synthesis.
+        if deep_llm is None:
+            deep_llm = llm
+        if quick_llm is None:
+            quick_llm = deep_llm
+        if deep_llm is None:
+            raise ValueError("IntelligenceDrivenRecommender requires an LLM instance")
+
+        self.deep_llm = deep_llm
+        self.quick_llm = quick_llm
         self.config = config or {}
-        self.scanner = IntelligenceScanner(llm=llm, config=config)
+        self.scanner = IntelligenceScanner(llm=self.quick_llm, config=config)
         self.screening_universe = screening_universe
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -233,7 +247,7 @@ class IntelligenceDrivenRecommender:
         ])
 
         try:
-            result = (prompt | self.llm).invoke({})
+            result = (prompt | self.deep_llm).invoke({})
             content = result.content if hasattr(result, "content") else str(result)
             return self._parse_synthesis_response(content)
         except Exception as e:
@@ -363,7 +377,8 @@ def patch_discovery_graph_with_intelligence(discovery_graph) -> None:
         # Now uses the three-sub-agent architecture internally
     """
     discovery_graph.recommender = IntelligenceDrivenRecommender(
-        llm=discovery_graph.llm,
+        deep_llm=getattr(discovery_graph, "deep_llm", getattr(discovery_graph, "llm", None)),
+        quick_llm=getattr(discovery_graph, "quick_llm", getattr(discovery_graph, "llm", None)),
         config=discovery_graph.config,
     )
     logger.info("StockDiscoveryGraph patched with IntelligenceDrivenRecommender")

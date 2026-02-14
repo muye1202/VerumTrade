@@ -212,10 +212,9 @@ def _run_discovery_deep_analysis(
                 update_display(layout)
 
             if final_state:
-                structured = graph.extract_structured_decision(
-                    final_state.get("final_trade_decision", "")
-                )
-                decision = structured.get("action") or graph.process_signal(
+                graph._attach_canonical_decision(final_state, expected_ticker=ticker)
+                structured = final_state.get("final_trade_decision_structured")
+                decision = (structured or {}).get("action") or graph.process_signal(
                     final_state.get("final_trade_decision", "")
                 )
 
