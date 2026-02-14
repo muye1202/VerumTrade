@@ -12,7 +12,10 @@ eval_data/
 tests
 tmp_*
 journal
-execution_*
+!tradingagents/agents/journal/
+!tradingagents/agents/journal/execution_advisor.py
+!tradingagents/agents/journal/execution_policy.py
+execution_logs/
 data_cache
 verify_*
 check_*
