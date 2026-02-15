@@ -33,9 +33,9 @@ class DiscoveryResult:
 
 class StockDiscoveryGraph:
     """
-    Orchestrates stock discovery using LLM-based recommendation.
-    
-    This is a lightweight graph that runs the StockRecommenderAgent
+    Orchestrates stock discovery using the prefilter + technical pipeline.
+
+    This is a lightweight graph that runs IntelligenceDrivenRecommender
     and returns discovered stock candidates for further analysis.
     """
     

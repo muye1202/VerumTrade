@@ -24,7 +24,6 @@ from rich.align import Align
 
 from tradingagents.graph.portfolio_analyzer import PortfolioAnalyzer
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
-from tradingagents.agents.discovery.stock_screener import create_discovery_agent
 from tradingagents.graph.batch_analysis import BatchAnalyzer
 from tradingagents.execution import AlpacaExecutor
 from cli.utils import *
