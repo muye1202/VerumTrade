@@ -13,14 +13,10 @@ from .intelligence import (
     TechnicalSignal,
 )
 from .intelligence_integration import IntelligenceDrivenRecommender
-from .legacy_discovery import MacroSectorScanner, CatalystNewsScanner
 
 __all__ = [
     "IntelligenceScanner",
     "IntelligenceResult",
     "IntelligenceDrivenRecommender",
     "TechnicalSignal",
-    # Archived legacy scanners
-    "MacroSectorScanner",
-    "CatalystNewsScanner",
 ]

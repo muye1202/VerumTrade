@@ -577,17 +577,43 @@ def get_user_selections():
         )
         analysis_date = get_analysis_date()
 
+        console.print(
+            create_question_box(
+                "Step 3: Stage 0 Catalyst Filter Mode",
+                "Select the Stage 0 catalyst filter mode used by discovery prefiltering",
+                "daily_calendar",
+            )
+        )
+        discovery_catalyst_mode = questionary.select(
+            "Select [Stage 0 Catalyst Filter Mode]:",
+            choices=[
+                questionary.Choice("daily_calendar (recommended default)", value="daily_calendar"),
+                questionary.Choice("per_ticker_calendar", value="per_ticker_calendar"),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=questionary.Style(
+                [
+                    ("selected", "fg:yellow noinherit"),
+                    ("highlighted", "fg:yellow noinherit"),
+                    ("pointer", "fg:yellow noinherit"),
+                ]
+            ),
+        ).ask()
+        if discovery_catalyst_mode is None:
+            console.print("\n[red]No catalyst filter mode selected. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
         # Skip to LLM provider selection for discovery mode
-        console.print(create_question_box("Step 3: LLM Provider", "Select which service to talk to"))
+        console.print(create_question_box("Step 4: LLM Provider", "Select which service to talk to"))
         selected_llm_provider, backend_url = select_llm_provider()
 
-        console.print(create_question_box("Step 4: Deep Thinking Agent", "Select the model for stock discovery"))
+        console.print(create_question_box("Step 5: Deep Thinking Agent", "Select the model for stock discovery"))
         selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
 
         # Optional execution settings
         console.print(
             create_question_box(
-                "Step 5: Execution",
+                "Step 6: Execution",
                 "Optionally execute BUY/SELL signals after deep analysis. Sizing is agent-driven (QUANTITY or POSITION_SIZE_PCT).",
                 "Analysis only",
             )
@@ -598,6 +624,7 @@ def get_user_selections():
             "analysis_mode": "discovery",
             "ticker": None,
             "analysis_date": analysis_date,
+            "discovery_catalyst_mode": discovery_catalyst_mode,
             "analysts": [],
             "research_depth": 1,
             "llm_provider": selected_llm_provider.lower(),

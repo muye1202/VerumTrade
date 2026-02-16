@@ -8,12 +8,35 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 import requests
 
+from tradingagents.dataflows.config import get_config
+from .stage0_cache import (
+    load_cache_value,
+    save_cache_value,
+    stable_key,
+)
 
 PRIMARY_EXCHANGES = {"NYSE", "NASDAQ"}
 _YAHOO_EARNINGS_URL = "https://finance.yahoo.com/calendar/earnings"
 _QUOTE_HREF_RE = re.compile(r"/quote/([A-Z0-9.\-^=]+)")
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _LOGGER = logging.getLogger(__name__)
+
+
+def _chunked(values: List[str], size: int) -> List[List[str]]:
+    return [values[i:i + size] for i in range(0, len(values), max(1, size))]
+
+
+def _record_metric(metrics: Optional[Dict[str, Any]], key: str, amount: int = 1) -> None:
+    if isinstance(metrics, dict):
+        metrics[key] = int(metrics.get(key, 0)) + int(amount)
+
+
+def _primary_core_stock_vendor() -> str:
+    cfg = get_config()
+    tool_vendors = cfg.get("tool_vendors", {}) or {}
+    raw = str(tool_vendors.get("get_stock_data", cfg.get("data_vendors", {}).get("core_stock_apis", "alpaca")))
+    first = raw.split(",")[0].strip().lower()
+    return first or "alpaca"
 
 
 def _normalize_enum_like(value: Any) -> str:
@@ -99,6 +122,9 @@ def compute_avg_daily_dollar_volume(
     symbol: str,
     trade_date: Optional[str] = None,
     lookback_days: int = 20,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+    raw_csv: Optional[str] = None,
 ) -> Optional[float]:
     from tradingagents.dataflows.interface import route_to_vendor
 
@@ -113,12 +139,43 @@ def compute_avg_daily_dollar_volume(
     start_date = (end_dt - timedelta(days=max(lookback_days * 3, 30))).strftime("%Y-%m-%d")
     end_date = end_dt.strftime("%Y-%m-%d")
 
-    raw_csv = route_to_vendor("get_stock_data", symbol, start_date, end_date)
-    dollar_volumes = _parse_daily_dollar_volumes(raw_csv)
+    vendor = _primary_core_stock_vendor()
+    cache_key = stable_key(
+        {
+            "type": "adv",
+            "symbol": _normalize_symbol(symbol),
+            "trade_date": end_date,
+            "lookback_days": int(lookback_days),
+            "vendor": vendor,
+        }
+    )
+    cached, hit = load_cache_value(
+        namespace="stage0_adv",
+        key=cache_key,
+        cache_config=cache_config,
+        metrics=metrics,
+    )
+    if hit and cached is not None:
+        try:
+            return float(cached)
+        except Exception:
+            pass
+
+    if raw_csv is None:
+        _record_metric(metrics, "vendor_calls_estimate", 1)
+        raw_csv = route_to_vendor("get_stock_data", symbol, start_date, end_date)
+    dollar_volumes = _parse_daily_dollar_volumes(raw_csv or "")
     if len(dollar_volumes) < lookback_days:
         return None
     window = dollar_volumes[-lookback_days:]
-    return sum(window) / float(lookback_days)
+    adv = sum(window) / float(lookback_days)
+    save_cache_value(
+        namespace="stage0_adv",
+        key=cache_key,
+        value=adv,
+        cache_config=cache_config,
+    )
+    return adv
 
 
 def filter_by_avg_daily_dollar_volume(
@@ -127,6 +184,9 @@ def filter_by_avg_daily_dollar_volume(
     min_avg_dollar_volume_20d: float = 10_000_000.0,
     lookback_days: int = 20,
     max_workers: int = 6,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+    batch_size: int = 100,
 ) -> List[str]:
     unique_symbols = sorted({
         _normalize_symbol(s)
@@ -137,9 +197,87 @@ def filter_by_avg_daily_dollar_volume(
         return []
 
     filtered: List[str] = []
+    vendor = _primary_core_stock_vendor()
+
+    # Batch path for Alpaca to reduce remote request count.
+    if vendor == "alpaca":
+        try:
+            from tradingagents.dataflows.vendors.alpaca.alpaca import get_stock_data_alpaca_batch
+        except Exception:
+            get_stock_data_alpaca_batch = None
+
+        if callable(get_stock_data_alpaca_batch):
+            end_dt = (
+                datetime.strptime(trade_date, "%Y-%m-%d")
+                if trade_date
+                else datetime.now(timezone.utc)
+            )
+            start_date = (end_dt - timedelta(days=max(lookback_days * 3, 30))).strftime("%Y-%m-%d")
+            end_date = end_dt.strftime("%Y-%m-%d")
+
+            for chunk in _chunked(unique_symbols, int(batch_size)):
+                missing: List[str] = []
+                adv_map: Dict[str, Optional[float]] = {}
+                for symbol in chunk:
+                    cache_key = stable_key(
+                        {
+                            "type": "adv",
+                            "symbol": symbol,
+                            "trade_date": end_date,
+                            "lookback_days": int(lookback_days),
+                            "vendor": vendor,
+                        }
+                    )
+                    cached, hit = load_cache_value(
+                        namespace="stage0_adv",
+                        key=cache_key,
+                        cache_config=cache_config,
+                        metrics=metrics,
+                    )
+                    if hit and cached is not None:
+                        try:
+                            adv_map[symbol] = float(cached)
+                            continue
+                        except Exception:
+                            pass
+                    missing.append(symbol)
+
+                if missing:
+                    _record_metric(metrics, "vendor_calls_estimate", 1)
+                    try:
+                        batch_rows = get_stock_data_alpaca_batch(missing, start_date, end_date)
+                    except Exception:
+                        batch_rows = {}
+
+                    for symbol in missing:
+                        raw_csv = str((batch_rows or {}).get(symbol, "") or "")
+                        adv = compute_avg_daily_dollar_volume(
+                            symbol=symbol,
+                            trade_date=trade_date,
+                            lookback_days=lookback_days,
+                            cache_config=cache_config,
+                            metrics=metrics,
+                            raw_csv=(raw_csv if raw_csv else None),
+                        )
+                        adv_map[symbol] = adv
+
+                for symbol, adv in adv_map.items():
+                    if adv is not None and adv >= float(min_avg_dollar_volume_20d):
+                        filtered.append(symbol)
+
+            return sorted(set(filtered))
+
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {
-            pool.submit(compute_avg_daily_dollar_volume, s, trade_date, lookback_days): s
+            pool.submit(
+                compute_avg_daily_dollar_volume,
+                s,
+                trade_date,
+                lookback_days,
+                cache_config,
+                metrics,
+                None,
+            ): s
             for s in unique_symbols
         }
         for future in as_completed(futures):
@@ -333,6 +471,7 @@ def _fetch_daily_earnings_symbols_from_yahoo(
     day_str: str,
     page_size: int,
     http_timeout_s: int,
+    session: Optional[requests.Session] = None,
 ) -> Set[str]:
     symbols: Set[str] = set()
     headers = {
@@ -342,13 +481,14 @@ def _fetch_daily_earnings_symbols_from_yahoo(
             "Chrome/122.0.0.0 Safari/537.36"
         )
     }
+    client = session or requests.Session()
     for offset in range(0, max(1, page_size) * 20, max(1, page_size)):
         params = {
             "day": day_str,
             "offset": offset,
             "size": max(1, page_size),
         }
-        response = requests.get(
+        response = client.get(
             _YAHOO_EARNINGS_URL,
             params=params,
             headers=headers,
@@ -372,6 +512,9 @@ def filter_by_upcoming_earnings_daily_calendar(
     window_days: int = 7,
     http_timeout_s: int = 12,
     calendar_page_size: int = 100,
+    max_workers: int = 4,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     universe = _normalize_universe_symbols(symbols)
     if not universe:
@@ -381,16 +524,59 @@ def filter_by_upcoming_earnings_daily_calendar(
     universe_set = set(universe)
     earnings_symbols: Set[str] = set()
 
+    days: List[str] = []
     curr = start
     while curr <= end:
-        day_str = curr.strftime("%Y-%m-%d")
-        day_symbols = _fetch_daily_earnings_symbols_from_yahoo(
-            day_str=day_str,
-            page_size=max(1, int(calendar_page_size)),
-            http_timeout_s=max(1, int(http_timeout_s)),
-        )
-        earnings_symbols.update(day_symbols)
+        days.append(curr.strftime("%Y-%m-%d"))
         curr += timedelta(days=1)
+
+    def _fetch_one_day(day_str: str) -> Set[str]:
+        cache_key = stable_key(
+            {
+                "type": "earnings_day_symbols",
+                "day": day_str,
+                "page_size": int(calendar_page_size),
+            }
+        )
+        cached, hit = load_cache_value(
+            namespace="stage0_earnings_day_symbols",
+            key=cache_key,
+            cache_config=cache_config,
+            metrics=metrics,
+        )
+        if hit and isinstance(cached, list):
+            return {
+                _normalize_symbol(s)
+                for s in cached
+                if _normalize_symbol(s)
+            }
+
+        with requests.Session() as session:
+            out = _fetch_daily_earnings_symbols_from_yahoo(
+                day_str=day_str,
+                page_size=max(1, int(calendar_page_size)),
+                http_timeout_s=max(1, int(http_timeout_s)),
+                session=session,
+            )
+        save_cache_value(
+            namespace="stage0_earnings_day_symbols",
+            key=cache_key,
+            value=sorted(out),
+            cache_config=cache_config,
+        )
+        _record_metric(metrics, "vendor_calls_estimate", 1)
+        return out
+
+    with ThreadPoolExecutor(max_workers=max(1, int(max_workers))) as pool:
+        futures = {pool.submit(_fetch_one_day, day): day for day in days}
+        errors: List[Exception] = []
+        for future in as_completed(futures):
+            try:
+                earnings_symbols.update(future.result())
+            except Exception as e:
+                errors.append(e)
+        if errors:
+            raise RuntimeError(f"daily_calendar fetch failed for {len(errors)} day(s): {type(errors[0]).__name__}")
 
     # Align with current universe symbol constraints.
     normalized_earnings = {
@@ -409,6 +595,8 @@ def filter_by_upcoming_earnings(
     failure_policy: str = "fail_open",
     http_timeout_s: int = 12,
     calendar_page_size: int = 100,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     universe = _normalize_universe_symbols(symbols)
     if not universe:
@@ -430,6 +618,9 @@ def filter_by_upcoming_earnings(
                 window_days=window_days,
                 http_timeout_s=http_timeout_s,
                 calendar_page_size=calendar_page_size,
+                max_workers=max_workers,
+                cache_config=cache_config,
+                metrics=metrics,
             )
         raise RuntimeError(f"Unsupported catalyst prefilter mode: {mode}")
     except Exception as e:

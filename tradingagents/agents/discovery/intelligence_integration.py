@@ -3,8 +3,9 @@
 Integration layer for stock discovery.
 
 Active architecture:
-  Stage 0: Programmatic universe prefilter (tradable US equities -> ADV -> earnings window)
-  Stage 1: Technical numeric screening and ranking
+  Stage 0: Programmatic universe prefilter (tradable US equities -> catalyst/liquidity prefilters)
+  Stage 1: Batch enrichment (non-LLM)
+  Stage 2: Technical numeric screening and ranking
 
 Legacy synthesis/sector/catalyst paths were removed from runtime.
 """
@@ -17,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 from tradingagents.agents.discovery.intelligence import (
     IntelligenceResult,
     IntelligenceScanner,
+    Stage1EnrichmentScorecard,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class IntelligenceDrivenRecommender:
     """
-    Discovery recommender powered by prefilter + technical screening only.
+    Discovery recommender powered by prefilter + stage1 enrichment + technical screening.
 
     Drop-in compatible with StockDiscoveryGraph.run_discovery().
     """
@@ -110,6 +112,8 @@ class IntelligenceDrivenRecommender:
             "iterations": 0,
             "intelligence": intelligence,
             "rankings": rankings,
+            "stage0": dict(intelligence.stage0_metrics or {}),
+            "stage1": self._build_stage1_payload(intelligence.stage1_scorecards),
             "excluded_tickers": sorted(excluded_set),
         }
 
@@ -121,7 +125,30 @@ class IntelligenceDrivenRecommender:
         excluded_tickers: Optional[List[str]] = None,
     ) -> str:
         report_parts = [f"# Stock Discovery Report - {trade_date}\n"]
-        report_parts.append("## Pipeline Mode\nPrefilter + Technical (sector/catalyst legacy paths disabled)\n")
+        report_parts.append("## Pipeline Mode\nPrefilter + Stage1 Batch Enrichment + Technical (sector/catalyst legacy paths disabled)\n")
+        if intelligence.stage0_metrics:
+            m = intelligence.stage0_metrics
+            report_parts.append("## Stage 0 Metrics")
+            report_parts.append(
+                f"- assets_fetch_s: {float(m.get('assets_fetch_s', 0.0)):.2f}"
+            )
+            report_parts.append(
+                f"- earnings_filter_s: {float(m.get('earnings_filter_s', 0.0)):.2f}"
+            )
+            report_parts.append(
+                f"- adv_filter_s: {float(m.get('adv_filter_s', 0.0)):.2f}"
+            )
+            report_parts.append(
+                f"- cache_hits: {int(m.get('cache_hits', 0))}"
+            )
+            report_parts.append(
+                f"- cache_misses: {int(m.get('cache_misses', 0))}"
+            )
+            report_parts.append(
+                f"- vendor_calls_estimate: {int(m.get('vendor_calls_estimate', 0))}"
+            )
+            report_parts.append("")
+        report_parts.extend(self._build_stage1_report_section(intelligence.stage1_scorecards))
 
         if rankings:
             report_parts.append("## Recommended Stocks\n")
@@ -149,6 +176,59 @@ class IntelligenceDrivenRecommender:
             f"Tickers screened: {len(intelligence.technical_signals)}*"
         )
         return "\n".join(report_parts)
+
+    @staticmethod
+    def _build_stage1_payload(scorecards: List[Stage1EnrichmentScorecard]) -> Dict[str, Any]:
+        payload_rows = [
+            {
+                "ticker": s.ticker,
+                "earnings_beat_rate_4q": s.earnings_beat_rate_4q,
+                "options_unusual_score": s.options_unusual_score,
+                "short_interest_pct_float": s.short_interest_pct_float,
+                "insider_signal": s.insider_signal,
+                "data_quality_flags": list(s.data_quality_flags or []),
+            }
+            for s in scorecards
+        ]
+        covered = len([r for r in payload_rows if not r["data_quality_flags"]])
+        return {
+            "count": len(payload_rows),
+            "coverage_pct": round((covered / len(payload_rows)) * 100.0, 1) if payload_rows else 0.0,
+            "scorecards": payload_rows,
+        }
+
+    @staticmethod
+    def _build_stage1_report_section(scorecards: List[Stage1EnrichmentScorecard]) -> List[str]:
+        if not scorecards:
+            return ["## Stage 1 Enrichment\nNo Stage 1 scorecards generated.\n"]
+
+        lines: List[str] = ["## Stage 1 Enrichment"]
+        lines.append(f"- Tickers enriched: {len(scorecards)}")
+        covered = [s for s in scorecards if not s.data_quality_flags]
+        lines.append(f"- Full data coverage: {len(covered)}/{len(scorecards)} ({(len(covered)/len(scorecards))*100:.1f}%)")
+
+        top_options = sorted(scorecards, key=lambda s: s.options_unusual_score, reverse=True)[:3]
+        top_short = sorted(scorecards, key=lambda s: s.short_interest_pct_float, reverse=True)[:3]
+        top_beat = sorted(scorecards, key=lambda s: s.earnings_beat_rate_4q, reverse=True)[:3]
+
+        if top_options:
+            lines.append("- Top options unusual activity: " + ", ".join(f"{s.ticker}({s.options_unusual_score:.1f})" for s in top_options))
+        if top_short:
+            lines.append("- Top short-interest signals: " + ", ".join(f"{s.ticker}({s.short_interest_pct_float:.1f}%)" for s in top_short))
+        if top_beat:
+            lines.append("- Top earnings beat-rate: " + ", ".join(f"{s.ticker}({s.earnings_beat_rate_4q:.1f}%)" for s in top_beat))
+
+        lines.append("")
+        lines.append("| Ticker | ROC20d | RS-SPY20d | Options | Short % Float | Beat Rate 4Q | Insider | Flags |")
+        lines.append("|---|---:|---:|---:|---:|---:|---|---|")
+        for s in scorecards:
+            flags = ",".join(s.data_quality_flags) if s.data_quality_flags else "-"
+            lines.append(
+                f"| {s.ticker} | {s.roc_20d:.2f} | {s.rs_vs_spy_20d:.2f} | {s.options_unusual_score:.1f} | "
+                f"{s.short_interest_pct_float:.1f} | {s.earnings_beat_rate_4q:.1f} | {s.insider_signal} | {flags} |"
+            )
+        lines.append("")
+        return lines
 
     @staticmethod
     def _normalize_ticker_set(tickers: Optional[List[str]]) -> Set[str]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Optional
+from typing import Annotated, Dict, List, Optional
 from urllib.parse import urlparse
 
 
@@ -225,6 +225,105 @@ def _fetch_alpaca_daily_bars_df(symbol: str, start_date: str, end_date: str):
 def fetch_stock_bars_df_alpaca(symbol: str, start_date: str, end_date: str):
     """Public helper for getting daily bar data as a DataFrame (used by indicator utilities)."""
     return _fetch_alpaca_daily_bars_df(symbol=symbol, start_date=start_date, end_date=end_date)
+
+
+def get_stock_data_alpaca_batch(
+    symbols: List[str],
+    start_date: str,
+    end_date: str,
+) -> Dict[str, str]:
+    """
+    Retrieve daily OHLCV bars for multiple symbols from Alpaca.
+
+    Returns a mapping: SYMBOL -> csv string (same style as get_stock_data_alpaca output).
+    """
+    try:
+        import pandas as pd  # type: ignore
+        from alpaca.data.requests import StockBarsRequest  # type: ignore
+        from alpaca.data.timeframe import TimeFrame  # type: ignore
+    except Exception as e:
+        raise AlpacaConnectionError(
+            "Alpaca batch provider requires alpaca-py and pandas."
+        ) from e
+
+    normalized = sorted({
+        str(s).strip().upper()
+        for s in (symbols or [])
+        if str(s).strip()
+    })
+    if not normalized:
+        return {}
+
+    datetime.strptime(start_date, "%Y-%m-%d")
+    datetime.strptime(end_date, "%Y-%m-%d")
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    end_dt = (datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)).replace(tzinfo=timezone.utc)
+
+    client = _alpaca_client()
+    try:
+        req = StockBarsRequest(
+            symbol_or_symbols=normalized,
+            timeframe=TimeFrame.Day,
+            start=start_dt,
+            end=end_dt,
+            adjustment=None,
+        )
+        bars = client.get_stock_bars(req)
+    except Exception as e:
+        raise AlpacaConnectionError(f"Alpaca batch request failed: {e}") from e
+
+    try:
+        df = bars.df
+    except Exception as e:
+        raise AlpacaConnectionError(f"Alpaca returned an unexpected batch payload: {e}") from e
+    if df is None or len(df) == 0:
+        return {}
+
+    if not isinstance(df.index, pd.MultiIndex):
+        raise AlpacaConnectionError("Expected MultiIndex dataframe for Alpaca batch bars.")
+
+    out: Dict[str, str] = {}
+    full = df.reset_index()
+    if "symbol" not in full.columns:
+        raise AlpacaConnectionError("Alpaca batch payload missing symbol column.")
+
+    for symbol, group in full.groupby("symbol"):
+        symbol_upper = str(symbol).strip().upper()
+        if not symbol_upper:
+            continue
+        if "timestamp" not in group.columns:
+            continue
+        g = group.copy()
+        g["Date"] = pd.to_datetime(g["timestamp"], utc=True).dt.tz_convert(None)
+        rename_map = {
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
+            "trade_count": "TradeCount",
+            "vwap": "VWAP",
+            "symbol": "Symbol",
+        }
+        for src, dst in rename_map.items():
+            if src in g.columns and dst not in g.columns:
+                g = g.rename(columns={src: dst})
+        preferred = ["Date", "Symbol", "Open", "High", "Low", "Close", "Volume", "TradeCount", "VWAP"]
+        remaining = [c for c in g.columns if c not in preferred]
+        g = g[preferred + remaining]
+        g = g.sort_values("Date").set_index("Date")
+        g.index.name = "Date"
+        for col in ("Open", "High", "Low", "Close", "VWAP"):
+            if col in g.columns:
+                g[col] = pd.to_numeric(g[col], errors="coerce").round(2)
+        header = f"# Stock data for {symbol_upper} from {start_date} to {end_date}\n"
+        header += f"# Vendor: alpaca\n"
+        header += f"# Total records: {len(g)}\n"
+        header += (
+            f"# Data retrieved on: {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}\n\n"
+        )
+        out[symbol_upper] = header + g.to_csv()
+    return out
 
 
 def get_stock_data_alpaca(

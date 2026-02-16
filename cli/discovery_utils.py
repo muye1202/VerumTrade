@@ -19,10 +19,12 @@ from rich.align import Align
 from tradingagents.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.execution import fetch_portfolio_symbols
+from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
 from cli.discovery_report_logger import (
     write_deep_analysis_report,
     write_discovery_report,
 )
+from cli.discovery_stage_logger import DiscoveryStageProgressLogger
 
 
 # Injected from cli/main.py
@@ -214,10 +216,87 @@ def _run_discovery_deep_analysis(
 
             if final_state:
                 graph._attach_canonical_decision(final_state, expected_ticker=ticker)
+                if executor:
+                    graph._enforce_decision_guard(
+                        final_state,
+                        expected_ticker=ticker,
+                        executor=executor,
+                    )
                 structured = final_state.get("final_trade_decision_structured")
                 decision = (structured or {}).get("action") or graph.process_signal(
                     final_state.get("final_trade_decision", "")
                 )
+                execution_result = None
+
+                if executor:
+                    if not isinstance(structured, dict):
+                        execution_result = {
+                            "ticker": ticker,
+                            "signal": decision,
+                            "trade_date": trade_date,
+                            "executed": False,
+                            "error": "Structured decision missing or invalid; execution aborted",
+                            "decision_source": "final_trade_decision_structured",
+                            "decision_version": None,
+                            "decision_validation_ok": False,
+                            "decision_validation_error": (
+                                final_state.get("final_trade_decision_validation_error", "")
+                                or "structured decision unavailable"
+                            ),
+                            "decision_price_guard_error": (
+                                (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+                            ),
+                            "market_snapshot_reference_price": (
+                                (final_state.get("market_snapshot") or {}).get("reference_price")
+                            ),
+                            "market_snapshot_source": (
+                                (final_state.get("market_snapshot") or {}).get("source")
+                            ),
+                        }
+                    elif (final_state.get("decision_guard") or {}).get("price_guard_error"):
+                        execution_result = {
+                            "ticker": ticker,
+                            "signal": decision,
+                            "trade_date": trade_date,
+                            "executed": False,
+                            "error": "Decision failed price guard; execution aborted",
+                            "decision_source": "final_trade_decision_structured",
+                            "decision_version": (
+                                (final_state.get("final_trade_decision_structured") or {}).get("decision_version")
+                            ),
+                            "decision_validation_ok": False,
+                            "decision_validation_error": (
+                                final_state.get("final_trade_decision_validation_error", "")
+                                or "decision failed price guard"
+                            ),
+                            "decision_price_guard_error": (
+                                (final_state.get("decision_guard") or {}).get("price_guard_error", "")
+                            ),
+                            "market_snapshot_reference_price": (
+                                (final_state.get("market_snapshot") or {}).get("reference_price")
+                            ),
+                            "market_snapshot_source": (
+                                (final_state.get("market_snapshot") or {}).get("source")
+                            ),
+                        }
+                    elif decision in {"BUY", "SELL"}:
+                        execution_result = executor.execute_signal(
+                            ticker=ticker,
+                            signal=decision,
+                            analysis_state=final_state,
+                            trade_date=trade_date,
+                            agent_quantity=structured.get("quantity"),
+                            agent_limit_price=structured.get("limit_price"),
+                            **executor_kwargs_from_structured(structured),
+                        )
+                    else:
+                        execution_result = {
+                            "ticker": ticker,
+                            "signal": decision,
+                            "trade_date": trade_date,
+                            "executed": False,
+                            "message": "Discovery mode executes BUY/SELL only",
+                        }
 
                 conviction_score = _calculate_conviction(final_state, decision)
 
@@ -230,6 +309,7 @@ def _run_discovery_deep_analysis(
                     "fundamentals_report": final_state.get("fundamentals_report", ""),
                     "news_report": final_state.get("news_report", ""),
                     "final_decision": final_state.get("final_trade_decision", ""),
+                    "execution_result": execution_result,
                 })
 
                 display_complete_report(final_state)
@@ -320,12 +400,17 @@ def run_discovery_flow(selections: Dict[str, Any]):
     config["quick_think_llm"] = selections.get("shallow_thinker", "gpt-4o-mini")
     config["llm_provider"] = selections.get("llm_provider", "openai").lower()
     config["backend_url"] = selections.get("backend_url")
+    catalyst_mode = selections.get("discovery_catalyst_mode", "daily_calendar")
+    config.setdefault("numeric_filter", {})
+    config["numeric_filter"].setdefault("catalyst_prefilter", {})
+    config["numeric_filter"]["catalyst_prefilter"]["mode"] = catalyst_mode
 
     # Get trade date
     trade_date = selections.get("analysis_date") or datetime.datetime.now().strftime("%Y-%m-%d")
 
     console.print(f"[cyan]Starting discovery for date: {trade_date}[/cyan]")
     console.print(f"[dim]Using LLM: {config['deep_think_llm']} ({config['llm_provider']})[/dim]")
+    console.print(f"[dim]Stage 0 catalyst filter mode: {catalyst_mode}[/dim]")
     excluded_tickers = []
     try:
         excluded_tickers = sorted(
@@ -345,8 +430,11 @@ def run_discovery_flow(selections: Dict[str, Any]):
         )
     console.print()
 
-    # Run discovery
-    with console.status("[bold cyan]Running stock discovery...[/bold cyan]", spinner="dots"):
+    # Run discovery with stage progress logging (Stage 0 + Stage 1).
+    stage_logger = DiscoveryStageProgressLogger(console=console)
+    config["discovery_progress_callback"] = stage_logger.callback
+    stage_logger.start()
+    try:
         discovery_graph = StockDiscoveryGraph(
             config=config,
             debug=False,
@@ -355,6 +443,9 @@ def run_discovery_flow(selections: Dict[str, Any]):
             trade_date=trade_date,
             exclude_tickers=excluded_tickers,
         )
+    finally:
+        stage_logger.stop()
+        config.pop("discovery_progress_callback", None)
 
     # Persist discovery report regardless of success/failure.
     try:

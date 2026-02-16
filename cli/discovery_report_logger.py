@@ -34,6 +34,9 @@ def write_discovery_report(
     iterations = getattr(result, "iterations", 0)
     error = getattr(result, "error", None)
     recommendation_report = getattr(result, "report", "") or ""
+    metadata = getattr(result, "metadata", None) or {}
+    stage0 = metadata.get("stage0", {}) if isinstance(metadata, dict) else {}
+    stage1 = metadata.get("stage1", {}) if isinstance(metadata, dict) else {}
 
     lines: list[str] = []
     lines.append("# Stock Discovery Report")
@@ -61,6 +64,39 @@ def write_discovery_report(
         lines.append(recommendation_report)
     else:
         lines.append("No recommendation report content generated.")
+
+    if isinstance(stage0, dict) and stage0:
+        lines.append("")
+        lines.append("## Stage 0 Metrics")
+        lines.append("")
+        lines.append(f"- assets_fetch_s: `{float(stage0.get('assets_fetch_s', 0.0)):.2f}`")
+        lines.append(f"- earnings_filter_s: `{float(stage0.get('earnings_filter_s', 0.0)):.2f}`")
+        lines.append(f"- adv_filter_s: `{float(stage0.get('adv_filter_s', 0.0)):.2f}`")
+        lines.append(f"- cache_hits: `{int(stage0.get('cache_hits', 0))}`")
+        lines.append(f"- cache_misses: `{int(stage0.get('cache_misses', 0))}`")
+        lines.append(f"- vendor_calls_estimate: `{int(stage0.get('vendor_calls_estimate', 0))}`")
+
+    if isinstance(stage1, dict) and stage1:
+        lines.append("")
+        lines.append("## Stage 1 Metadata")
+        lines.append("")
+        lines.append(f"- Enriched tickers: `{stage1.get('count', 0)}`")
+        lines.append(f"- Full coverage (%): `{stage1.get('coverage_pct', 0.0)}`")
+        scorecards = stage1.get("scorecards", []) or []
+        if scorecards:
+            lines.append("")
+            lines.append("| Ticker | Earnings Beat 4Q | Options Score | Short % Float | Insider | Flags |")
+            lines.append("|---|---:|---:|---:|---|---|")
+            for row in scorecards:
+                ticker = row.get("ticker", "")
+                beat = row.get("earnings_beat_rate_4q", 0.0)
+                options = row.get("options_unusual_score", 0.0)
+                short_pct = row.get("short_interest_pct_float", 0.0)
+                insider = row.get("insider_signal", "neutral")
+                flags = ",".join(row.get("data_quality_flags", []) or []) or "-"
+                lines.append(
+                    f"| {ticker} | {float(beat):.1f} | {float(options):.1f} | {float(short_pct):.1f} | {insider} | {flags} |"
+                )
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path
@@ -99,6 +135,10 @@ def write_deep_analysis_report(
     lines.append(f"- HOLD: `{decision_counts['HOLD']}`")
     lines.append(f"- SELL: `{decision_counts['SELL']}`")
     lines.append(f"- UNKNOWN: `{decision_counts['UNKNOWN']}`")
+    lines.append(
+        "- Note: For BUY decisions, `quantity` may be `null` when `position_size_pct` is provided; "
+        "the executor computes shares at execution time."
+    )
     lines.append("")
 
     if not results:
@@ -128,6 +168,41 @@ def write_deep_analysis_report(
             lines.append(f"- Decision: `{decision}`")
             lines.append(f"- Conviction score: `{conviction_score:.1f}`")
             lines.append("")
+            final_state = item.get("final_state") or {}
+            structured = final_state.get("final_trade_decision_structured") if isinstance(final_state, dict) else {}
+            execution_result = item.get("execution_result")
+
+            lines.append("#### Decision Sizing")
+            lines.append("")
+            lines.append(f"- Decision quantity: `{(structured or {}).get('quantity')}`")
+            lines.append(f"- Decision position_size_pct: `{(structured or {}).get('position_size_pct')}`")
+            resolved_qty = None
+            if isinstance(execution_result, dict):
+                resolved_qty = execution_result.get("qty")
+            lines.append(f"- Resolved/executed quantity: `{resolved_qty}`")
+            lines.append("")
+
+            if isinstance(execution_result, dict):
+                lines.append("#### Execution")
+                lines.append("")
+                lines.append(f"- Executed: `{bool(execution_result.get('executed'))}`")
+                lines.append(f"- Signal: `{execution_result.get('signal')}`")
+                if execution_result.get("message"):
+                    lines.append(f"- Message: `{execution_result.get('message')}`")
+                if execution_result.get("error"):
+                    lines.append(f"- Error: `{execution_result.get('error')}`")
+                if execution_result.get("qty") is not None:
+                    lines.append(f"- Qty: `{execution_result.get('qty')}`")
+                if execution_result.get("price") is not None:
+                    lines.append(f"- Price: `{execution_result.get('price')}`")
+                order = execution_result.get("order") or {}
+                if isinstance(order, dict) and order:
+                    if order.get("id"):
+                        lines.append(f"- Order ID: `{order.get('id')}`")
+                    if order.get("status"):
+                        lines.append(f"- Order status: `{order.get('status')}`")
+                lines.append("")
+
             lines.append("#### Final Decision")
             lines.append("")
             if final_decision:

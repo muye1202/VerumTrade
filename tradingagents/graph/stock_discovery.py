@@ -29,6 +29,7 @@ class DiscoveryResult:
     success: bool
     error: Optional[str] = None
     iterations: int = 0
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class StockDiscoveryGraph:
@@ -172,6 +173,10 @@ class StockDiscoveryGraph:
                 trade_date=trade_date,
                 success=True,
                 iterations=result.get("iterations", 0),
+                metadata={
+                    "stage0": result.get("stage0", {}),
+                    "stage1": result.get("stage1", {}),
+                },
             )
 
         except Exception as e:
@@ -182,6 +187,7 @@ class StockDiscoveryGraph:
                 trade_date=trade_date,
                 success=False,
                 error=str(e),
+                metadata=None,
             )
 
     def discover_and_analyze(

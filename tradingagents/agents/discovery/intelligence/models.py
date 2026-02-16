@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, Dict, List
 
 
 DEFAULT_SCREENING_UNIVERSE = [
@@ -61,11 +61,41 @@ class TechnicalSignal:
 
 
 @dataclass
+class Stage1EnrichmentScorecard:
+    """Stage 1 non-LLM enrichment output for one ticker."""
+    ticker: str
+    catalyst_window: str = ""
+    price: float = 0.0
+    roc_20d: float = 0.0
+    rs_vs_spy_20d: float = 0.0
+    adx: float = 0.0
+    volume_ratio: float = 0.0
+    vs_sma50_pct: float = 0.0
+    vs_sma200_pct: float = 0.0
+    bollinger_pct_b: float = 0.0
+    obv_slope_10d: float = 0.0
+    avg_dollar_volume_20d: float = 0.0
+    vwap: float = 0.0
+    vwap_distance_pct: float = 0.0
+    earnings_beat_rate_4q: float = 0.0
+    eps_consensus_current_q: float = 0.0
+    options_unusual_score: float = 0.0
+    options_call_put_notional_ratio: float = 0.0
+    short_interest_pct_float: float = 0.0
+    days_to_cover: float = 0.0
+    finra_short_volume_ratio_latest: float = 0.0
+    insider_signal: str = "neutral"
+    data_quality_flags: List[str] = field(default_factory=list)
+
+
+@dataclass
 class IntelligenceResult:
     """Aggregated output of all three sub-agents."""
     sector_signals: List[SectorSignal] = field(default_factory=list)
     catalyst_signals: List[CatalystSignal] = field(default_factory=list)
     technical_signals: List[TechnicalSignal] = field(default_factory=list)
+    stage1_scorecards: List[Stage1EnrichmentScorecard] = field(default_factory=list)
+    stage0_metrics: Dict[str, Any] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""
     scan_duration_secs: float = 0.0

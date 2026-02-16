@@ -9,6 +9,11 @@ from .universe_prefilters import (
     filter_by_avg_daily_dollar_volume,
     filter_tradeable_primary_us_equities,
 )
+from .stage0_cache import (
+    load_cache_value,
+    save_cache_value,
+    stable_key,
+)
 
 
 def strip_markdown_json_fence(text: str) -> str:
@@ -111,6 +116,36 @@ def fetch_alpaca_tradeable_assets(
     min_avg_dollar_volume_20d: float = 10_000_000.0,
     dollar_volume_lookback_days: int = 20,
     max_workers: int = 6,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    symbols = fetch_alpaca_primary_us_equities(
+        trade_date=trade_date,
+        cache_config=cache_config,
+        metrics=metrics,
+    )
+    symbols = filter_by_avg_daily_dollar_volume(
+        symbols=symbols,
+        trade_date=trade_date,
+        min_avg_dollar_volume_20d=min_avg_dollar_volume_20d,
+        lookback_days=dollar_volume_lookback_days,
+        max_workers=max_workers,
+        cache_config=cache_config,
+        metrics=metrics,
+    )
+    if not symbols:
+        raise RuntimeError(
+            "Alpaca tradable asset universe is empty after ADV prefilter "
+            f"(ADV{dollar_volume_lookback_days} >= {min_avg_dollar_volume_20d:,.0f}). "
+            "Verify data access, date window, and liquidity threshold."
+        )
+    return symbols
+
+
+def fetch_alpaca_primary_us_equities(
+    trade_date: Optional[str] = None,
+    cache_config: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     try:
         from alpaca.trading.client import TradingClient  # type: ignore
@@ -130,6 +165,21 @@ def fetch_alpaca_tradeable_assets(
             "Missing Alpaca credentials for universe scan. Set APCA_API_KEY_ID and APCA_API_SECRET_KEY."
         )
 
+    cache_key = stable_key(
+        {
+            "type": "tradeable_primary_us_equities",
+            "trade_date": str(trade_date or ""),
+        }
+    )
+    cached, hit = load_cache_value(
+        namespace="stage0_tradeable_primary_us_equities",
+        key=cache_key,
+        cache_config=cache_config,
+        metrics=metrics,
+    )
+    if hit and isinstance(cached, list):
+        return [str(s).strip().upper() for s in cached if str(s).strip()]
+
     try:
         client = TradingClient(api_key=api_key, secret_key=secret_key, paper=True)
         assets = client.get_all_assets()
@@ -142,18 +192,10 @@ def fetch_alpaca_tradeable_assets(
             "Alpaca tradable asset universe is empty after exchange/class prefilter "
             "(tradable, active, us_equity, NYSE/NASDAQ). Verify API access and account permissions."
         )
-
-    symbols = filter_by_avg_daily_dollar_volume(
-        symbols=exchange_filtered_symbols,
-        trade_date=trade_date,
-        min_avg_dollar_volume_20d=min_avg_dollar_volume_20d,
-        lookback_days=dollar_volume_lookback_days,
-        max_workers=max_workers,
+    save_cache_value(
+        namespace="stage0_tradeable_primary_us_equities",
+        key=cache_key,
+        value=exchange_filtered_symbols,
+        cache_config=cache_config,
     )
-    if not symbols:
-        raise RuntimeError(
-            "Alpaca tradable asset universe is empty after ADV prefilter "
-            f"(ADV{dollar_volume_lookback_days} >= {min_avg_dollar_volume_20d:,.0f}). "
-            "Verify data access, date window, and liquidity threshold."
-        )
-    return symbols
+    return exchange_filtered_symbols

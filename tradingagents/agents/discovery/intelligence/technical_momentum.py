@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,10 +9,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .models import TechnicalSignal
-from .universe_prefilters import filter_by_upcoming_earnings
+from .universe_prefilters import (
+    filter_by_avg_daily_dollar_volume,
+    filter_by_upcoming_earnings,
+)
+from .stage0_cache import (
+    load_cache_value,
+    save_cache_value,
+    stable_key,
+)
 from .utils import (
     extract_indicator_value,
     fetch_alpaca_tradeable_assets,
+    fetch_alpaca_primary_us_equities,
     normalize_linear,
     parse_json_dict,
     parse_price_volume_csv,
@@ -63,6 +73,15 @@ class TechnicalMomentumScanner:
         self.llm = llm
         self.config = config or {}
         self.logger = logging.getLogger(self.__class__.__name__)
+        self._stage0_last_metrics: Dict[str, Any] = {}
+
+    def _emit_progress(self, event: str, payload: Optional[Dict[str, Any]] = None) -> None:
+        cb = self.config.get("discovery_progress_callback")
+        if callable(cb):
+            try:
+                cb(event, payload or {})
+            except Exception:
+                pass
 
     def _numeric_filter_settings(self) -> Dict[str, Any]:
         defaults = {
@@ -97,6 +116,12 @@ class TechnicalMomentumScanner:
                 "http_timeout_s": 12,
                 "calendar_page_size": 100,
             },
+            "stage0_cache": {
+                "enabled": True,
+                "ttl_hours": 24,
+                "dir": None,
+                "force_refresh": False,
+            },
         }
         override = self.config.get("numeric_filter", {})
         return {
@@ -110,12 +135,29 @@ class TechnicalMomentumScanner:
                 **defaults["catalyst_prefilter"],
                 **override.get("catalyst_prefilter", {}),
             },
+            "stage0_cache": {
+                **defaults["stage0_cache"],
+                **override.get("stage0_cache", {}),
+            },
         }
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
         return safe_float(value)
 
+    def _fetch_tradeable_primary_us_equities(
+        self,
+        trade_date: Optional[str] = None,
+        stage0_cache_cfg: Optional[Dict[str, Any]] = None,
+        stage0_metrics: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        return fetch_alpaca_primary_us_equities(
+            trade_date=trade_date,
+            cache_config=stage0_cache_cfg,
+            metrics=stage0_metrics,
+        )
+
+    # Backward-compatible helper retained for tests/legacy call sites.
     def _fetch_alpaca_tradeable_assets(self, trade_date: Optional[str] = None) -> List[str]:
         cfg = self._numeric_filter_settings()["universe_prefilter"]
         return fetch_alpaca_tradeable_assets(
@@ -123,31 +165,223 @@ class TechnicalMomentumScanner:
             min_avg_dollar_volume_20d=float(cfg["min_avg_dollar_volume_20d"]),
             dollar_volume_lookback_days=int(cfg["dollar_volume_lookback_days"]),
             max_workers=int(cfg["max_workers"]),
+            cache_config=self._numeric_filter_settings()["stage0_cache"],
         )
 
-    def build_numeric_universe(self, trade_date: str) -> List[str]:
-        base = self._fetch_alpaca_tradeable_assets(trade_date=trade_date)
+    def get_stage0_last_metrics(self) -> Dict[str, Any]:
+        return dict(self._stage0_last_metrics or {})
+
+    def build_numeric_universe(
+        self,
+        trade_date: str,
+        excluded_tickers: Optional[List[str]] = None,
+    ) -> List[str]:
+        universe_cfg = self._numeric_filter_settings()["universe_prefilter"]
+        self._emit_progress("stage0.start", {"trade_date": trade_date})
         cfg = self._numeric_filter_settings()["catalyst_prefilter"]
-        if not bool(cfg.get("enabled", True)):
-            self.logger.info(
-                f"Numeric universe built: {len(base)} tickers (catalyst prefilter disabled)"
-            )
-            return base
-
-        filtered = filter_by_upcoming_earnings(
-            symbols=base,
-            analysis_date=trade_date,
-            mode=str(cfg.get("mode", "daily_calendar")),
-            window_days=int(cfg.get("window_days", 7)),
-            max_workers=int(cfg.get("max_workers", 4)),
-            failure_policy=str(cfg.get("failure_policy", "fail_open")),
-            http_timeout_s=int(cfg.get("http_timeout_s", 12)),
-            calendar_page_size=int(cfg.get("calendar_page_size", 100)),
+        stage0_cache_cfg = self._numeric_filter_settings()["stage0_cache"]
+        excluded = sorted(
+            {
+                str(t).strip().upper()
+                for t in (excluded_tickers or [])
+                if str(t).strip()
+            }
         )
+        stage0_metrics: Dict[str, Any] = {
+            "assets_fetch_s": 0.0,
+            "earnings_filter_s": 0.0,
+            "adv_filter_s": 0.0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "vendor_calls_estimate": 0,
+        }
+
+        stage0_universe_key = stable_key(
+            {
+                "trade_date": trade_date,
+                "catalyst_mode": str(cfg.get("mode", "daily_calendar")),
+                "catalyst_window_days": int(cfg.get("window_days", 7)),
+                "failure_policy": str(cfg.get("failure_policy", "fail_open")),
+                "http_timeout_s": int(cfg.get("http_timeout_s", 12)),
+                "calendar_page_size": int(cfg.get("calendar_page_size", 100)),
+                "adv_min": float(universe_cfg["min_avg_dollar_volume_20d"]),
+                "adv_lookback_days": int(universe_cfg["dollar_volume_lookback_days"]),
+                "excluded_tickers": excluded,
+            }
+        )
+        cached_universe, cached_hit = load_cache_value(
+            namespace="stage0_final_universe",
+            key=stage0_universe_key,
+            cache_config=stage0_cache_cfg,
+            metrics=stage0_metrics,
+        )
+        if cached_hit and isinstance(cached_universe, (list, dict)):
+            if isinstance(cached_universe, dict):
+                cached_filtered = cached_universe.get("filtered_universe", []) or []
+                base_len = int(cached_universe.get("base_universe", len(cached_filtered)))
+            else:
+                cached_filtered = cached_universe
+                base_len = len(cached_filtered)
+            filtered = [str(t).strip().upper() for t in cached_filtered if str(t).strip()]
+            self._stage0_last_metrics = stage0_metrics
+            self._emit_progress("stage0.complete", {
+                "trade_date": trade_date,
+                "mode": str(cfg.get("mode", "daily_calendar")),
+                "base_universe": base_len,
+                "filtered_universe": len(filtered),
+            })
+            self._emit_progress("stage0.metrics", self.get_stage0_last_metrics())
+            return filtered
+
+        t0 = time.time()
+        base = self._fetch_tradeable_primary_us_equities(
+            trade_date=trade_date,
+            stage0_cache_cfg=stage0_cache_cfg,
+            stage0_metrics=stage0_metrics,
+        )
+        stage0_metrics["assets_fetch_s"] = round(time.time() - t0, 2)
+        stage0_metrics["base_universe"] = len(base)
+        self.logger.info(
+            "Stage 0 catalyst prefilter settings: "
+            f"mode={cfg.get('mode', 'daily_calendar')} "
+            f"window_days={cfg.get('window_days', 7)} "
+            f"failure_policy={cfg.get('failure_policy', 'fail_open')} "
+            f"base_universe={len(base)}"
+        )
+        if not bool(cfg.get("enabled", True)):
+            t_adv = time.time()
+            filtered = filter_by_avg_daily_dollar_volume(
+                symbols=base,
+                trade_date=trade_date,
+                min_avg_dollar_volume_20d=float(universe_cfg["min_avg_dollar_volume_20d"]),
+                lookback_days=int(universe_cfg["dollar_volume_lookback_days"]),
+                max_workers=int(universe_cfg["max_workers"]),
+                cache_config=stage0_cache_cfg,
+                metrics=stage0_metrics,
+            )
+            stage0_metrics["adv_filter_s"] = round(time.time() - t_adv, 2)
+            if excluded:
+                excluded_set = set(excluded)
+                filtered = [t for t in filtered if t not in excluded_set]
+            save_cache_value(
+                namespace="stage0_final_universe",
+                key=stage0_universe_key,
+                value={
+                    "base_universe": len(base),
+                    "filtered_universe": filtered,
+                },
+                cache_config=stage0_cache_cfg,
+            )
+            self._stage0_last_metrics = stage0_metrics
+            self.logger.info(
+                "Numeric universe built: "
+                f"{len(filtered)} tickers (catalyst prefilter disabled, base={len(base)})"
+            )
+            self._emit_progress(
+                "stage0.complete",
+                {
+                    "trade_date": trade_date,
+                    "mode": "disabled",
+                    "base_universe": len(base),
+                    "filtered_universe": len(filtered),
+                },
+            )
+            self._emit_progress("stage0.metrics", self.get_stage0_last_metrics())
+            return filtered
+
+        mode = str(cfg.get("mode", "daily_calendar")).strip().lower()
+        if mode == "daily_calendar":
+            t_earnings = time.time()
+            catalyst_filtered = filter_by_upcoming_earnings(
+                symbols=base,
+                analysis_date=trade_date,
+                mode=mode,
+                window_days=int(cfg.get("window_days", 7)),
+                max_workers=int(cfg.get("max_workers", 4)),
+                failure_policy=str(cfg.get("failure_policy", "fail_open")),
+                http_timeout_s=int(cfg.get("http_timeout_s", 12)),
+                calendar_page_size=int(cfg.get("calendar_page_size", 100)),
+                cache_config=stage0_cache_cfg,
+                metrics=stage0_metrics,
+            )
+            stage0_metrics["earnings_filter_s"] = round(time.time() - t_earnings, 2)
+
+            t_adv = time.time()
+            filtered = filter_by_avg_daily_dollar_volume(
+                symbols=catalyst_filtered,
+                trade_date=trade_date,
+                min_avg_dollar_volume_20d=float(universe_cfg["min_avg_dollar_volume_20d"]),
+                lookback_days=int(universe_cfg["dollar_volume_lookback_days"]),
+                max_workers=int(universe_cfg["max_workers"]),
+                cache_config=stage0_cache_cfg,
+                metrics=stage0_metrics,
+            )
+            stage0_metrics["adv_filter_s"] = round(time.time() - t_adv, 2)
+        else:
+            t_adv = time.time()
+            liquidity_filtered = filter_by_avg_daily_dollar_volume(
+                symbols=base,
+                trade_date=trade_date,
+                min_avg_dollar_volume_20d=float(universe_cfg["min_avg_dollar_volume_20d"]),
+                lookback_days=int(universe_cfg["dollar_volume_lookback_days"]),
+                max_workers=int(universe_cfg["max_workers"]),
+                cache_config=stage0_cache_cfg,
+                metrics=stage0_metrics,
+            )
+            stage0_metrics["adv_filter_s"] = round(time.time() - t_adv, 2)
+
+            t_earnings = time.time()
+            filtered = filter_by_upcoming_earnings(
+                symbols=liquidity_filtered,
+                analysis_date=trade_date,
+                mode=mode,
+                window_days=int(cfg.get("window_days", 7)),
+                max_workers=int(cfg.get("max_workers", 4)),
+                failure_policy=str(cfg.get("failure_policy", "fail_open")),
+                http_timeout_s=int(cfg.get("http_timeout_s", 12)),
+                calendar_page_size=int(cfg.get("calendar_page_size", 100)),
+                cache_config=stage0_cache_cfg,
+                metrics=stage0_metrics,
+            )
+            stage0_metrics["earnings_filter_s"] = round(time.time() - t_earnings, 2)
+
+        if excluded:
+            excluded_set = set(excluded)
+            filtered = [t for t in filtered if t not in excluded_set]
+
+        save_cache_value(
+            namespace="stage0_final_universe",
+            key=stage0_universe_key,
+            value={
+                "base_universe": len(base),
+                "filtered_universe": filtered,
+            },
+            cache_config=stage0_cache_cfg,
+        )
+        self._stage0_last_metrics = stage0_metrics
         self.logger.info(
             "Numeric universe catalyst prefilter: "
             f"base={len(base)} filtered={len(filtered)} mode={cfg.get('mode')} window_days={cfg.get('window_days')}"
         )
+        self.logger.info(
+            "Stage 0 metrics: "
+            f"assets={stage0_metrics.get('assets_fetch_s', 0)}s "
+            f"earnings={stage0_metrics.get('earnings_filter_s', 0)}s "
+            f"adv={stage0_metrics.get('adv_filter_s', 0)}s "
+            f"cache_hit_rate="
+            f"{(100.0 * stage0_metrics.get('cache_hits', 0) / max(1, stage0_metrics.get('cache_hits', 0) + stage0_metrics.get('cache_misses', 0))):.1f}% "
+            f"vendor_calls_est={stage0_metrics.get('vendor_calls_estimate', 0)}"
+        )
+        self._emit_progress(
+            "stage0.complete",
+            {
+                "trade_date": trade_date,
+                "mode": str(cfg.get("mode", "daily_calendar")),
+                "base_universe": len(base),
+                "filtered_universe": len(filtered),
+            },
+        )
+        self._emit_progress("stage0.metrics", self.get_stage0_last_metrics())
         return filtered
 
     @staticmethod
