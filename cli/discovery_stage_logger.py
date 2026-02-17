@@ -17,7 +17,7 @@ from rich.progress import (
 @dataclass
 class DiscoveryStageProgressLogger:
     """
-    Live Stage 0/1 progress logger for discovery mode.
+    Live Stage 0/1/2 progress logger for discovery mode.
 
     Exposes a callback interface consumed by discovery scanners via config:
     config["discovery_progress_callback"] = logger.callback
@@ -27,9 +27,12 @@ class DiscoveryStageProgressLogger:
     progress: Optional[Progress] = None
     stage0_task: Optional[TaskID] = None
     stage1_task: Optional[TaskID] = None
+    stage2_task: Optional[TaskID] = None
     stage0_done: bool = False
     stage1_total: int = 0
     stage1_done: int = 0
+    stage2_total: int = 0
+    stage2_done: int = 0
     stage0_metrics: Optional[Dict[str, Any]] = None
     enabled: bool = True
 
@@ -51,8 +54,10 @@ class DiscoveryStageProgressLogger:
         self.progress.start()
         self.stage0_task = self.progress.add_task("Stage 0: Universe + catalyst prefilter", total=1)
         self.stage1_task = self.progress.add_task("Stage 1: Batch enrichment", total=1)
-        # Keep Stage 1 pending until we know the ticker count.
+        self.stage2_task = self.progress.add_task("Stage 2: Scoring & filtering", total=1)
+        # Keep Stage 1 and Stage 2 pending until we know the ticker counts.
         self.progress.update(self.stage1_task, completed=0, description="Stage 1: Waiting for Stage 0")
+        self.progress.update(self.stage2_task, completed=0, description="Stage 2: Waiting for Stage 1")
 
     def stop(self) -> None:
         if self.progress:
@@ -138,3 +143,45 @@ class DiscoveryStageProgressLogger:
                     description=f"Stage 1: complete ({count} scorecards)",
                 )
             return
+
+        if event == "stage2.start":
+            self.stage2_total = max(0, int(data.get("total", 0)))
+            self.stage2_done = 0
+            if self.stage2_task is not None:
+                total = max(1, self.stage2_total)
+                self.progress.update(
+                    self.stage2_task,
+                    completed=0,
+                    total=total,
+                    description=f"Stage 2: Scoring {self.stage2_total} candidates",
+                )
+            return
+
+        if event == "stage2.ticker_done":
+            self.stage2_done += 1
+            if self.stage2_task is not None:
+                ticker = str(data.get("ticker", "")).upper()
+                total = max(1, self.stage2_total)
+                completed = min(self.stage2_done, total)
+                self.progress.update(
+                    self.stage2_task,
+                    completed=completed,
+                    total=total,
+                    description=f"Stage 2: Scored {completed}/{self.stage2_total} (last {ticker})",
+                )
+            return
+
+        if event == "stage2.complete":
+            if self.stage2_task is not None:
+                passed = int(data.get("passed", 0))
+                total = int(data.get("total", self.stage2_done))
+                filtered = total - passed
+                pct = (filtered / total * 100.0) if total > 0 else 0.0
+                self.progress.update(
+                    self.stage2_task,
+                    completed=total,
+                    total=max(1, total),
+                    description=f"Stage 2: complete ({passed} passed, {filtered} filtered {pct:.0f}%)",
+                )
+            return
+

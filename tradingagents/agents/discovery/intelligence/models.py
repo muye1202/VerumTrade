@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 DEFAULT_SCREENING_UNIVERSE = [
@@ -89,12 +89,31 @@ class Stage1EnrichmentScorecard:
 
 
 @dataclass
+class Stage2ScoredCandidate:
+    """Stage 2: scored and filtered candidate with full numeric scorecard."""
+    ticker: str
+    composite_score: float = 0.0
+    # Factor sub-scores (each 0-100, pre-weight)
+    earnings_surprise_score: float = 0.0   # 30% weight
+    technical_momentum_score: float = 0.0  # 25% weight
+    options_flow_score: float = 0.0        # 20% weight
+    sector_momentum_score: float = 0.0     # 15% weight
+    short_squeeze_score: float = 0.0       # 10% weight
+    # Hard-filter metadata
+    hard_filter_passed: bool = True
+    hard_filter_fail_reasons: List[str] = field(default_factory=list)
+    # Carry-through from Stage 1
+    stage1_scorecard: Optional[Stage1EnrichmentScorecard] = None
+
+
+@dataclass
 class IntelligenceResult:
     """Aggregated output of all three sub-agents."""
     sector_signals: List[SectorSignal] = field(default_factory=list)
     catalyst_signals: List[CatalystSignal] = field(default_factory=list)
     technical_signals: List[TechnicalSignal] = field(default_factory=list)
     stage1_scorecards: List[Stage1EnrichmentScorecard] = field(default_factory=list)
+    stage2_candidates: List[Stage2ScoredCandidate] = field(default_factory=list)
     stage0_metrics: Dict[str, Any] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""

@@ -19,6 +19,7 @@ from tradingagents.agents.discovery.intelligence import (
     IntelligenceResult,
     IntelligenceScanner,
     Stage1EnrichmentScorecard,
+    Stage2ScoredCandidate,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class IntelligenceDrivenRecommender:
             - raw_messages: list
             - iterations: int
         """
-        self.logger.info(f"Discovery scan (prefilter+technical only) for {trade_date}")
+        self.logger.info(f"Discovery scan (prefilter+stage1+stage2) for {trade_date}")
         excluded_set = self._normalize_ticker_set(excluded_tickers)
 
         intelligence = self.scanner.scan_with_prefilter_universe(
@@ -76,23 +77,15 @@ class IntelligenceDrivenRecommender:
             excluded_tickers=sorted(excluded_set),
         )
 
-        rankings: List[Dict[str, Any]] = []
-        for s in intelligence.technical_signals:
-            ticker = str(getattr(s, "ticker", "")).strip().upper()
-            if not ticker or ticker in excluded_set:
-                continue
-            rankings.append(
-                {
-                    "ticker": ticker,
-                    "composite": round(float(getattr(s, "composite_score", 0.0)), 2),
-                    "thesis": (
-                        f"Technical composite {float(getattr(s, 'composite_score', 0.0)):.2f}; "
-                        f"20d momentum {float(getattr(s, 'momentum_20d', 0.0)):+.2f}%; "
-                        f"ADX {float(getattr(s, 'adx', 0.0)):.1f}; "
-                        f"RS vs SPY {float(getattr(s, 'relative_strength_vs_spy', 0.0)):.2f}"
-                    ),
-                    "signal_alignment": "technical",
-                }
+        # Prefer Stage 2 candidates (5-factor composite); fall back to
+        # old technical-signal-only path if Stage 2 is empty.
+        if intelligence.stage2_candidates:
+            rankings = self._rankings_from_stage2(
+                intelligence.stage2_candidates, excluded_set,
+            )
+        else:
+            rankings = self._rankings_from_technical(
+                intelligence.technical_signals, excluded_set,
             )
 
         rankings.sort(key=lambda r: float(r.get("composite", 0.0)), reverse=True)
@@ -114,6 +107,7 @@ class IntelligenceDrivenRecommender:
             "rankings": rankings,
             "stage0": dict(intelligence.stage0_metrics or {}),
             "stage1": self._build_stage1_payload(intelligence.stage1_scorecards),
+            "stage2": self._build_stage2_payload(intelligence.stage2_candidates),
             "excluded_tickers": sorted(excluded_set),
         }
 
@@ -149,6 +143,7 @@ class IntelligenceDrivenRecommender:
             )
             report_parts.append("")
         report_parts.extend(self._build_stage1_report_section(intelligence.stage1_scorecards))
+        report_parts.extend(self._build_stage2_report_section(intelligence.stage2_candidates))
 
         if rankings:
             report_parts.append("## Recommended Stocks\n")
@@ -237,6 +232,107 @@ class IntelligenceDrivenRecommender:
             for t in (tickers or [])
             if str(t).strip()
         }
+
+    # ------------------------------------------------------------------
+    # Stage 2 ranking helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _rankings_from_stage2(
+        candidates: List[Stage2ScoredCandidate],
+        excluded_set: Set[str],
+    ) -> List[Dict[str, Any]]:
+        rankings: List[Dict[str, Any]] = []
+        for c in candidates:
+            ticker = str(c.ticker).strip().upper()
+            if not ticker or ticker in excluded_set:
+                continue
+            rankings.append(
+                {
+                    "ticker": ticker,
+                    "composite": round(float(c.composite_score), 2),
+                    "thesis": (
+                        f"Stage2 composite {c.composite_score:.2f}; "
+                        f"earnings {c.earnings_surprise_score:.0f}; "
+                        f"momentum {c.technical_momentum_score:.0f}; "
+                        f"options {c.options_flow_score:.0f}; "
+                        f"sector {c.sector_momentum_score:.0f}; "
+                        f"squeeze {c.short_squeeze_score:.0f}"
+                    ),
+                    "signal_alignment": "stage2_5factor",
+                }
+            )
+        return rankings
+
+    @staticmethod
+    def _rankings_from_technical(technical_signals, excluded_set: Set[str]) -> List[Dict[str, Any]]:
+        """Fallback: build rankings from raw technical signals (pre-Stage-2 path)."""
+        rankings: List[Dict[str, Any]] = []
+        for s in technical_signals:
+            ticker = str(getattr(s, "ticker", "")).strip().upper()
+            if not ticker or ticker in excluded_set:
+                continue
+            rankings.append(
+                {
+                    "ticker": ticker,
+                    "composite": round(float(getattr(s, "composite_score", 0.0)), 2),
+                    "thesis": (
+                        f"Technical composite {float(getattr(s, 'composite_score', 0.0)):.2f}; "
+                        f"20d momentum {float(getattr(s, 'momentum_20d', 0.0)):+.2f}%; "
+                        f"ADX {float(getattr(s, 'adx', 0.0)):.1f}; "
+                        f"RS vs SPY {float(getattr(s, 'relative_strength_vs_spy', 0.0)):.2f}"
+                    ),
+                    "signal_alignment": "technical",
+                }
+            )
+        return rankings
+
+    @staticmethod
+    def _build_stage2_payload(
+        candidates: List[Stage2ScoredCandidate],
+    ) -> Dict[str, Any]:
+        rows = [
+            {
+                "ticker": c.ticker,
+                "composite_score": c.composite_score,
+                "earnings_surprise_score": c.earnings_surprise_score,
+                "technical_momentum_score": c.technical_momentum_score,
+                "options_flow_score": c.options_flow_score,
+                "sector_momentum_score": c.sector_momentum_score,
+                "short_squeeze_score": c.short_squeeze_score,
+            }
+            for c in candidates
+        ]
+        return {
+            "count": len(rows),
+            "candidates": rows,
+        }
+
+    @staticmethod
+    def _build_stage2_report_section(
+        candidates: List[Stage2ScoredCandidate],
+    ) -> List[str]:
+        if not candidates:
+            return ["## Stage 2 Scoring\nNo Stage 2 candidates generated.\n"]
+
+        lines: List[str] = ["## Stage 2 Scoring & Filtering"]
+        lines.append(f"- Candidates passed: {len(candidates)}")
+        lines.append("")
+        lines.append(
+            "| Ticker | Composite | Earnings | Momentum | Options | Sector | Squeeze |"
+        )
+        lines.append("|---|---:|---:|---:|---:|---:|---:|")
+        for c in candidates:
+            lines.append(
+                f"| {c.ticker} "
+                f"| {c.composite_score:.1f} "
+                f"| {c.earnings_surprise_score:.0f} "
+                f"| {c.technical_momentum_score:.0f} "
+                f"| {c.options_flow_score:.0f} "
+                f"| {c.sector_momentum_score:.0f} "
+                f"| {c.short_squeeze_score:.0f} |"
+            )
+        lines.append("")
+        return lines
 
 
 def patch_discovery_graph_with_intelligence(discovery_graph) -> None:

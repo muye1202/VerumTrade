@@ -176,6 +176,7 @@ class StockDiscoveryGraph:
                 metadata={
                     "stage0": result.get("stage0", {}),
                     "stage1": result.get("stage1", {}),
+                    "stage2": result.get("stage2", {}),
                 },
             )
 
