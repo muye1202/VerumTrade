@@ -114,6 +114,98 @@ def capture_trade_thesis(
         return None
 
 
+def refresh_active_thesis_from_portfolio_analysis(
+    store: JournalStore,
+    final_state: Dict[str, Any],
+    structured_decision: Dict[str, Any],
+    trade_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Refresh an existing active thesis from portfolio-analysis output.
+
+    This is a non-critical update path intended for portfolio analysis mode.
+    It never creates new theses; it only patches an already-active ticker thesis.
+    """
+    ticker = str(
+        structured_decision.get("ticker")
+        or final_state.get("company_of_interest")
+        or ""
+    ).upper()
+    if not ticker:
+        return {"status": "skipped", "reason": "missing_ticker", "ticker": ""}
+
+    existing = store.get_active_thesis_by_ticker(ticker)
+    if existing is None:
+        return {"status": "skipped", "reason": "no_active_thesis", "ticker": ticker}
+
+    try:
+        extracted = ThesisExtractor.extract(
+            final_state=final_state,
+            structured_decision=structured_decision,
+            execution_result=None,
+            trade_date=trade_date,
+        )
+
+        # Always replace configured analysis-refresh fields.
+        _replace_fields = (
+            "action",
+            "conviction",
+            "stop_loss",
+            "target_1",
+            "target_2",
+            "entry_zone_low",
+            "entry_zone_high",
+            "trailing_stop_pct",
+            "time_horizon_label",
+            "holding_days_planned",
+            "time_stop_date",
+            "invalidation_trigger",
+            "regime",
+            "catalyst",
+            "key_risks",
+            "market_analyst_summary",
+            "fundamentals_summary",
+            "news_summary",
+            "risk_judge_summary",
+            "final_decision_text",
+            "risk_reward_ratio",
+            "stop_loss_pct",
+        )
+        for field_name in _replace_fields:
+            setattr(existing, field_name, getattr(extracted, field_name, None))
+
+        store.save_thesis(existing)
+        logger.info(
+            "Refreshed active thesis %s for %s from portfolio analysis "
+            "(action=%s stop=%s target1=%s time_stop=%s)",
+            existing.id,
+            ticker,
+            existing.action,
+            existing.stop_loss,
+            existing.target_1,
+            existing.time_stop_date,
+        )
+        return {
+            "status": "updated",
+            "reason": "refreshed",
+            "ticker": ticker,
+            "thesis_id": existing.id,
+        }
+    except Exception as e:
+        logger.warning(
+            "Failed refreshing active thesis for %s from portfolio analysis: %s",
+            ticker,
+            e,
+            exc_info=True,
+        )
+        return {
+            "status": "failed",
+            "reason": str(e),
+            "ticker": ticker,
+            "thesis_id": existing.id,
+        }
+
+
 def _merge_buy_thesis(
     existing: TradeThesis,
     incoming: TradeThesis,

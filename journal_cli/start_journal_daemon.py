@@ -9,7 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Add project root to Python path so we can import tradingagents
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 load_dotenv()
 

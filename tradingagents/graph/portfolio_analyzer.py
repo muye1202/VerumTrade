@@ -316,6 +316,19 @@ class PortfolioAnalyzer:
         analyses = []
         total_positions = len(positions)
         stock_delay = self.config.get("stock_analysis_delay_s", 5.0)
+        journal_store = None
+        journal_refresh_fn = None
+        try:
+            from tradingagents.agents.journal.store import JournalStore
+            from tradingagents.agents.journal.hooks import (
+                refresh_active_thesis_from_portfolio_analysis,
+            )
+
+            journal_store = JournalStore()
+            journal_refresh_fn = refresh_active_thesis_from_portfolio_analysis
+        except Exception:
+            journal_store = None
+            journal_refresh_fn = None
 
         for idx, position in enumerate(positions):
             ticker = position["symbol"]
@@ -346,6 +359,26 @@ class PortfolioAnalyzer:
                     "final_state": final_state,
                     "analysis_summary": self._extract_summary(final_state),
                 }
+
+                # Refresh active journal thesis from latest portfolio analysis (non-critical).
+                refresh_status = {
+                    "status": "skipped",
+                    "reason": "journal_unavailable",
+                    "ticker": ticker,
+                }
+                if (
+                    journal_store is not None
+                    and callable(journal_refresh_fn)
+                    and isinstance(analysis["structured_decision"], dict)
+                    and analysis["structured_decision"]
+                ):
+                    refresh_status = journal_refresh_fn(
+                        store=journal_store,
+                        final_state=final_state,
+                        structured_decision=analysis["structured_decision"],
+                        trade_date=self.analysis_date,
+                    )
+                analysis["journal_refresh"] = refresh_status
                 analyses.append(analysis)
 
                 if on_stock_complete:

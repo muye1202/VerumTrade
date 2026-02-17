@@ -186,6 +186,7 @@ class PositionMonitor:
         )
         thesis, thesis_execution_eligible, ineligibility_reason = self._normalize_stop_orientation(
             thesis=thesis,
+            pos_data=pos_data,
         )
 
         # Fetch current price + quote quality metadata
@@ -229,7 +230,7 @@ class PositionMonitor:
             return
 
         # Check thesis parameters and fire alerts
-        alerts = self._check_thesis_parameters(thesis, snapshot, current_price)
+        alerts = self._check_thesis_parameters(thesis, snapshot, current_price, pos_data=pos_data)
         persisted_alerts: List[JournalAlert] = []
         for alert in alerts:
             # Dedup: don't fire the same alert type repeatedly
@@ -250,6 +251,35 @@ class PositionMonitor:
             summary=summary,
         )
 
+    def _resolve_effective_side(
+        self,
+        *,
+        thesis: TradeThesis,
+        pos_data: Optional[Dict[str, Any]] = None,
+        snapshot: Optional[PositionSnapshot] = None,
+    ) -> str:
+        """Resolve trade side used for risk math when thesis.action is not BUY/SELL."""
+        action = str(thesis.action or "").upper()
+        if action in {"BUY", "SELL"}:
+            return action
+
+        qty = None
+        if pos_data is not None:
+            qty = _safe_float(pos_data.get("qty"))
+        if qty is None and snapshot is not None:
+            qty = _safe_float(snapshot.quantity)
+
+        if qty is not None:
+            return "SELL" if qty < 0 else "BUY"
+
+        logger.debug(
+            "Could not infer side for %s thesis %s (action=%s); defaulting to BUY",
+            thesis.ticker,
+            thesis.id,
+            action or "UNKNOWN",
+        )
+        return "BUY"
+
     # ------------------------------------------------------------------
     # Snapshot building
     # ------------------------------------------------------------------
@@ -263,6 +293,7 @@ class PositionMonitor:
         ask: Optional[float] = None,
     ) -> PositionSnapshot:
         """Build a PositionSnapshot from thesis + live data."""
+        side = self._resolve_effective_side(thesis=thesis, pos_data=pos_data)
         snap = PositionSnapshot(
             thesis_id=thesis.id,
             ticker=thesis.ticker.upper(),
@@ -281,7 +312,7 @@ class PositionMonitor:
 
         # Distance to stop
         if thesis.stop_loss and current_price:
-            if thesis.action == "BUY":
+            if side == "BUY":
                 snap.distance_to_stop_pct = round(
                     (current_price - thesis.stop_loss) / current_price * 100, 2
                 )
@@ -292,7 +323,7 @@ class PositionMonitor:
 
         # Distance to target 1
         if thesis.target_1 and current_price:
-            if thesis.action == "BUY":
+            if side == "BUY":
                 snap.distance_to_target1_pct = round(
                     (thesis.target_1 - current_price) / current_price * 100, 2
                 )
@@ -326,7 +357,7 @@ class PositionMonitor:
         # Max adverse/favorable excursion
         if thesis.entry_price and current_price:
             pct_from_entry = (current_price - thesis.entry_price) / thesis.entry_price * 100
-            if thesis.action == "SELL":
+            if side == "SELL":
                 pct_from_entry = -pct_from_entry  # Invert for shorts
 
             # Get historical extremes
@@ -355,17 +386,23 @@ class PositionMonitor:
         thesis: TradeThesis,
         snapshot: PositionSnapshot,
         current_price: float,
+        pos_data: Optional[Dict[str, Any]] = None,
     ) -> List[JournalAlert]:
         """Check all thesis parameters and return any alerts that should fire."""
         alerts: List[JournalAlert] = []
+        side = self._resolve_effective_side(
+            thesis=thesis,
+            pos_data=pos_data,
+            snapshot=snapshot,
+        )
         market_session = self._get_market_session()
         illiquid = market_session in {"weekend", "overnight", "afterhours"}
         # --- Stop-loss check ---
         if thesis.stop_loss:
             stop_breached = False
-            if thesis.action == "BUY" and current_price <= thesis.stop_loss:
+            if side == "BUY" and current_price <= thesis.stop_loss:
                 stop_breached = True
-            elif thesis.action == "SELL" and current_price >= thesis.stop_loss:
+            elif side == "SELL" and current_price >= thesis.stop_loss:
                 stop_breached = True
             if stop_breached:
                 if illiquid:
@@ -382,7 +419,7 @@ class PositionMonitor:
                     severity = "critical"
                     message = (
                         f"STOP-LOSS BREACHED: {thesis.ticker} at ${current_price:.2f} "
-                        f"has {'fallen below' if thesis.action == 'BUY' else 'risen above'} "
+                        f"has {'fallen below' if side == 'BUY' else 'risen above'} "
                         f"stop-loss at ${thesis.stop_loss:.2f}"
                     )
                     action_recommended = "EXIT POSITION - stop-loss hit per original thesis"
@@ -408,9 +445,9 @@ class PositionMonitor:
         ]:
             if target_price:
                 target_reached = False
-                if thesis.action == "BUY" and current_price >= target_price:
+                if side == "BUY" and current_price >= target_price:
                     target_reached = True
-                elif thesis.action == "SELL" and current_price <= target_price:
+                elif side == "SELL" and current_price <= target_price:
                     target_reached = True
                 if target_reached:
                     if illiquid:
@@ -506,6 +543,7 @@ class PositionMonitor:
         self,
         *,
         thesis: TradeThesis,
+        pos_data: Optional[Dict[str, Any]] = None,
     ) -> tuple[TradeThesis, bool, Optional[str]]:
         """
         Enforce valid stop orientation.
@@ -515,9 +553,7 @@ class PositionMonitor:
         If invalid, reset stop to 5% directional from entry and persist.
         If entry is missing/invalid, block execution for this thesis and emit alert.
         """
-        action = str(thesis.action or "").upper()
-        if action not in {"BUY", "SELL"}:
-            return thesis, True, None
+        action = self._resolve_effective_side(thesis=thesis, pos_data=pos_data)
         if thesis.stop_loss is None:
             return thesis, True, None
 
@@ -876,19 +912,20 @@ class PositionMonitor:
         price = _safe_float(snapshot.current_price)
         if price is None:
             return ActionReasonCode.NONE
+        side = self._resolve_effective_side(thesis=thesis, snapshot=snapshot)
         if thesis.stop_loss and (
-            (thesis.action == "BUY" and price <= thesis.stop_loss)
-            or (thesis.action == "SELL" and price >= thesis.stop_loss)
+            (side == "BUY" and price <= thesis.stop_loss)
+            or (side == "SELL" and price >= thesis.stop_loss)
         ):
             return ActionReasonCode.STOP_BREACH
         if thesis.target_2 and (
-            (thesis.action == "BUY" and price >= thesis.target_2)
-            or (thesis.action == "SELL" and price <= thesis.target_2)
+            (side == "BUY" and price >= thesis.target_2)
+            or (side == "SELL" and price <= thesis.target_2)
         ):
             return ActionReasonCode.TARGET2_REACHED
         if thesis.target_1 and (
-            (thesis.action == "BUY" and price >= thesis.target_1)
-            or (thesis.action == "SELL" and price <= thesis.target_1)
+            (side == "BUY" and price >= thesis.target_1)
+            or (side == "SELL" and price <= thesis.target_1)
         ):
             return ActionReasonCode.TARGET1_REACHED
         if thesis.time_stop_date:
@@ -1137,4 +1174,3 @@ def _relative_spread(*, bid: Optional[float], ask: Optional[float]) -> Optional[
     if mid <= 0:
         return None
     return (ask - bid) / mid
-
