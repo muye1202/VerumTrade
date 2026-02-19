@@ -101,7 +101,7 @@ def display_snapshot_table(store: JournalStore):
             f"{mae:.2f}%" if mae is not None else "—",
             f"[green]{mfe:+.2f}%[/green]" if mfe is not None else "—",
             f"{rel_strength:+.2f}%" if rel_strength is not None else "—",
-            str(snapshot.holding_days_elapsed) if snapshot.holding_days_elapsed else "—",
+            str(snapshot.holding_days_elapsed) if snapshot.holding_days_elapsed is not None else "—",
             f"{snapshot.distance_to_stop_pct:.1f}%" if snapshot.distance_to_stop_pct is not None else "—",
             f"{snapshot.distance_to_target1_pct:.1f}%" if snapshot.distance_to_target1_pct is not None else "—",
         )

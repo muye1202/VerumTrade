@@ -8,8 +8,9 @@ Produces a TradeOutcome that can feed into the reflection/learning loop.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from tradingagents.agents.journal.models import (
     TradeThesis,
@@ -19,6 +20,7 @@ from tradingagents.agents.journal.models import (
 from tradingagents.agents.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
+ET = ZoneInfo("America/New_York")
 
 
 class OutcomeRecorder:
@@ -282,9 +284,21 @@ class OutcomeRecorder:
             return None
         try:
             import yfinance as yf
+            start_date = date.fromisoformat(trade_date)
+            today_et = datetime.now(ET).date()
+            if start_date > today_et:
+                logger.info(
+                    "Skipping SPY return calculation for future trade_date=%s (today_et=%s)",
+                    trade_date,
+                    today_et.isoformat(),
+                )
+                return None
 
             spy = yf.Ticker("SPY")
-            hist = spy.history(start=trade_date)
+            hist = spy.history(
+                start=start_date.isoformat(),
+                end=(today_et + timedelta(days=1)).isoformat(),
+            )
             if hist.empty or len(hist) < 2:
                 return None
             start = float(hist["Close"].iloc[0])

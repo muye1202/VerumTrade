@@ -17,6 +17,89 @@ def ensure_discovery_dirs(results_root: str | Path, trade_date: str) -> dict[str
     return {"results_dir": results_dir, "reports_dir": reports_dir}
 
 
+def load_tickers_from_discovery_report(
+    results_root: str | Path,
+    trade_date: str,
+) -> tuple[list[str], Path]:
+    """Load the saved ticker list from a previous discovery report.
+
+    Parses ``results/discovery/<trade_date>/reports/stock_discovery_report.md``
+    and returns ``(tickers, report_path)``.
+
+    Parsing strategy (in order):
+    1. Lines inside the ``## Discovered Tickers`` section that match the
+       pattern ``- `TICKER` `` (backtick-quoted).
+    2. Fallback: the ``## Top Pick Summary`` line, which contains a
+       comma-separated list of tickers.
+
+    Raises:
+        FileNotFoundError: if the report file does not exist.
+        ValueError: if no tickers can be parsed from the file.
+    """
+    import re
+
+    dirs = ensure_discovery_dirs(results_root, trade_date)
+    report_path = dirs["reports_dir"] / "stock_discovery_report.md"
+
+    if not report_path.exists():
+        raise FileNotFoundError(
+            f"Discovery report not found: {report_path}\n"
+            f"Run a fresh discovery for date '{trade_date}' first."
+        )
+
+    text = report_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    # --- Strategy 1: parse the ## Discovered Tickers section ---
+    tickers: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "## Discovered Tickers":
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("##"):
+                break  # next section started
+            m = re.match(r"^-\s+`([A-Z0-9.\-]+)`\s*$", stripped)
+            if m:
+                tickers.append(m.group(1))
+
+    if tickers:
+        return tickers, report_path
+
+    # --- Strategy 2: fallback — Top Pick Summary line ---
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## Top Pick Summary"):
+            # The summary may be on the same line or the next non-empty line
+            rest = stripped[len("## Top Pick Summary"):].strip().lstrip(":- ").strip()
+            if rest:
+                tickers = [t.strip() for t in rest.split(",") if t.strip()]
+                break
+        # Also handle the case where the summary is on the very next line
+        # after the heading (already handled by the loop continuing)
+
+    # Second pass: look for a bare comma-separated line after the heading
+    if not tickers:
+        found_heading = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "## Top Pick Summary":
+                found_heading = True
+                continue
+            if found_heading and stripped and not stripped.startswith("#"):
+                tickers = [t.strip() for t in stripped.split(",") if t.strip()]
+                break
+
+    if not tickers:
+        raise ValueError(
+            f"Could not parse any tickers from discovery report: {report_path}"
+        )
+
+    return tickers, report_path
+
+
 def write_discovery_report(
     *,
     results_root: str | Path,

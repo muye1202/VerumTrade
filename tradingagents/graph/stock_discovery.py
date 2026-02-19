@@ -6,6 +6,7 @@ and integrates with BatchAnalyzer for deep analysis of top picks.
 
 import os
 import logging
+import inspect
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -108,6 +109,31 @@ class StockDiscoveryGraph:
             # Generic OpenAI-compatible
             api_key = os.getenv("OPENAI_API_KEY")
 
+        def _with_extra_params(kwargs: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
+            if not extra:
+                return kwargs
+            try:
+                params = inspect.signature(ChatOpenAI.__init__).parameters
+                if "extra_body" in params:
+                    kwargs["extra_body"] = extra
+                    return kwargs
+            except Exception:
+                pass
+            mk = kwargs.get("model_kwargs") or {}
+            mk["extra_body"] = extra
+            kwargs["model_kwargs"] = mk
+            return kwargs
+
+        def _openrouter_extra_for_model(model_name: str) -> Dict[str, Any]:
+            name = (model_name or "").strip().lower()
+            if not name:
+                return {}
+            if name == "openrouter/aurora-alpha":
+                return {"reasoning": {"enabled": True}}
+            if "thinking" in name:
+                return {"reasoning": {"enabled": True}}
+            return {}
+
         # Use appropriate LLM class based on provider
         if provider == "glm":
             from tradingagents.graph.trading_graph import GLMFlashSerialChatOpenAI, GLMCompatibleChatOpenAI
@@ -123,6 +149,20 @@ class StockDiscoveryGraph:
                 api_key=api_key,
                 base_url=base_url,
                 temperature=0.7,
+            )
+        elif provider == "openrouter":
+            from tradingagents.graph.trading_graph import OpenRouterCompatibleChatOpenAI
+
+            return OpenRouterCompatibleChatOpenAI(
+                model=model,
+                temperature=0.7,
+                **_with_extra_params(
+                    {
+                        "api_key": api_key,
+                        "base_url": base_url,
+                    },
+                    _openrouter_extra_for_model(model),
+                ),
             )
         else:
             return ChatOpenAI(
@@ -142,6 +182,7 @@ class StockDiscoveryGraph:
         self,
         trade_date: Optional[str] = None,
         exclude_tickers: Optional[List[str]] = None,
+        discovery_track: str = "anomaly_scan",
     ) -> DiscoveryResult:
         """
         Run the stock discovery process.
@@ -149,6 +190,8 @@ class StockDiscoveryGraph:
         Args:
             trade_date: Target date (defaults to today)
             exclude_tickers: Optional list of symbols to exclude from recommendations
+            discovery_track: ``"enricher"`` for Stage 1→2 pipeline,
+                ``"anomaly_scan"`` for Track B momentum anomaly scans.
 
         Returns:
             DiscoveryResult with recommended tickers and report
@@ -163,6 +206,7 @@ class StockDiscoveryGraph:
                 trade_date=trade_date,
                 max_iterations=5,
                 excluded_tickers=exclude_tickers,
+                discovery_track=discovery_track,
             )
 
             self.logger.info(f"Discovery complete. Found {len(result['tickers'])} recommendations")

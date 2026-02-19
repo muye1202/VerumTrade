@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 from zoneinfo import ZoneInfo
 
@@ -189,20 +189,21 @@ class PositionMonitor:
             pos_data=pos_data,
         )
 
-        # Fetch current price + quote quality metadata
+        # Fetch current price + quote quality metadata.
+        # Execution decisions must be based on brokerage position-derived market price.
+        position_price = self._derive_position_price(pos_data)
         quote_data = self._fetch_current_price(ticker)
-        current_price = _safe_float(quote_data.get("price"))
-        if current_price is None and pos_data:
-            # Fallback: estimate from market_value / qty
-            qty = pos_data.get("qty", 0)
-            mv = pos_data.get("market_value", 0)
-            if qty and float(qty) > 0:
-                current_price = float(mv) / float(qty)
-                quote_data["price"] = current_price
-                quote_data["source"] = "position_derived"
+        current_price = position_price
+        if current_price is not None:
+            quote_data["price"] = current_price
+            quote_data["source"] = "position_derived"
 
         if current_price is None:
-            logger.warning(f"Could not get price for {ticker}, skipping snapshot")
+            logger.warning(
+                "ABORT EXECUTION for %s: failed to derive current market price from position "
+                "(requires valid market_value and qty).",
+                ticker,
+            )
             return
 
         # Build and save snapshot
@@ -1067,10 +1068,26 @@ class PositionMonitor:
             logger.error(f"Failed to fetch brokerage positions: {e}")
             return []
 
+    def _derive_position_price(self, pos_data: Optional[Dict[str, Any]]) -> Optional[float]:
+        """Estimate mark price from brokerage position fields."""
+        if not pos_data:
+            return None
+        qty = _safe_float(pos_data.get("qty"))
+        market_value = _safe_float(pos_data.get("market_value"))
+        if qty is None or market_value is None:
+            return None
+        if abs(qty) <= 0:
+            return None
+        price = abs(market_value) / abs(qty)
+        if price <= 0:
+            return None
+        return float(price)
+
     def _fetch_current_price(self, ticker: str) -> Dict[str, Any]:
         """
-        Fetch the current quote metadata for a ticker.
-        Priority: Alpaca quote -> yfinance fast_info -> yfinance history.
+        Fetch quote metadata for a ticker.
+        This does not provide the execution-decision price; that must come from
+        position-derived market price (market_value / qty).
         """
         out: Dict[str, Any] = {
             "price": None,
@@ -1093,32 +1110,10 @@ class PositionMonitor:
                     out["relative_spread"] = rel_spread
                     if rel_spread is not None and rel_spread > self.quote_max_rel_spread:
                         out["unreliable_quote"] = True
-                    mid = ((bid + ask) / 2.0) if bid and ask else None
-                    price = ask or bid or mid
-                    if price and float(price) > 0:
-                        out["price"] = float(price)
-                        out["source"] = "alpaca_quote"
-                        return out
+                    out["source"] = "alpaca_quote"
+                    return out
             except Exception:
                 pass
-        # Fallback to yfinance
-        try:
-            import yfinance as yf
-            t = yf.Ticker(ticker)
-            # fast_info is the lightweight accessor
-            price = getattr(t, "fast_info", {}).get("lastPrice")
-            if price and float(price) > 0:
-                out["price"] = float(price)
-                out["source"] = "yfinance_fast_info"
-                return out
-            # Fallback: last close from history
-            hist = t.history(period="1d")
-            if not hist.empty:
-                out["price"] = float(hist["Close"].iloc[-1])
-                out["source"] = "yfinance_history"
-                return out
-        except Exception as e:
-            logger.warning(f"yfinance price fetch failed for {ticker}: {e}")
 
         return out
 
@@ -1133,14 +1128,34 @@ class PositionMonitor:
 
         try:
             import yfinance as yf
-
-            spy = yf.Ticker(self.spy_ticker)
-            hist = spy.history(start=trade_date)
-            if hist.empty or len(hist) < 2:
+            start_date = date.fromisoformat(trade_date)
+            today_et = datetime.now(ET).date()
+            if start_date > today_et:
+                # Guard against future-dated theses (e.g., local timezone rollover).
+                logger.info(
+                    "Skipping SPY return for future trade_date=%s (today_et=%s)",
+                    trade_date,
+                    today_et.isoformat(),
+                )
                 return None
 
-            start_price = float(hist["Close"].iloc[0])
-            end_price = float(hist["Close"].iloc[-1])
+            spy = yf.Ticker(self.spy_ticker)
+            hist = spy.history(
+                start=start_date.isoformat(),
+                end=(today_et + timedelta(days=1)).isoformat(),
+            )
+            if hist.empty:
+                return None
+            elif len(hist) == 1:
+                # If only one day, use Open to Close for that day
+                start_price = float(hist["Open"].iloc[0])
+                end_price = float(hist["Close"].iloc[0])
+            else:
+                start_price = float(hist["Close"].iloc[0])
+                end_price = float(hist["Close"].iloc[-1])
+
+            if start_price <= 0:
+                return None
             ret = (end_price - start_price) / start_price
             self._spy_cache[cache_key] = ret
             return ret

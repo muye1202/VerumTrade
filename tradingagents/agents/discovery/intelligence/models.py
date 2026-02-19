@@ -107,6 +107,15 @@ class Stage2ScoredCandidate:
 
 
 @dataclass
+class MomentumScanHit:
+    """One triggered momentum anomaly signal from Track B scans."""
+    ticker: str
+    scan_name: str  # "momentum_acceleration" | "volatility_breakout" | "rs_divergence" | "stealth_accumulation"
+    signal_value: float  # Primary signal metric
+    trigger_details: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class IntelligenceResult:
     """Aggregated output of all three sub-agents."""
     sector_signals: List[SectorSignal] = field(default_factory=list)
@@ -114,7 +123,9 @@ class IntelligenceResult:
     technical_signals: List[TechnicalSignal] = field(default_factory=list)
     stage1_scorecards: List[Stage1EnrichmentScorecard] = field(default_factory=list)
     stage2_candidates: List[Stage2ScoredCandidate] = field(default_factory=list)
+    momentum_scan_hits: List[MomentumScanHit] = field(default_factory=list)
     stage0_metrics: Dict[str, Any] = field(default_factory=dict)
+    discovery_track: str = "enricher"  # "enricher" | "anomaly_scan"
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""
     scan_duration_secs: float = 0.0

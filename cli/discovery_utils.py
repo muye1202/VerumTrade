@@ -21,6 +21,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.execution import fetch_portfolio_symbols
 from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
 from cli.discovery_report_logger import (
+    load_tickers_from_discovery_report,
     write_deep_analysis_report,
     write_discovery_report,
 )
@@ -431,6 +432,8 @@ def run_discovery_flow(selections: Dict[str, Any]):
     console.print()
 
     # Run discovery with stage progress logging (Stage 0 + Stage 1).
+    discovery_track = selections.get("discovery_track", "enricher")
+    console.print(f"[dim]Discovery track: {discovery_track}[/dim]")
     stage_logger = DiscoveryStageProgressLogger(console=console)
     config["discovery_progress_callback"] = stage_logger.callback
     stage_logger.start()
@@ -442,10 +445,12 @@ def run_discovery_flow(selections: Dict[str, Any]):
         result = discovery_graph.run_discovery(
             trade_date=trade_date,
             exclude_tickers=excluded_tickers,
+            discovery_track=discovery_track,
         )
     finally:
         stage_logger.stop()
         config.pop("discovery_progress_callback", None)
+
 
     # Persist discovery report regardless of success/failure.
     try:
@@ -523,6 +528,117 @@ def run_discovery_flow(selections: Dict[str, Any]):
         console.print(f"[yellow]Warning: failed to write deep analysis report ({e})[/yellow]")
 
     # Display analysis results
+    display_analysis_results(analysis_results)
+
+
+def run_discovery_resume_flow(selections: Dict[str, Any]):
+    """
+    Resume the discovery deep-analysis phase from a previously saved ticker list.
+
+    Loads ``results/discovery/<date>/reports/stock_discovery_report.md``,
+    extracts the discovered tickers, and runs the same deep-analysis pipeline
+    used by the normal discovery flow — skipping the expensive discovery stage.
+
+    Args:
+        selections: User selections from the main CLI (same shape as for
+                    ``run_discovery_flow``).
+    """
+    import questionary
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold cyan]📂 RESUME FROM SAVED TICKER LIST[/bold cyan]\n"
+            "[dim]Loading previously discovered tickers for deep analysis...[/dim]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+
+    # Build config from selections (same as run_discovery_flow)
+    config = DEFAULT_CONFIG.copy()
+    config["deep_think_llm"] = selections.get("deep_thinker", "gpt-4o")
+    config["quick_think_llm"] = selections.get("shallow_thinker", "gpt-4o-mini")
+    config["llm_provider"] = selections.get("llm_provider", "openai").lower()
+    config["backend_url"] = selections.get("backend_url")
+
+    trade_date = selections.get("analysis_date") or datetime.datetime.now().strftime("%Y-%m-%d")
+
+    # Load saved tickers
+    try:
+        tickers, report_path = load_tickers_from_discovery_report(
+            results_root=config["results_dir"],
+            trade_date=trade_date,
+        )
+    except FileNotFoundError as exc:
+        console.print(
+            Panel(
+                f"[red]{exc}[/red]",
+                title="Report Not Found",
+                border_style="red",
+                padding=(1, 2),
+            )
+        )
+        return
+    except ValueError as exc:
+        console.print(
+            Panel(
+                f"[red]{exc}[/red]",
+                title="Parse Error",
+                border_style="red",
+                padding=(1, 2),
+            )
+        )
+        return
+
+    console.print(f"[dim]Loaded from: {report_path}[/dim]")
+    console.print(f"[green]Found {len(tickers)} ticker(s): {', '.join(tickers)}[/green]")
+    console.print()
+
+    # Let user confirm / deselect tickers
+    display_recommendations_table(tickers, action_prompt=False)
+    console.print()
+
+    selected_tickers = questionary.checkbox(
+        "Select tickers for deep analysis:",
+        choices=[questionary.Choice(t, checked=True) for t in tickers],
+    ).ask()
+
+    if not selected_tickers:
+        console.print("[yellow]No tickers selected. Exiting.[/yellow]")
+        return
+
+    # Time horizon
+    from cli.utils import select_time_horizon
+    console.print()
+    time_horizon = select_time_horizon()
+
+    # Run deep analysis (identical path to normal discovery flow)
+    console.print()
+    console.print(f"[cyan]Running deep analysis on: {', '.join(selected_tickers)}[/cyan]")
+
+    analysis_results = _run_discovery_deep_analysis(
+        selected_tickers=selected_tickers,
+        trade_date=trade_date,
+        time_horizon=time_horizon,
+        config=config,
+        selections=selections,
+    )
+
+    # Persist deep analysis report
+    try:
+        deep_report_path = write_deep_analysis_report(
+            results_root=config["results_dir"],
+            trade_date=trade_date,
+            selected_tickers=selected_tickers,
+            analysis_results=analysis_results,
+            time_horizon=time_horizon,
+        )
+        console.print(f"[dim]Deep analysis report saved: {deep_report_path}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: failed to write deep analysis report ({e})[/yellow]")
+
+    # Display results
     display_analysis_results(analysis_results)
 
 

@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 from tradingagents.agents.discovery.intelligence import (
     IntelligenceResult,
     IntelligenceScanner,
+    MomentumScanHit,
     Stage1EnrichmentScorecard,
     Stage2ScoredCandidate,
 )
@@ -58,9 +59,14 @@ class IntelligenceDrivenRecommender:
         trade_date: str,
         max_iterations: int = 3,  # Kept for API compatibility
         excluded_tickers: Optional[List[str]] = None,
+        discovery_track: str = "enricher",
     ) -> Dict[str, Any]:
         """
         Run discovery pipeline and return legacy-compatible payload.
+
+        Args:
+            discovery_track: ``"enricher"`` for Stage 1→2 pipeline,
+                ``"anomaly_scan"`` for Track B momentum anomaly scans.
 
         Returns:
             Dict with keys expected by StockDiscoveryGraph:
@@ -69,17 +75,23 @@ class IntelligenceDrivenRecommender:
             - raw_messages: list
             - iterations: int
         """
-        self.logger.info(f"Discovery scan (prefilter+stage1+stage2) for {trade_date}")
+        track = str(discovery_track).strip().lower()
+        self.logger.info(
+            f"Discovery scan (track={track}) for {trade_date}"
+        )
         excluded_set = self._normalize_ticker_set(excluded_tickers)
 
         intelligence = self.scanner.scan_with_prefilter_universe(
             trade_date=trade_date,
             excluded_tickers=sorted(excluded_set),
+            discovery_track=track,
         )
 
-        # Prefer Stage 2 candidates (5-factor composite); fall back to
-        # old technical-signal-only path if Stage 2 is empty.
-        if intelligence.stage2_candidates:
+        if track == "anomaly_scan":
+            rankings = self._rankings_from_track_b(
+                intelligence.momentum_scan_hits, excluded_set,
+            )
+        elif intelligence.stage2_candidates:
             rankings = self._rankings_from_stage2(
                 intelligence.stage2_candidates, excluded_set,
             )
@@ -89,7 +101,9 @@ class IntelligenceDrivenRecommender:
             )
 
         rankings.sort(key=lambda r: float(r.get("composite", 0.0)), reverse=True)
-        tickers = [r["ticker"] for r in rankings[:5] if r.get("ticker")]
+        # Use top 10 if we have more than 10 candidates, otherwise top 5
+        top_n = 10 if len(rankings) > 10 else 5
+        tickers = [r["ticker"] for r in rankings[:top_n] if r.get("ticker")]
 
         report = self._build_report(
             intelligence,
@@ -109,6 +123,7 @@ class IntelligenceDrivenRecommender:
             "stage1": self._build_stage1_payload(intelligence.stage1_scorecards),
             "stage2": self._build_stage2_payload(intelligence.stage2_candidates),
             "excluded_tickers": sorted(excluded_set),
+            "discovery_track": track,
         }
 
     def _build_report(
@@ -118,8 +133,18 @@ class IntelligenceDrivenRecommender:
         trade_date: str,
         excluded_tickers: Optional[List[str]] = None,
     ) -> str:
+        track = intelligence.discovery_track
         report_parts = [f"# Stock Discovery Report - {trade_date}\n"]
-        report_parts.append("## Pipeline Mode\nPrefilter + Stage1 Batch Enrichment + Technical (sector/catalyst legacy paths disabled)\n")
+
+        if track == "anomaly_scan":
+            report_parts.append(
+                "## Pipeline Mode\nTrack B: Short-Term Momentum Anomaly Scans\n"
+            )
+        else:
+            report_parts.append(
+                "## Pipeline Mode\nTrack A: Prefilter + Stage1 Batch Enrichment + Stage2 Scoring\n"
+            )
+
         if intelligence.stage0_metrics:
             m = intelligence.stage0_metrics
             report_parts.append("## Stage 0 Metrics")
@@ -142,12 +167,22 @@ class IntelligenceDrivenRecommender:
                 f"- vendor_calls_estimate: {int(m.get('vendor_calls_estimate', 0))}"
             )
             report_parts.append("")
-        report_parts.extend(self._build_stage1_report_section(intelligence.stage1_scorecards))
-        report_parts.extend(self._build_stage2_report_section(intelligence.stage2_candidates))
+
+        if track == "anomaly_scan":
+            report_parts.extend(
+                self._build_track_b_report_section(intelligence.momentum_scan_hits)
+            )
+        else:
+            report_parts.extend(
+                self._build_stage1_report_section(intelligence.stage1_scorecards)
+            )
+            report_parts.extend(
+                self._build_stage2_report_section(intelligence.stage2_candidates)
+            )
 
         if rankings:
             report_parts.append("## Recommended Stocks\n")
-            for i, r in enumerate(rankings[:5], 1):
+            for i, r in enumerate(rankings[:10] if len(rankings) > 10 else rankings[:5], 1):
                 report_parts.append(
                     f"### {i}. **{r['ticker']}** - Composite: {r.get('composite', 'N/A')}/100"
                 )
@@ -158,7 +193,9 @@ class IntelligenceDrivenRecommender:
                     report_parts.append(f"- **Signal Alignment:** {alignment}")
                 report_parts.append("")
 
-        tickers = [r["ticker"] for r in rankings[:5] if r.get("ticker")]
+        # Use top 10 if we have more than 10 candidates, otherwise top 5
+        top_n = 10 if len(rankings) > 10 else 5
+        tickers = [r["ticker"] for r in rankings[:top_n] if r.get("ticker")]
         report_parts.append(f"## Top Pick Summary\n{', '.join(tickers)}")
 
         if excluded_tickers:
@@ -168,7 +205,7 @@ class IntelligenceDrivenRecommender:
 
         report_parts.append(
             f"\n---\n*Scan completed in {intelligence.scan_duration_secs}s. "
-            f"Tickers screened: {len(intelligence.technical_signals)}*"
+            f"Track: {track}*"
         )
         return "\n".join(report_parts)
 
@@ -285,6 +322,88 @@ class IntelligenceDrivenRecommender:
                 }
             )
         return rankings
+
+    # ------------------------------------------------------------------
+    # Track B ranking helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _rankings_from_track_b(
+        hits: List[MomentumScanHit],
+        excluded_set: Set[str],
+    ) -> List[Dict[str, Any]]:
+        """Build rankings from Track B momentum anomaly scan hits.
+
+        Tickers that trigger multiple scans are ranked higher.  The
+        composite score is derived from the number of scans triggered
+        (multi-signal alignment bonus) plus the absolute signal value.
+        """
+        from collections import defaultdict
+
+        # Group hits by ticker.
+        by_ticker: Dict[str, List[MomentumScanHit]] = defaultdict(list)
+        for h in hits:
+            ticker = str(h.ticker).strip().upper()
+            if ticker and ticker not in excluded_set:
+                by_ticker[ticker].append(h)
+
+        rankings: List[Dict[str, Any]] = []
+        for ticker, ticker_hits in by_ticker.items():
+            # Multi-signal alignment: 25 points per scan triggered.
+            base_score = min(len(ticker_hits) * 25, 100)
+            # Add a bonus from the strongest signal value (capped at 20).
+            strongest = max(abs(h.signal_value) for h in ticker_hits)
+            composite = min(base_score + min(strongest, 20), 100)
+
+            scan_names = sorted({h.scan_name for h in ticker_hits})
+            thesis_parts = []
+            for h in sorted(ticker_hits, key=lambda x: abs(x.signal_value), reverse=True):
+                thesis_parts.append(
+                    f"{h.scan_name}(signal={h.signal_value:.2f})"
+                )
+
+            rankings.append(
+                {
+                    "ticker": ticker,
+                    "composite": round(composite, 2),
+                    "thesis": f"Track B hits: {'; '.join(thesis_parts)}",
+                    "signal_alignment": ",".join(scan_names),
+                    "scan_count": len(ticker_hits),
+                }
+            )
+        return rankings
+
+    @staticmethod
+    def _build_track_b_report_section(
+        hits: List[MomentumScanHit],
+    ) -> List[str]:
+        """Build markdown report section for Track B momentum scan hits."""
+        if not hits:
+            return ["## Track B: Momentum Anomaly Scans\nNo anomalies detected.\n"]
+
+        lines: List[str] = ["## Track B: Momentum Anomaly Scans"]
+        lines.append(f"- Total hits: {len(hits)}")
+
+        # Count by scan type.
+        from collections import Counter
+        scan_counts = Counter(h.scan_name for h in hits)
+        for name, count in sorted(scan_counts.items()):
+            lines.append(f"  - {name}: {count}")
+        lines.append("")
+
+        lines.append(
+            "| Ticker | Scan | Signal Value | Key Details |"
+        )
+        lines.append("|---|---|---:|---|")
+        for h in sorted(hits, key=lambda x: (x.scan_name, -abs(x.signal_value))):
+            details = ", ".join(
+                f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+                for k, v in sorted(h.trigger_details.items())
+            )
+            lines.append(
+                f"| {h.ticker} | {h.scan_name} | {h.signal_value:.4f} | {details} |"
+            )
+        lines.append("")
+        return lines
 
     @staticmethod
     def _build_stage2_payload(

@@ -169,6 +169,25 @@ class DeepSeekCompatibleChatOpenAI(ChatOpenAI):
 
         return super()._create_chat_result(response, generation_info=generation_info)
 
+class OpenRouterCompatibleChatOpenAI(ChatOpenAI):
+    """Sanitize OpenRouter OpenAI-compatible responses for LangChain parsing."""
+
+    def _create_chat_result(self, response, generation_info=None):
+        response_dict = None
+        if isinstance(response, dict):
+            response_dict = response
+        else:
+            try:
+                response_dict = response.model_dump()
+            except Exception:
+                response_dict = None
+
+        if response_dict and isinstance(response_dict, dict):
+            sanitize_openai_compatible_response_dict(response_dict)
+            return super()._create_chat_result(response_dict, generation_info=generation_info)
+
+        return super()._create_chat_result(response, generation_info=generation_info)
+
 class GLMCompatibleChatOpenAI(ChatOpenAI):
     """Sanitize GLM (ZhipuAI) OpenAI-compatible responses for LangChain parsing."""
 
@@ -295,6 +314,16 @@ class TradingAgentsGraph:
                         merged.update(extra)
                 return merged
 
+            def _openrouter_extra_for_model(model_name: str) -> Dict[str, Any]:
+                name = (model_name or "").strip().lower()
+                if not name:
+                    return {}
+                if name == "openrouter/aurora-alpha":
+                    return {"reasoning": {"enabled": True}}
+                if "thinking" in name:
+                    return {"reasoning": {"enabled": True}}
+                return {}
+
             def _qwen_supports_thinking(model_name: str) -> bool:
                 name = (model_name or "").lower()
                 # Conservative allowlist: these are the families commonly associated with thinking/reasoning mode.
@@ -362,11 +391,10 @@ class TradingAgentsGraph:
                     qwen_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
 
             openrouter_deep_extra: Dict[str, Any] = {}
-            if (
-                self.config["llm_provider"].lower() == "openrouter"
-                and (self.config.get("deep_think_llm") or "") == "openrouter/aurora-alpha"
-            ):
-                openrouter_deep_extra["reasoning"] = {"enabled": True}
+            if self.config["llm_provider"].lower() == "openrouter":
+                openrouter_deep_extra = _openrouter_extra_for_model(
+                    self.config.get("deep_think_llm", "")
+                )
 
             provider = self.config["llm_provider"].lower()
 
@@ -374,6 +402,8 @@ class TradingAgentsGraph:
                 base_llm_cls = StreamCompatibleChatOpenAI
             elif provider == "deepseek":
                 base_llm_cls = DeepSeekCompatibleChatOpenAI
+            elif provider == "openrouter":
+                base_llm_cls = OpenRouterCompatibleChatOpenAI
             elif provider == "glm":
                 base_llm_cls = GLMCompatibleChatOpenAI
             else:
@@ -427,11 +457,10 @@ class TradingAgentsGraph:
                     qwen_quick_extra["thinking_budget"] = int(self.config["qwen_thinking_budget"])
 
             openrouter_quick_extra: Dict[str, Any] = {}
-            if (
-                self.config.get("llm_provider", "").lower() == "openrouter"
-                and (self.config.get("quick_think_llm") or "") == "openrouter/aurora-alpha"
-            ):
-                openrouter_quick_extra["reasoning"] = {"enabled": True}
+            if self.config.get("llm_provider", "").lower() == "openrouter":
+                openrouter_quick_extra = _openrouter_extra_for_model(
+                    self.config.get("quick_think_llm", "")
+                )
 
             self.quick_thinking_llm = quick_llm_cls(
                 model=self.config["quick_think_llm"],

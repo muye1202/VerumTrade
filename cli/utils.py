@@ -186,7 +186,10 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Aurora Alpha", "openrouter/aurora-alpha"),
             ("Step 3.5 Flash (free)", "stepfun/step-3.5-flash:free"),
             ("DeepSeek V3 (free)", "deepseek/deepseek-chat-v3-0324:free"),
+            ("DeepSeek V3.1 (free)", "deepseek/deepseek-chat-v3.1:free"),
             ("GPT-OSS 120B (free)", "openai/gpt-oss-120b:free"),
+            ("Qwen3-235B-A22B Thinking (2507)", "qwen/qwen3-235b-a22b-thinking-2507"),
+            ("GLM-4.5-Air (free)", "z-ai/glm-4.5-air:free"),
         ],
         # "openai": [
         #     ("Gemini-3-Flash", "gemini-3-flash"),
@@ -247,7 +250,10 @@ def select_deep_thinking_agent(provider) -> str:
             ("Aurora Alpha", "openrouter/aurora-alpha"),
             ("Step 3.5 Flash (free)", "stepfun/step-3.5-flash:free"),
             ("DeepSeek V3 - a 685B-parameter, mixture-of-experts model", "deepseek/deepseek-chat-v3-0324:free"),
+            ("DeepSeek V3.1 (free)", "deepseek/deepseek-chat-v3.1:free"),
             ("GPT-OSS 120B (free)", "openai/gpt-oss-120b:free"),
+            ("Qwen3-235B-A22B Thinking (2507)", "qwen/qwen3-235b-a22b-thinking-2507"),
+            ("GLM-4.5-Air (free)", "z-ai/glm-4.5-air:free"),
         ],
     }
 

@@ -211,7 +211,7 @@ class ReflectionAgent:
 - Alpha vs SPY: {alpha_str}
 - Max Adverse Excursion: {mae_str}
 - Max Favorable Excursion: {mfe_str}
-- Holding Days: {outcome.holding_days or 'N/A'}
+- Holding Days: {outcome.holding_days if outcome.holding_days is not None else 'N/A'}
 - Thesis Correct: {outcome.thesis_correct}
 - Target Reached: {outcome.target_reached}
 - Stop Triggered: {outcome.stop_triggered}

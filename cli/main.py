@@ -577,9 +577,109 @@ def get_user_selections():
         )
         analysis_date = get_analysis_date()
 
+        # --- NEW: Fresh run vs Resume ---
         console.print(
             create_question_box(
-                "Step 3: Stage 0 Catalyst Filter Mode",
+                "Step 3: Discovery Source",
+                "Run a fresh discovery pipeline, or resume deep analysis from a previously saved ticker list?",
+                "Fresh run",
+            )
+        )
+        discovery_source = questionary.select(
+            "Select [Discovery Source]:",
+            choices=[
+                questionary.Choice(
+                    "Fresh run — run the full discovery pipeline",
+                    value="fresh",
+                ),
+                questionary.Choice(
+                    "Resume — load ticker list from a previous discovery report and run deep analysis",
+                    value="resume",
+                ),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=questionary.Style(
+                [
+                    ("selected", "fg:cyan noinherit"),
+                    ("highlighted", "fg:cyan noinherit"),
+                    ("pointer", "fg:cyan noinherit"),
+                ]
+            ),
+        ).ask()
+        if discovery_source is None:
+            console.print("\n[red]No discovery source selected. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
+        if discovery_source == "resume":
+            # Resume path: skip track/catalyst steps, go straight to LLM config
+            console.print(create_question_box("Step 4: LLM Provider", "Select which service to talk to"))
+            selected_llm_provider, backend_url = select_llm_provider()
+
+            console.print(create_question_box("Step 5: Deep Thinking Agent", "Select the model for deep analysis"))
+            selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
+
+            console.print(
+                create_question_box(
+                    "Step 6: Execution",
+                    "Optionally execute BUY/SELL signals after deep analysis.",
+                    "Analysis only",
+                )
+            )
+            execution_settings = select_execution_settings()
+
+            return {
+                "analysis_mode": "discovery",
+                "discovery_mode_variant": "resume",
+                "ticker": None,
+                "analysis_date": analysis_date,
+                "discovery_track": None,
+                "discovery_catalyst_mode": None,
+                "analysts": [],
+                "research_depth": 1,
+                "llm_provider": selected_llm_provider.lower(),
+                "backend_url": backend_url,
+                "shallow_thinker": selected_deep_thinker,
+                "deep_thinker": selected_deep_thinker,
+                "execution": execution_settings,
+                "n_stocks": None,
+            }
+
+        # Fresh run path (original flow)
+        console.print(
+            create_question_box(
+                "Step 4: Discovery Track",
+                "Choose the screener track for discovery",
+                "enricher",
+            )
+        )
+        discovery_track = questionary.select(
+            "Select [Discovery Track]:",
+            choices=[
+                questionary.Choice(
+                    "Enricher \u2014 Stage 1 multi-factor enrichment + Stage 2 scoring (swing trade, multi-day)",
+                    value="enricher",
+                ),
+                questionary.Choice(
+                    "Anomaly Scan \u2014 Short-term momentum anomaly scans (intraday/next-day setups)",
+                    value="anomaly_scan",
+                ),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=questionary.Style(
+                [
+                    ("selected", "fg:cyan noinherit"),
+                    ("highlighted", "fg:cyan noinherit"),
+                    ("pointer", "fg:cyan noinherit"),
+                ]
+            ),
+        ).ask()
+        if discovery_track is None:
+            console.print("\n[red]No discovery track selected. Exiting...[/red]")
+            raise typer.Exit(code=1)
+
+        console.print(
+            create_question_box(
+                "Step 5: Stage 0 Catalyst Filter Mode",
                 "Select the Stage 0 catalyst filter mode used by discovery prefiltering",
                 "daily_calendar",
             )
@@ -604,16 +704,16 @@ def get_user_selections():
             raise typer.Exit(code=1)
 
         # Skip to LLM provider selection for discovery mode
-        console.print(create_question_box("Step 4: LLM Provider", "Select which service to talk to"))
+        console.print(create_question_box("Step 6: LLM Provider", "Select which service to talk to"))
         selected_llm_provider, backend_url = select_llm_provider()
 
-        console.print(create_question_box("Step 5: Deep Thinking Agent", "Select the model for stock discovery"))
+        console.print(create_question_box("Step 7: Deep Thinking Agent", "Select the model for stock discovery"))
         selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
 
         # Optional execution settings
         console.print(
             create_question_box(
-                "Step 6: Execution",
+                "Step 8: Execution",
                 "Optionally execute BUY/SELL signals after deep analysis. Sizing is agent-driven (QUANTITY or POSITION_SIZE_PCT).",
                 "Analysis only",
             )
@@ -622,8 +722,10 @@ def get_user_selections():
 
         return {
             "analysis_mode": "discovery",
+            "discovery_mode_variant": "fresh",
             "ticker": None,
             "analysis_date": analysis_date,
+            "discovery_track": discovery_track,
             "discovery_catalyst_mode": discovery_catalyst_mode,
             "analysts": [],
             "research_depth": 1,
@@ -655,6 +757,7 @@ def get_user_selections():
             )
         )
         analysis_date = get_analysis_date()
+
 
     # Holding period (single + portfolio)
     horizon_step = 4 if analysis_mode == "single" else 2

@@ -1133,9 +1133,13 @@ def run_analysis():
         run_portfolio_analysis_from_selections(selections)
         return
 
-    # Discovery mode: run AI stock discovery
+    # Discovery mode: run AI stock discovery (fresh) or resume from saved list
     if selections.get("analysis_mode") == "discovery":
-        from cli.discovery_utils import init_discovery_context, run_discovery_flow
+        from cli.discovery_utils import (
+            init_discovery_context,
+            run_discovery_flow,
+            run_discovery_resume_flow,
+        )
 
         init_discovery_context(
             console_ref=console,
@@ -1145,7 +1149,10 @@ def run_analysis():
             update_display_ref=update_display,
             display_complete_report_ref=display_complete_report,
         )
-        run_discovery_flow(selections)
+        if selections.get("discovery_mode_variant") == "resume":
+            run_discovery_resume_flow(selections)
+        else:
+            run_discovery_flow(selections)
         return
 
     # Single ticker mode now supports multiple tickers (sequentially).
