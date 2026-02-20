@@ -5,6 +5,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from tradingagents.utils.market_session import now_et
+
 from tradingagents.graph.decision_schema import (
     extract_decision_json_block,
     validate_structured_decision,
@@ -64,13 +66,14 @@ def build_market_snapshot(
 ) -> Dict[str, Any]:
     bid = _to_float((quote or {}).get("bid_price"))
     ask = _to_float((quote or {}).get("ask_price"))
+    last_trade = _to_float((quote or {}).get("last_trade_price"))
     quote_ref = _to_float((quote or {}).get("reference_price"))
     quote_source = str((quote or {}).get("source") or "").strip() or None
 
     quote_mid = None
     if bid is not None and ask is not None and bid > 0 and ask > 0:
         quote_mid = (bid + ask) / 2.0
-    quote_price = quote_mid or ask or bid or quote_ref
+    quote_price = last_trade or quote_mid or ask or bid or quote_ref
 
     last_close = extract_last_close_from_market_report(market_report)
     analysis_hint = extract_analysis_price_hint(market_report)
@@ -110,7 +113,7 @@ def build_market_snapshot(
 
     return {
         "symbol": str(symbol or "").upper(),
-        "asof": datetime.now().isoformat(),
+        "asof": now_et().isoformat(),
         "source": source or "analysis_fallback",
         "reference_price": reference_price,
         "bid": bid,

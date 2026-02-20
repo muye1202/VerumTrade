@@ -24,6 +24,12 @@ from .stage2_scoring import SECTOR_ETF_MAP
 from .utils import parse_price_volume_csv, extract_indicator_value
 
 logger = logging.getLogger(__name__)
+_ALLOWED_SCAN_NAMES = {
+    "momentum_acceleration",
+    "volatility_breakout",
+    "rs_divergence",
+    "stealth_accumulation",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +159,54 @@ class MomentumAnomalyScanner:
         self.config = config or {}
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    def _settings(self) -> Dict[str, Any]:
+        return {
+            "enabled_scans": [
+                "momentum_acceleration",
+                "volatility_breakout",
+                "rs_divergence",
+                "stealth_accumulation",
+            ],
+            "thresholds": {
+                "momentum_acceleration_min": 1.5,
+                "momentum_acceleration_min_vol_ratio": 1.3,
+                "breakout_max_bbw_percentile": 20.0,
+                "breakout_min_volume_ratio": 1.5,
+                "rs_divergence_top_quantile": 0.90,
+                "rs_divergence_min_rs_stock_vs_spy": 0.0,
+                "stealth_obv_slope_quantile": 0.95,
+                "stealth_max_abs_roc_10d_pct": 2.0,
+            },
+        }
+
+    def _effective_settings(self, policy_overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        out = self._settings()
+        if not isinstance(policy_overrides, dict):
+            return out
+
+        enabled = policy_overrides.get("enabled_scans")
+        if isinstance(enabled, list):
+            clean = []
+            for item in enabled:
+                name = str(item).strip().lower()
+                if name in _ALLOWED_SCAN_NAMES and name not in clean:
+                    clean.append(name)
+            if clean:
+                out["enabled_scans"] = clean
+
+        thresholds = policy_overrides.get("thresholds")
+        if isinstance(thresholds, dict):
+            merged = dict(out["thresholds"])
+            for key in merged:
+                if key not in thresholds:
+                    continue
+                try:
+                    merged[key] = float(thresholds[key])
+                except Exception:
+                    continue
+            out["thresholds"] = merged
+        return out
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -163,6 +217,7 @@ class MomentumAnomalyScanner:
         trade_date: str,
         max_workers: int = 6,
         ohlcv_cache: Optional[Dict[str, str]] = None,
+        policy_overrides: Optional[Dict[str, Any]] = None,
     ) -> List[MomentumScanHit]:
         """
         Run all four momentum anomaly scans against *universe*.
@@ -178,6 +233,7 @@ class MomentumAnomalyScanner:
             return []
 
         cache = ohlcv_cache if ohlcv_cache is not None else {}
+        cfg = self._effective_settings(policy_overrides)
 
         # 1. Fetch data for all tickers (+ SPY, sector ETFs) in parallel.
         ticker_data = self._fetch_universe_data(universe, trade_date, max_workers, cache)
@@ -189,10 +245,15 @@ class MomentumAnomalyScanner:
 
         # 2. Run each scan.
         hits: List[MomentumScanHit] = []
-        hits.extend(self._scan1_momentum_acceleration(ticker_data))
-        hits.extend(self._scan2_volatility_breakout(ticker_data))
-        hits.extend(self._scan3_rs_divergence(ticker_data, spy_data, trade_date, max_workers, cache))
-        hits.extend(self._scan4_stealth_accumulation(ticker_data))
+        enabled = set(cfg["enabled_scans"])
+        if "momentum_acceleration" in enabled:
+            hits.extend(self._scan1_momentum_acceleration(ticker_data, cfg["thresholds"]))
+        if "volatility_breakout" in enabled:
+            hits.extend(self._scan2_volatility_breakout(ticker_data, cfg["thresholds"]))
+        if "rs_divergence" in enabled:
+            hits.extend(self._scan3_rs_divergence(ticker_data, spy_data, trade_date, cfg["thresholds"], max_workers, cache))
+        if "stealth_accumulation" in enabled:
+            hits.extend(self._scan4_stealth_accumulation(ticker_data, cfg["thresholds"]))
 
         self.logger.info(
             f"Track B scans complete: {len(universe)} tickers → {len(hits)} hits "
@@ -210,6 +271,7 @@ class MomentumAnomalyScanner:
     def _scan1_momentum_acceleration(
         self,
         ticker_data: Dict[str, _TickerData],
+        thresholds: Dict[str, float],
     ) -> List[MomentumScanHit]:
         """
         Catches the 'quiet grind that suddenly accelerates' pattern.
@@ -236,7 +298,7 @@ class MomentumAnomalyScanner:
             momentum_acc = daily_roc5 / daily_roc20
 
             # Gate: acceleration threshold.
-            if momentum_acc <= 1.5:
+            if momentum_acc <= float(thresholds["momentum_acceleration_min"]):
                 continue
 
             # Gate: price above SMA 50.
@@ -251,7 +313,7 @@ class MomentumAnomalyScanner:
             if avg_vol_20d == 0:
                 continue
             vol_ratio = avg_vol_5d / avg_vol_20d
-            if vol_ratio <= 1.3:
+            if vol_ratio <= float(thresholds["momentum_acceleration_min_vol_ratio"]):
                 continue
 
             hits.append(MomentumScanHit(
@@ -276,6 +338,7 @@ class MomentumAnomalyScanner:
     def _scan2_volatility_breakout(
         self,
         ticker_data: Dict[str, _TickerData],
+        thresholds: Dict[str, float],
     ) -> List[MomentumScanHit]:
         """
         Catches the 'coiled spring' setup — tight consolidation then breakout.
@@ -319,7 +382,7 @@ class MomentumAnomalyScanner:
             pct_rank = _percentile_rank(current_bbw, bbw_history)
 
             # Gate: BB width must be in bottom 20th percentile.
-            if pct_rank >= 20:
+            if pct_rank >= float(thresholds["breakout_max_bbw_percentile"]):
                 continue
 
             # Gate: price breaking above upper band.
@@ -332,7 +395,7 @@ class MomentumAnomalyScanner:
             if avg_vol_20d == 0:
                 continue
             current_vol = td.volumes[-1]
-            if current_vol <= 1.5 * avg_vol_20d:
+            if current_vol <= float(thresholds["breakout_min_volume_ratio"]) * avg_vol_20d:
                 continue
 
             hits.append(MomentumScanHit(
@@ -359,6 +422,7 @@ class MomentumAnomalyScanner:
         ticker_data: Dict[str, _TickerData],
         spy_data: Optional[_TickerData],
         trade_date: str,
+        thresholds: Dict[str, float],
         max_workers: int = 4,
         ohlcv_cache: Optional[Dict[str, str]] = None,
     ) -> List[MomentumScanHit]:
@@ -417,13 +481,16 @@ class MomentumAnomalyScanner:
 
         # Top decile threshold.
         sorted_divs = sorted([d for _, d, _ in divergences])
-        top_decile_threshold = sorted_divs[int(len(sorted_divs) * 0.9)] if sorted_divs else 0.0
+        q = min(0.99, max(0.5, float(thresholds["rs_divergence_top_quantile"])))
+        q_idx = int(len(sorted_divs) * q)
+        q_idx = max(0, min(q_idx, len(sorted_divs) - 1))
+        top_decile_threshold = sorted_divs[q_idx] if sorted_divs else 0.0
 
         hits: List[MomentumScanHit] = []
         for ticker, divergence, rs_stock_vs_spy in divergences:
             if divergence < top_decile_threshold:
                 continue
-            if rs_stock_vs_spy <= 0:
+            if rs_stock_vs_spy <= float(thresholds["rs_divergence_min_rs_stock_vs_spy"]):
                 continue
             hits.append(MomentumScanHit(
                 ticker=ticker,
@@ -443,6 +510,7 @@ class MomentumAnomalyScanner:
     def _scan4_stealth_accumulation(
         self,
         ticker_data: Dict[str, _TickerData],
+        thresholds: Dict[str, float],
     ) -> List[MomentumScanHit]:
         """
         Catches institutional accumulation *before* the price moves.
@@ -467,7 +535,8 @@ class MomentumAnomalyScanner:
 
         # 95th percentile of positive slopes as threshold.
         sorted_slopes = sorted(slopes.values())
-        idx_95 = int(len(sorted_slopes) * 0.95)
+        q = min(0.99, max(0.5, float(thresholds["stealth_obv_slope_quantile"])))
+        idx_95 = int(len(sorted_slopes) * q)
         threshold = sorted_slopes[min(idx_95, len(sorted_slopes) - 1)]
 
         # Only meaningful if threshold is positive (accumulation).
@@ -482,7 +551,7 @@ class MomentumAnomalyScanner:
             roc_10d = _roc(td.prices, 10)
             if roc_10d is None:
                 continue
-            if abs(roc_10d) >= 2.0:
+            if abs(roc_10d) >= float(thresholds["stealth_max_abs_roc_10d_pct"]):
                 continue
 
             hits.append(MomentumScanHit(

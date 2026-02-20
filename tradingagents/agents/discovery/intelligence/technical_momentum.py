@@ -142,6 +142,25 @@ class TechnicalMomentumScanner:
         }
 
     @staticmethod
+    def _normalize_catalyst_mode(value: Any, default: str = "daily_calendar") -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return default
+        raw = raw.split("(", 1)[0].strip().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "daily_calendar": "daily_calendar",
+            "daily": "daily_calendar",
+            "calendar": "daily_calendar",
+            "per_ticker_calendar": "per_ticker_calendar",
+            "pertickercalendar": "per_ticker_calendar",
+            "per_ticker": "per_ticker_calendar",
+            "ticker_calendar": "per_ticker_calendar",
+            "per_symbol_calendar": "per_ticker_calendar",
+            "per_stock_calendar": "per_ticker_calendar",
+        }
+        return aliases.get(raw, default)
+
+    @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
         return safe_float(value)
 
@@ -175,11 +194,14 @@ class TechnicalMomentumScanner:
         self,
         trade_date: str,
         excluded_tickers: Optional[List[str]] = None,
+        stage0_overrides: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
-        universe_cfg = self._numeric_filter_settings()["universe_prefilter"]
+        settings = self._numeric_filter_settings()
+        universe_cfg = dict(settings["universe_prefilter"])
         self._emit_progress("stage0.start", {"trade_date": trade_date})
-        cfg = self._numeric_filter_settings()["catalyst_prefilter"]
-        stage0_cache_cfg = self._numeric_filter_settings()["stage0_cache"]
+        cfg = dict(settings["catalyst_prefilter"])
+        stage0_cache_cfg = settings["stage0_cache"]
+        self._apply_stage0_overrides(universe_cfg, cfg, stage0_overrides or {})
         excluded = sorted(
             {
                 str(t).strip().upper()
@@ -383,6 +405,30 @@ class TechnicalMomentumScanner:
         )
         self._emit_progress("stage0.metrics", self.get_stage0_last_metrics())
         return filtered
+
+    @staticmethod
+    def _apply_stage0_overrides(
+        universe_cfg: Dict[str, Any],
+        catalyst_cfg: Dict[str, Any],
+        overrides: Dict[str, Any],
+    ) -> None:
+        if not isinstance(overrides, dict):
+            return
+        if "min_avg_dollar_volume_20d" in overrides:
+            try:
+                universe_cfg["min_avg_dollar_volume_20d"] = float(overrides["min_avg_dollar_volume_20d"])
+            except Exception:
+                pass
+        if "catalyst_mode" in overrides:
+            catalyst_cfg["mode"] = TechnicalMomentumScanner._normalize_catalyst_mode(
+                overrides.get("catalyst_mode"),
+                default=str(catalyst_cfg.get("mode", "daily_calendar")),
+            )
+        if "catalyst_window_days" in overrides:
+            try:
+                catalyst_cfg["window_days"] = max(1, int(overrides["catalyst_window_days"]))
+            except Exception:
+                pass
 
     @staticmethod
     def _parse_price_volume_csv(raw_csv: str) -> Tuple[List[float], List[float]]:

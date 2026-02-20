@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 import logging
 import time
+from tradingagents.utils.market_session import now_et
 import asyncio
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.execution import AlpacaExecutor
@@ -34,7 +35,7 @@ class PortfolioAnalyzer:
     ):
         self.graph = graph
         self.executor = executor
-        self.analysis_date = analysis_date or datetime.now().strftime("%Y-%m-%d")
+        self.analysis_date = analysis_date or now_et().strftime("%Y-%m-%d")
         self.time_horizon = time_horizon
         self.logger = logging.getLogger("PortfolioAnalyzer")
         self.config = graph.config if hasattr(graph, 'config') else {}

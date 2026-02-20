@@ -37,6 +37,11 @@ update_display = None
 display_complete_report = None
 
 
+def _normalize_console_unsafe_text(text: str) -> str:
+    """Normalize characters that can fail on cp1252 terminals."""
+    return str(text).replace("\u2011", "-")
+
+
 def init_discovery_context(
     *,
     console_ref,
@@ -107,7 +112,7 @@ def display_discovery_result(result: DiscoveryResult):
     if result.report:
         console.print()
         console.print(Panel(
-            Markdown(result.report),
+            Markdown(_normalize_console_unsafe_text(result.report)),
             title="Recommendation Report",
             border_style="blue",
             padding=(1, 2),

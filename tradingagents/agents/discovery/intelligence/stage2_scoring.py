@@ -23,7 +23,7 @@ Composite Scoring (weighted):
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import Stage1EnrichmentScorecard, Stage2ScoredCandidate
 
@@ -118,6 +118,9 @@ class Stage2Scorer:
         self,
         scorecards: List[Stage1EnrichmentScorecard],
         trade_date: str,
+        weight_tilts: Optional[Dict[str, float]] = None,
+        hard_filter_overrides: Optional[Dict[str, Any]] = None,
+        sector_weight_multipliers: Optional[Dict[str, float]] = None,
     ) -> List[Stage2ScoredCandidate]:
         """
         Run Stage 2: hard filters → composite scoring → rank → top N.
@@ -133,6 +136,10 @@ class Stage2Scorer:
             return []
 
         cfg = self._settings()
+        cfg["hard_filters"] = self._effective_hard_filters(
+            cfg["hard_filters"],
+            hard_filter_overrides or {},
+        )
 
         # Emit start event
         self._emit_progress("stage2.start", {"total": len(scorecards), "trade_date": trade_date})
@@ -153,7 +160,13 @@ class Stage2Scorer:
                 stage1_scorecard=sc,
             )
             if passed:
-                self._compute_composite_score(candidate, sc, cfg)
+                self._compute_composite_score(
+                    candidate,
+                    sc,
+                    cfg,
+                    weight_tilts=weight_tilts,
+                    sector_weight_multipliers=sector_weight_multipliers,
+                )
             all_candidates.append(candidate)
             
             # Emit per-ticker progress
@@ -230,9 +243,11 @@ class Stage2Scorer:
         candidate: Stage2ScoredCandidate,
         sc: Stage1EnrichmentScorecard,
         cfg: Dict[str, Any],
+        weight_tilts: Optional[Dict[str, float]] = None,
+        sector_weight_multipliers: Optional[Dict[str, float]] = None,
     ) -> None:
         """Compute all factor sub-scores and the weighted composite."""
-        weights = cfg["weights"]
+        weights = self._effective_weights(cfg["weights"], weight_tilts or {})
 
         candidate.earnings_surprise_score = self._score_earnings_surprise(sc)
         candidate.technical_momentum_score = self._score_technical_momentum(sc)
@@ -247,7 +262,85 @@ class Stage2Scorer:
             + candidate.sector_momentum_score * weights["sector_momentum"]
             + candidate.short_squeeze_score * weights["short_squeeze"]
         )
-        candidate.composite_score = round(composite, 2)
+        sector_multiplier = self._sector_multiplier_for_ticker(
+            sc.ticker,
+            sector_weight_multipliers or {},
+        )
+        candidate.composite_score = round(_clamp(composite * sector_multiplier, 0.0, 100.0), 2)
+
+    @staticmethod
+    def _effective_weights(
+        base_weights: Dict[str, float],
+        weight_tilts: Dict[str, float],
+    ) -> Dict[str, float]:
+        key_map = {
+            "earnings_surprise": "earnings_surprise",
+            "technical_momentum": "technical_momentum",
+            "options_flow": "options_flow",
+            "sector_momentum": "sector_momentum",
+            "short_squeeze": "short_squeeze",
+        }
+        adjusted: Dict[str, float] = {}
+        for key, base in base_weights.items():
+            tilt_key = key_map.get(key, key)
+            raw_tilt = weight_tilts.get(tilt_key, 1.0)
+            try:
+                tilt = float(raw_tilt)
+            except Exception:
+                tilt = 1.0
+            tilt = max(0.5, min(1.5, tilt))
+            adjusted[key] = float(base) * tilt
+
+        total = sum(adjusted.values())
+        if total <= 0:
+            return dict(base_weights)
+        return {k: (v / total) for k, v in adjusted.items()}
+
+    @staticmethod
+    def _effective_hard_filters(
+        base_filters: Dict[str, Any],
+        hard_filter_overrides: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        out = dict(base_filters)
+        if "require_above_sma50" in hard_filter_overrides:
+            out["require_above_sma50"] = bool(hard_filter_overrides.get("require_above_sma50"))
+        if "min_rs_vs_spy_differential" in hard_filter_overrides:
+            try:
+                out["min_rs_vs_spy_differential"] = float(
+                    hard_filter_overrides.get("min_rs_vs_spy_differential")
+                )
+            except Exception:
+                pass
+        if "min_avg_dollar_volume_20d" in hard_filter_overrides:
+            try:
+                out["min_avg_dollar_volume_20d"] = float(
+                    hard_filter_overrides.get("min_avg_dollar_volume_20d")
+                )
+            except Exception:
+                pass
+        if "max_gap_down_pct" in hard_filter_overrides:
+            try:
+                out["max_gap_down_pct"] = float(hard_filter_overrides.get("max_gap_down_pct"))
+            except Exception:
+                pass
+        return out
+
+    def _sector_multiplier_for_ticker(
+        self,
+        ticker: str,
+        sector_weight_multipliers: Dict[str, float],
+    ) -> float:
+        if not sector_weight_multipliers:
+            return 1.0
+        etf = self._ticker_to_sector_etf(ticker)
+        if not etf:
+            return 1.0
+        raw = sector_weight_multipliers.get(etf, 1.0)
+        try:
+            f = float(raw)
+        except Exception:
+            return 1.0
+        return _clamp(f, 0.5, 1.5)
 
     # ------------------------------------------------------------------
     # Individual factor scorers  (each returns 0-100)

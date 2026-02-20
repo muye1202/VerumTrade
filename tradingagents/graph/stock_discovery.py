@@ -10,6 +10,7 @@ import inspect
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from tradingagents.utils.market_session import now_et
 
 from langchain_openai import ChatOpenAI
 
@@ -112,6 +113,10 @@ class StockDiscoveryGraph:
         def _with_extra_params(kwargs: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
             if not extra:
                 return kwargs
+            # Prefer explicit extra_body whenever supported to avoid model_kwargs warnings.
+            if "extra_body" in getattr(ChatOpenAI, "model_fields", {}):
+                kwargs["extra_body"] = extra
+                return kwargs
             try:
                 params = inspect.signature(ChatOpenAI.__init__).parameters
                 if "extra_body" in params:
@@ -197,7 +202,7 @@ class StockDiscoveryGraph:
             DiscoveryResult with recommended tickers and report
         """
         if trade_date is None:
-            trade_date = datetime.now().strftime("%Y-%m-%d")
+            trade_date = now_et().strftime("%Y-%m-%d")
 
         self.logger.info(f"Starting stock discovery for {trade_date}")
 

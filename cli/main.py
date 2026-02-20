@@ -4,6 +4,7 @@ import datetime
 import json
 import re
 import typer
+from tradingagents.utils.market_session import now_et
 import questionary
 from pathlib import Path
 from rich.console import Console
@@ -532,7 +533,7 @@ def get_user_selections():
             box_content += f"\n[dim]Default: {default}[/dim]"
         return Panel(box_content, border_style="blue", padding=(1, 2))
 
-    default_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    default_date = now_et().strftime("%Y-%m-%d")
 
     # Step 1: Analysis mode
     console.print(
@@ -662,6 +663,10 @@ def get_user_selections():
                 questionary.Choice(
                     "Anomaly Scan \u2014 Short-term momentum anomaly scans (intraday/next-day setups)",
                     value="anomaly_scan",
+                ),
+                questionary.Choice(
+                    "Dual-Track \u2014 Run both Enricher + Anomaly Scan; merge & score top 8\u201312 with convergence bonus",
+                    value="dual_track",
                 ),
             ],
             instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
@@ -964,12 +969,12 @@ def get_analysis_date():
     """Get the analysis date from user input."""
     while True:
         date_str = typer.prompt(
-            "", default=datetime.datetime.now().strftime("%Y-%m-%d")
+            "", default=now_et().strftime("%Y-%m-%d")
         )
         try:
             # Validate date format and ensure it's not in the future
             analysis_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-            if analysis_date.date() > datetime.datetime.now().date():
+            if analysis_date.date() > now_et().date():
                 console.print("[red]Error: Analysis date cannot be in the future[/red]")
                 continue
             return date_str

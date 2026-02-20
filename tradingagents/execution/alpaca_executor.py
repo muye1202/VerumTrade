@@ -45,6 +45,7 @@ import logging
 from pathlib import Path
 import json
 import re
+from tradingagents.utils.market_session import now_et
 import time
 
 
@@ -460,7 +461,7 @@ class AlpacaExecutor:
         logger.setLevel(logging.INFO)
 
         # File handler
-        log_file = self.log_dir / f"execution_{datetime.now().strftime('%Y%m%d')}.log"
+        log_file = self.log_dir / f"execution_{now_et().strftime('%Y%m%d')}.log"
         fh = logging.FileHandler(log_file)
         fh.setLevel(logging.INFO)
 
@@ -566,8 +567,8 @@ class AlpacaExecutor:
         result = {
             "ticker": ticker,
             "signal": signal,
-            "trade_date": trade_date or datetime.now().strftime("%Y-%m-%d"),
-            "timestamp": datetime.now().isoformat(),
+            "trade_date": trade_date or now_et().strftime("%Y-%m-%d"),
+            "timestamp": now_et().isoformat(),
             "executed": False,
             "order": None,
             "error": None,
@@ -1506,9 +1507,44 @@ class AlpacaExecutor:
                 ask_size = getattr(q, "ask_size", None)
                 ts = getattr(q, "timestamp", None)
 
+                # Best-effort: fetch last trade price alongside the NBBO quote.
+                # Used as the reference_price in market snapshots (more reliable than
+                # bid/ask mid, especially after hours when NBBO spread is wide).
+                last_trade_price: Optional[float] = None
+                try:
+                    from alpaca.data.requests import StockLatestTradeRequest  # type: ignore
+                    _trade_req = StockLatestTradeRequest(symbol_or_symbols=ticker_u)
+                    _trade_resp = self.data_client.get_stock_latest_trade(_trade_req)
+                    _t: Any = None
+                    if isinstance(_trade_resp, dict):
+                        _t = _trade_resp.get(ticker_u) or _trade_resp.get(ticker) or _trade_resp.get(ticker_u.lower())
+                    else:
+                        _t = _trade_resp
+                    if _t is not None:
+                        last_trade_price = _to_float(getattr(_t, "price", None))
+                except Exception:
+                    pass  # best-effort; absence of last_trade_price is handled downstream
+
+                # Warn when NBBO spread is unusually wide (e.g. after-hours / pre-market).
+                _bid_f = _to_float(bid_price)
+                _ask_f = _to_float(ask_price)
+                if _bid_f is not None and _ask_f is not None and _bid_f > 0 and _ask_f > 0:
+                    _mid = (_bid_f + _ask_f) / 2.0
+                    _rel_spread = (_ask_f - _bid_f) / _mid
+                    _max_spread = float(
+                        (self.config or {}).get("executor_quote_max_rel_spread", 0.01)
+                    )
+                    if _rel_spread > _max_spread:
+                        self.logger.warning(
+                            f"Wide NBBO spread for {ticker_u}: bid={_bid_f}, ask={_ask_f}, "
+                            f"spread={_rel_spread:.1%}, last_trade={last_trade_price}. "
+                            f"Market may be outside regular hours."
+                        )
+
                 return {
                     "bid_price": _to_float(bid_price),
                     "ask_price": _to_float(ask_price),
+                    "last_trade_price": last_trade_price,
                     "bid_size": _to_float(bid_size),
                     "ask_size": _to_float(ask_size),
                     "timestamp": ts.isoformat()
@@ -1611,7 +1647,7 @@ class AlpacaExecutor:
         """Log execution details to file."""
         log_entry = {**result, "analysis_state": _analysis_state_for_log(analysis_state)}
 
-        log_file = self.log_dir / f"executions_{datetime.now().strftime('%Y%m')}.jsonl"
+        log_file = self.log_dir / f"executions_{now_et().strftime('%Y%m')}.jsonl"
 
         try:
             with open(log_file, "a", encoding="utf-8") as f:

@@ -44,6 +44,14 @@ DEFAULT_CONFIG = {
         else None
     ),
 
+    # Anthropic settings
+    "anthropic_enable_thinking": _env_flag("TRADINGAGENTS_ANTHROPIC_ENABLE_THINKING", True),
+    "anthropic_thinking_budget": (
+        int(os.getenv("TRADINGAGENTS_ANTHROPIC_THINKING_BUDGET"))
+        if os.getenv("TRADINGAGENTS_ANTHROPIC_THINKING_BUDGET")
+        else 1024
+    ),
+
     # Prompt/context budgeting (important for providers with strict context windows).
     "context_budget_mode": os.getenv("TRADINGAGENTS_CONTEXT_BUDGET_MODE", "adaptive"),
     "prompt_soft_cap_tokens": int(os.getenv("TRADINGAGENTS_PROMPT_SOFT_CAP_TOKENS", "45000")),
@@ -76,6 +84,7 @@ DEFAULT_CONFIG = {
     "decision_price_guard_mode": os.getenv("TRADINGAGENTS_DECISION_PRICE_GUARD_MODE", "repair_then_abort"),
     "decision_repair_max_attempts": int(os.getenv("TRADINGAGENTS_DECISION_REPAIR_MAX_ATTEMPTS", "1")),
     "decision_snapshot_source": os.getenv("TRADINGAGENTS_DECISION_SNAPSHOT_SOURCE", "executor_quote_first"),
+    "executor_quote_max_rel_spread": float(os.getenv("TRADINGAGENTS_EXECUTOR_QUOTE_MAX_REL_SPREAD", "0.01")),
 
     # LLM burst/rate-limit mitigation for "manager" (deep-think) nodes.
     # These are particularly likely to hit HTTP 429 when the backend enforces RPM/TPM limits.

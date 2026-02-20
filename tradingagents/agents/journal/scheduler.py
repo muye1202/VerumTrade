@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo
 from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.monitor import PositionMonitor
 from tradingagents.agents.journal.outcome import OutcomeRecorder
+from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
 from tradingagents.agents.journal.models import TradeThesis, TradeOutcome
 from tradingagents.agents.journal.execution_advisor import JournalExecutionAdvisor
 from tradingagents.agents.journal.execution_policy import JournalExecutionPolicy
@@ -203,6 +204,24 @@ class JournalScheduler:
     def _execute_tick(self) -> Dict[str, Any]:
         """Run one complete monitoring + outcome-recording cycle."""
         tick_start = datetime.utcnow()
+        portfolio_pull = {
+            "positions_seen": 0,
+            "created": 0,
+            "skipped_existing": 0,
+            "errors": [],
+            "created_tickers": [],
+        }
+
+        # Auto-sync any new live positions that have no active thesis yet.
+        try:
+            portfolio_pull = sync_missing_positions(
+                store=self.store,
+                executor=self.monitor.executor,
+            )
+        except Exception as e:
+            msg = str(e)
+            logger.error(msg, exc_info=True)
+            portfolio_pull["errors"] = [msg]
 
         # Run position monitor
         try:
@@ -222,6 +241,19 @@ class JournalScheduler:
                 "actions_failed": 0,
                 "errors": [str(e)],
             }
+        summary["portfolio_pull_seen"] = int(portfolio_pull.get("positions_seen", 0) or 0)
+        summary["portfolio_pull_created"] = int(portfolio_pull.get("created", 0) or 0)
+        summary["portfolio_pull_skipped_existing"] = int(
+            portfolio_pull.get("skipped_existing", 0) or 0
+        )
+        summary["portfolio_pull_errors"] = list(portfolio_pull.get("errors") or [])
+        summary["portfolio_pull_created_tickers"] = list(
+            portfolio_pull.get("created_tickers") or []
+        )
+        if summary["portfolio_pull_errors"]:
+            summary.setdefault("errors", []).extend(
+                [f"Portfolio pull: {err}" for err in summary["portfolio_pull_errors"]]
+            )
 
         # Record outcomes for any newly closed positions
         try:

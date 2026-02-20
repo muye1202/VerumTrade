@@ -22,6 +22,7 @@ from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory.memory import FinancialSituationMemory
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
+from tradingagents.utils.market_session import now_et
 from tradingagents.execution.decision_guard import (
     attempt_repair_canonical_decision,
     build_market_snapshot,
@@ -287,6 +288,10 @@ class TradingAgentsGraph:
             def _with_extra_params(kwargs: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
                 if not extra:
                     return kwargs
+                # Prefer explicit extra_body whenever supported to avoid model_kwargs warnings.
+                if "extra_body" in getattr(ChatOpenAI, "model_fields", {}):
+                    kwargs["extra_body"] = extra
+                    return kwargs
                 try:
                     params = inspect.signature(ChatOpenAI.__init__).parameters
                     if "extra_body" in params:
@@ -474,8 +479,36 @@ class TradingAgentsGraph:
                     f"llm:{provider}:{str(self.config.get('backend_url') or '').rstrip('/')}:{self.config.get('quick_think_llm')}".lower()
                 )
         elif self.config["llm_provider"].lower() == "anthropic":
-            self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
-            self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
+            # Retrieve API key and Base URL
+            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+            anthropic_base_url = os.getenv("ANTHROPIC_BASE_URL") or self.config.get("backend_url")
+
+            # Configure Thinking Mode
+            anthropic_thinking = {}
+            if self.config.get("anthropic_enable_thinking"):
+                budget = self.config.get("anthropic_thinking_budget")
+                if budget:
+                    anthropic_thinking = {
+                        "thinking": {
+                            "type": "enabled",
+                            "budget_tokens": int(budget)
+                        }
+                    }
+
+            # Initialize Clients
+            self.deep_thinking_llm = ChatAnthropic(
+                model=self.config["deep_think_llm"],
+                api_key=anthropic_api_key,
+                base_url=anthropic_base_url,
+                **anthropic_thinking
+            )
+            self.quick_thinking_llm = ChatAnthropic(
+                model=self.config["quick_think_llm"],
+                api_key=anthropic_api_key,
+                base_url=anthropic_base_url,
+                # Do not enable thinking for quick models to save costs/latency, unless explicitly desired
+                # For now, we only apply thinking to the "deep" agent if enabled.
+            )
         elif self.config["llm_provider"].lower() == "google":
             self.deep_thinking_llm = ChatGoogleGenerativeAI(model=self.config["deep_think_llm"])
             self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
@@ -815,7 +848,7 @@ class TradingAgentsGraph:
             "ticker": ticker,
             "signal": signal,
             "trade_date": trade_date,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_et().isoformat(),
             "executed": False,
             "order": None,
             "error": "Structured decision missing or invalid; execution aborted",

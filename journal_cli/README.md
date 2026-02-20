@@ -1,11 +1,12 @@
 # Journal Scripts
 
 This directory contains utility scripts for managing the trading journal daemon.
+Runtime artifacts (DB, scheduler logs, lessons, execution logs) are stored under `journal_cli/`.
 
 ## Scripts
 
 ### `start_journal_daemon.py`
-Start the journal scheduler daemon with reflection enabled. This monitors active positions and records outcomes.
+Start the journal scheduler daemon with reflection enabled. This monitors active positions, auto-pulls missing live brokerage positions into journal theses on each tick, and records outcomes.
 
 **Usage:**
 ```bash
@@ -13,7 +14,7 @@ python scripts/journal/start_journal_daemon.py
 ```
 
 ### `sync_positions_to_journal.py`
-Sync existing Alpaca positions into the journal database. Creates theses for positions that were opened before the journal system was activated.
+Bootstrap/backfill utility to sync existing Alpaca positions into the journal database. Creates theses for positions opened before the journal system was activated, and can be used for recovery if the daemon was not running.
 
 **Usage:**
 ```bash
@@ -44,5 +45,5 @@ python scripts/journal/check_journal.py
 
 All scripts require:
 - Alpaca API credentials in `.env` file
-- Journal database at `./journal/trade_journal.db`
+- Journal database at `./journal_cli/journal/trade_journal.db`
 - Python packages: `tradingagents`, `alpaca-py`, `python-dotenv`

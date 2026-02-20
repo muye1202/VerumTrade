@@ -124,6 +124,9 @@ def describe_us_market_session(now: Optional[datetime] = None) -> dict[str, Any]
     return out
 
 
+now_et = _now_et  # public alias — import as: from tradingagents.utils.market_session import now_et
+
+
 def format_market_session_context(desc: dict[str, Any]) -> str:
     """
     Format a concise context block describing the current execution session.

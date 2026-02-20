@@ -116,6 +116,25 @@ class MomentumScanHit:
 
 
 @dataclass
+class PreStage0Snapshot:
+    """Computed market intelligence snapshot before Stage 0 universe build."""
+    trade_date: str = ""
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    cache_metrics: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LLMBiasProfile:
+    """Bounded bias profile generated from pre-Stage-0 snapshot."""
+    regime_label: str = "NEUTRAL"
+    risk_posture: str = "NEUTRAL"
+    preferred_tracks: List[str] = field(default_factory=list)
+    stage0_overrides: Dict[str, Any] = field(default_factory=dict)
+    stage2_weight_tilts: Dict[str, float] = field(default_factory=dict)
+    scan_notes: str = ""
+
+
+@dataclass
 class IntelligenceResult:
     """Aggregated output of all three sub-agents."""
     sector_signals: List[SectorSignal] = field(default_factory=list)
@@ -124,8 +143,11 @@ class IntelligenceResult:
     stage1_scorecards: List[Stage1EnrichmentScorecard] = field(default_factory=list)
     stage2_candidates: List[Stage2ScoredCandidate] = field(default_factory=list)
     momentum_scan_hits: List[MomentumScanHit] = field(default_factory=list)
+    pre_stage0_snapshot: Dict[str, Any] = field(default_factory=dict)
+    llm_bias_profile: Dict[str, Any] = field(default_factory=dict)
+    indicator_availability: Dict[str, Any] = field(default_factory=dict)
     stage0_metrics: Dict[str, Any] = field(default_factory=dict)
-    discovery_track: str = "enricher"  # "enricher" | "anomaly_scan"
+    discovery_track: str = "enricher"  # "enricher" | "anomaly_scan" | "dual_track"
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""
     scan_duration_secs: float = 0.0

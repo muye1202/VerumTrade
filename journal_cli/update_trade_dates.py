@@ -12,14 +12,16 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 # Ensure we can import from parent directories
-sys.path.insert(0, str(Path(__file__).parent.parent))
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load environment variables
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    env_file = Path(__file__).parent.parent.parent / ".env"
+    env_file = PROJECT_ROOT / ".env"
     if env_file.exists():
         with open(env_file) as f:
             for line in f:
@@ -196,8 +198,8 @@ def main():
     parser.add_argument(
         "--db",
         type=str,
-        default="./journal/trade_journal.db",
-        help="Path to journal database (default: ./journal/trade_journal.db)"
+        default="./journal_cli/journal/trade_journal.db",
+        help="Path to journal database (default: ./journal_cli/journal/trade_journal.db)"
     )
     parser.add_argument(
         "--dry-run",
@@ -209,7 +211,7 @@ def main():
     
     db_path = Path(args.db)
     if not db_path.is_absolute():
-        db_path = Path(__file__).parent.parent.parent / args.db
+        db_path = PROJECT_ROOT / args.db
     
     if not db_path.exists():
         print(f"Error: Database not found at {db_path}")

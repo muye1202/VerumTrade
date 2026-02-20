@@ -169,18 +169,21 @@ def select_shallow_thinking_agent(provider) -> str:
             ("GLM-4.7-Flash - Fast, cost-effective", "glm-4.7-flash"),
         ],
         "qwen3-cn": [
+            ("Qwen3.5-Plus", "qwen3.5-plus"),
+            ("Qwen3.5-Plus (2026-02-15)", "qwen3.5-plus-2026-02-15"),
+            ("Qwen3.5-397B-A17B", "qwen3.5-397b-a17b"),
             ("Qwen-Plus (2025-04-28)", "qwen-plus-2025-04-28"),
             ("Qwen-Plus (2025-01-25)", "qwen-plus-2025-01-25"),
             ("Qwen-Plus (2025-07-14)", "qwen-plus-2025-07-14"),
-            ("Qwen-Plus (2025-07-28)", "qwen-plus-2025-07-28"),
             ("Qwen3-30b-a3b-thinking", "qwen3-30b-a3b-thinking-2507"),
             ("Qwen3-32B - Strong general model", "qwen3-32b"),
-            ("Ali provided Deepseek-v3.2", "deepseek-v3.2"),
-            ("Ali provided Deepseek-v3.1", "deepseek-v3.1"),
-            ("Ali provided Deepseek-R1", "deepseek-r1"),
         ],
         "deepseek": [
             ("DeepSeek Chat", "deepseek-chat"),
+        ],
+        "anthropic": [
+            ("Claude 4.6 Sonnet", "claude-sonnet-4-6"),
+            ("Claude 4.5 Haiku", "claude-haiku-4-5-20251001"),
         ],
         "openrouter": [
             ("Aurora Alpha", "openrouter/aurora-alpha"),
@@ -191,10 +194,6 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Qwen3-235B-A22B Thinking (2507)", "qwen/qwen3-235b-a22b-thinking-2507"),
             ("GLM-4.5-Air (free)", "z-ai/glm-4.5-air:free"),
         ],
-        # "openai": [
-        #     ("Gemini-3-Flash", "gemini-3-flash"),
-        #     ("Gemini-2.5-Flash", "gemini-2.5-flash"),
-        # ],
     }
 
     choice = questionary.select(
@@ -231,6 +230,9 @@ def select_deep_thinking_agent(provider) -> str:
             ("GLM-4.7-Flash - Fast, cost-effective", "glm-4.7-flash"),
         ],
         "qwen3-cn": [
+            ("Qwen3.5-Plus", "qwen3.5-plus"),
+            ("Qwen3.5-Plus (2026-02-15)", "qwen3.5-plus-2026-02-15"),
+            ("Qwen3.5-397B-A17B", "qwen3.5-397b-a17b"),
             ("Qwen3-Max - Flagship large model", "qwen3-max"),
             ("Qwen3-Max (2026-01-23) - Versioned flagship model", "qwen3-max-2026-01-23"),
             ("Qwen3-Max (2025-09-23) - Versioned flagship model", "qwen3-max-2025-09-23"),
@@ -241,11 +243,10 @@ def select_deep_thinking_agent(provider) -> str:
         "deepseek": [
             ("DeepSeek Reasoner", "deepseek-reasoner"),
         ],
-        # "openai": [
-        #     ("Gemini-3-Pro-Low", "gemini-3-pro-low"),
-        #     ("Gemini-3-Pro-High", "gemini-3-pro-high"),
-        #     ("Gemini-2.5-Thinking", "gemini-2.5-flash-thinking"),
-        # ],
+        "anthropic": [
+            ("Claude 4.6 Opus", "claude-opus-4-6"),
+            ("Claude 4.6 Sonnet", "claude-sonnet-4-6"),
+        ],
         "openrouter": [
             ("Aurora Alpha", "openrouter/aurora-alpha"),
             ("Step 3.5 Flash (free)", "stepfun/step-3.5-flash:free"),
@@ -287,6 +288,7 @@ def select_llm_provider() -> tuple[str, str]:
         ("Qwen3-CN (DashScope)", "qwen3-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
         ("GLM (ZhipuAI)", "glm", "https://open.bigmodel.cn/api/paas/v4"),
+        ("Anthropic", "anthropic", "http://132.226.199.79:62311"),
         ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
     ]
 
