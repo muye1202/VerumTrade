@@ -125,11 +125,14 @@ class Stage2Scorer:
                 "weak_mode_min_roc_20d": 0.0,
             },
             "weights": {
-                "earnings_surprise": 0.30,
-                "technical_momentum": 0.25,
-                "options_flow": 0.20,
-                "sector_momentum": 0.15,
-                "short_squeeze": 0.10,
+                "earnings_surprise": 0.15,
+                "technical_momentum": 0.20,
+                "options_flow": 0.10,
+                "sector_momentum": 0.05,
+                "short_squeeze": 0.05,
+                "estimate_revision": 0.20,
+                "breakout_persistence": 0.15,
+                "accum_distrib": 0.10,
             },
             "output": {
                 "min_candidates": 8,
@@ -512,6 +515,9 @@ class Stage2Scorer:
         candidate.options_flow_score = self._score_options_flow(sc)
         candidate.sector_momentum_score = self._score_sector_momentum(sc)
         candidate.short_squeeze_score = self._score_short_squeeze(sc)
+        candidate.estimate_revision_score = self._score_estimate_revision(sc)
+        candidate.breakout_persistence_score = self._score_breakout_persistence(sc)
+        candidate.accum_distrib_score = self._score_accum_distrib(sc)
 
         composite = (
             candidate.earnings_surprise_score * weights["earnings_surprise"]
@@ -519,6 +525,9 @@ class Stage2Scorer:
             + candidate.options_flow_score * weights["options_flow"]
             + candidate.sector_momentum_score * weights["sector_momentum"]
             + candidate.short_squeeze_score * weights["short_squeeze"]
+            + candidate.estimate_revision_score * weights["estimate_revision"]
+            + candidate.breakout_persistence_score * weights["breakout_persistence"]
+            + candidate.accum_distrib_score * weights["accum_distrib"]
         )
         quality_cfg = cfg.get("quality") or {}
         noise_cfg = cfg.get("noise") or {}
@@ -559,6 +568,9 @@ class Stage2Scorer:
             "options_flow": "options_flow",
             "sector_momentum": "sector_momentum",
             "short_squeeze": "short_squeeze",
+            "estimate_revision": "estimate_revision",
+            "breakout_persistence": "breakout_persistence",
+            "accum_distrib": "accum_distrib",
         }
         adjusted: Dict[str, float] = {}
         for key, base in base_weights.items():
@@ -627,33 +639,55 @@ class Stage2Scorer:
     # ------------------------------------------------------------------
     @staticmethod
     def _score_earnings_surprise(sc: Stage1EnrichmentScorecard) -> float:
+        """15% weight — Earnings surprise history + magnitude trend."""
+        beat_rate_norm = _clamp(sc.earnings_beat_rate_4q, 0.0, 100.0)
+        # Slope ranges roughly from -20 to +20 per quarter
+        trend_norm = _normalize(sc.earnings_surprise_trend_slope, -10.0, 15.0)
+        return round(beat_rate_norm * 0.50 + trend_norm * 0.50, 2)
+
+    @staticmethod
+    def _score_estimate_revision(sc: Stage1EnrichmentScorecard) -> float:
         """
-        30% weight — Earnings surprise history (past 4Q beat rate).
-        beat_rate_4q is 0-100 representing percentage of quarters beating.
-        Direct map: 0% beats → 0, 100% beats → 100.
+        20% weight — Estimate revision momentum.
         """
-        return _clamp(sc.earnings_beat_rate_4q, 0.0, 100.0)
+        breadth_norm = _normalize(sc.eps_revision_breadth_30d, 0.0, 100.0)
+        magnitude_norm = _normalize(sc.eps_revision_magnitude_30d, -10.0, 20.0)
+        revenue_bonus = 100.0 if sc.revenue_revision_direction > 0 else 0.0
+        return round(breadth_norm * 0.40 + magnitude_norm * 0.40 + revenue_bonus * 0.20, 2)
 
     @staticmethod
     def _score_technical_momentum(sc: Stage1EnrichmentScorecard) -> float:
         """
-        25% weight — Technical momentum alignment (ROC + trend + ADX).
-        Blend of three sub-indicators normalised 0-100:
-          - ROC 20d: [-20, +25] → [0, 100]
-          - ADX: [10, 50] → [0, 100]
-          - Price vs 50 SMA (%): [-10, +30] → [0, 100]
+        20% weight — Technical momentum with multi-timeframe alignment.
         """
         roc_norm = _normalize(sc.roc_20d, -20.0, 25.0)
         adx_norm = _normalize(sc.adx, 10.0, 50.0)
         sma_norm = _normalize(sc.vs_sma50_pct, -10.0, 30.0)
-        trend_quality = _normalize(float(getattr(sc, "trend_quality_score", 0.0)), 0.0, 100.0)
+        alignment_norm = sc.momentum_alignment_score / 100.0 * 100.0  # already 0-100
         return round(
-            roc_norm * 0.30
-            + adx_norm * 0.20
-            + sma_norm * 0.20
-            + trend_quality * 0.30,
-            2,
+            roc_norm * 0.30 +
+            adx_norm * 0.20 +
+            sma_norm * 0.15 +
+            alignment_norm * 0.35,
+            2
         )
+
+    @staticmethod
+    def _score_breakout_persistence(sc: Stage1EnrichmentScorecard) -> float:
+        """15% weight — New high proximity and breakout persistence."""
+        # Distance from 52w high: 0% gap = 100, -20% = 0
+        high_proximity = _normalize(sc.distance_from_52w_high_pct, -20.0, 0.0)
+        # New high count: 0/20 = 0, 15/20 = 100
+        new_high_norm = _normalize(sc.new_high_count_20d, 0.0, 15.0)
+        # Persistence: 0 days = 0, 10+ days = 100
+        persistence_norm = _normalize(sc.breakout_persistence_days, 0.0, 10.0)
+        return round(high_proximity * 0.40 + new_high_norm * 0.30 + persistence_norm * 0.30, 2)
+
+    @staticmethod
+    def _score_accum_distrib(sc: Stage1EnrichmentScorecard) -> float:
+        """10% weight — Accumulation/distribution ratio."""
+        # Ratio 0.5 (more distribution) → 0, ratio 3.0+ → 100
+        return round(_normalize(sc.accum_distrib_ratio_20d, 0.5, 3.0), 2)
 
     @staticmethod
     def _score_options_flow(sc: Stage1EnrichmentScorecard) -> float:

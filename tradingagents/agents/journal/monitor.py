@@ -44,6 +44,10 @@ from tradingagents.agents.journal.execution_policy import (
 from tradingagents.agents.journal.decision_plan_evaluator import (
     evaluate_decision_plan,
 )
+from tradingagents.agents.journal.news_event_inference import (
+    infer_event_flags,
+    event_inference_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -768,11 +772,39 @@ class PositionMonitor:
         snapshot: PositionSnapshot,
         market_session: str,
     ) -> Optional[JournalActionDecision]:
+        required_event_keys = self._collect_required_event_keys(thesis)
+        manual_flags = self.store.get_event_confirmations(
+            ticker=thesis.ticker.upper(),
+            as_of_ts=snapshot.timestamp,
+            sources=["manual", "agent"],
+        )
+        inferred_flags: Dict[str, Any] = {}
+        missing_event_keys = [k for k in required_event_keys if k not in manual_flags]
+        if missing_event_keys and event_inference_enabled():
+            inferred_flags = infer_event_flags(
+                thesis=thesis,
+                event_keys=missing_event_keys,
+            )
+            for key, val in inferred_flags.items():
+                try:
+                    self.store.save_event_confirmation(
+                        ticker=thesis.ticker.upper(),
+                        event_key=key,
+                        value=val,
+                        source="inferred",
+                        confidence=1.0,
+                        timestamp=snapshot.timestamp,
+                    )
+                except Exception:
+                    pass
+        merged_confirmations = dict(inferred_flags)
+        merged_confirmations.update(manual_flags)
+
         matched = evaluate_decision_plan(
             thesis=thesis,
             snapshot=snapshot,
             market_session=market_session,
-            event_confirmations={},
+            event_confirmations=merged_confirmations,
             volume_ratio=None,
         )
         if not matched:
@@ -794,6 +826,9 @@ class PositionMonitor:
             "market_session": market_session,
             "action_template": template,
             "plan_summary": matched.get("summary") or {},
+            "event_confirmations_manual": manual_flags,
+            "event_confirmations_inferred": inferred_flags,
+            "event_confirmation_used": merged_confirmations,
         }
         return JournalActionDecision(
             thesis_id=thesis.id,
@@ -810,6 +845,35 @@ class PositionMonitor:
             linked_alert_ids=json.dumps([]),
             created_at=datetime.utcnow().isoformat(),
         )
+
+    def _collect_required_event_keys(self, thesis: TradeThesis) -> List[str]:
+        raw = getattr(thesis, "decision_plan_json", None)
+        if not raw:
+            return []
+        try:
+            plan = json.loads(str(raw))
+        except Exception:
+            return []
+        execution_plan = plan.get("execution_plan") or []
+        if not isinstance(execution_plan, list):
+            return []
+        keys: List[str] = []
+        for branch in execution_plan:
+            if not isinstance(branch, dict):
+                continue
+            conditions = branch.get("conditions") or {}
+            ev = conditions.get("event_conditions")
+            if ev is None:
+                ev = branch.get("event_conditions") or []
+            if not isinstance(ev, list):
+                continue
+            for item in ev:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("event_key") or "").strip()
+                if key and key not in keys:
+                    keys.append(key)
+        return keys
 
     def _process_action_decision(
         self,
@@ -855,6 +919,17 @@ class PositionMonitor:
             "recommended_qty_pct": decision.recommended_qty_pct,
             "execution_status": "blocked",
         }
+        try:
+            ctx = json.loads(decision.context_summary or "{}")
+            if isinstance(ctx, dict):
+                row["matched_branch_id"] = ctx.get("matched_branch_id")
+                manual = ctx.get("event_confirmations_manual") or {}
+                inferred = ctx.get("event_confirmations_inferred") or {}
+                row["event_confirmation_source"] = (
+                    "manual_or_agent" if manual else ("inferred" if inferred else None)
+                )
+        except Exception:
+            pass
 
         if not policy_result.allowed:
             summary["actions_blocked"] += 1

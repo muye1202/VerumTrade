@@ -13,14 +13,14 @@ Before individual stocks are evaluated, the pipeline builds an understanding of 
 ### Stage 1: Parallel Evaluation Tracks
 The orchestrator (`pipeline_orchestrator.py`) passes the pre-filtered universe into Stage 1, which supports parallel strategies (tracks) to discover promising tickers. 
 
-*   **Track A - Deep Enrichment (`track_a_enrichment.py`)**: The primary track focusing on rich, multi-dimensional analysis. It aggregates technical indicators, fundamental data, analyst consensus, sentiment metrics (insider trading, news), and institutional positioning (short interest, options activity).
+*   **Track A - Deep Enrichment (`track_a_enrichment.py`)**: The primary track focusing on rich, multi-dimensional analysis. It aggregates technical indicators (including multi-timeframe momentum alignment, accumulation/distribution ratios, and breakout persistence), fundamental data (including beat magnitude trends), analyst consensus (EPS/revenue estimate revision momentum via nightly SQLite snapshots), sentiment metrics (insider trading, news), and institutional positioning (short interest, options activity).
 *   **Track B - Anomaly Scans (`track_b_anomaly_scans.py`)**: A purely technical scanner designed to flag specific quantitative phenomena based on the calculated momentum metrics (`technical_momentum_metrics.py`). Examples include short-term momentum acceleration, stealth accumulation, relative strength divergence, and volatility breakouts.
 
 *Note: The orchestrator can run `enricher` (Track A), `anomaly_scan` (Track B), or merge them via a `dual_track` configuration.*
 
 ### Stage 2: Selection & Scoring
 Candidates that survive Stage 1 are passed directly to the scoring engine.
-*   **Scoring & Filtration (`candidate_scoring.py`)**: The `Stage2Scorer` computes a final composite score for each ticker. It enforces strict structural exclusions (e.g., "Must be above 50 SMA") as defined by the LLM policy, and applies positive additive multipliers/bonuses based on strong signals (e.g., high RS against the SPY). The highest-ranked tickers are returned by the pipeline for deep-dive thesis generation.
+*   **Scoring & Filtration (`candidate_scoring.py`)**: The `Stage2Scorer` computes a final composite score for each ticker based on 8 weighted factors (Estimate Revision, Breakout Persistence, Accumulation/Distribution, Earnings Surprise, Technical Momentum, Options Flow, Sector Momentum, and Short Squeeze). It enforces strict structural exclusions (e.g., "Must be above 50 SMA") as defined by the LLM policy, applies quality penalties for missing data, and penalizes whipsaw noise. The highest-ranked tickers are returned by the pipeline for deep-dive thesis generation.
 
 ## Shared Components
 *   **`pipeline_orchestrator.py`**: The `IntelligenceScanner` acts as the conductor orchestrating Pre-Stage 0, Stage 1 (Tracks A & B), and Stage 2 into a single unified flow.

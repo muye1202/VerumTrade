@@ -158,4 +158,11 @@ DEFAULT_CONFIG = {
         "order_type": "market",  # or "limit"
         "limit_price_offset_pct": 0.001,
     },
+
+    # Journal event-trigger inference (hybrid manual+inferred confirmation path)
+    "journal_event_inference_enabled": _env_flag("JOURNAL_EVENT_INFERENCE_ENABLED", False),
+    "journal_event_inference_provider": os.getenv("JOURNAL_EVENT_INFERENCE_PROVIDER", "rules"),
+    "journal_event_inference_confidence_min": float(
+        os.getenv("JOURNAL_EVENT_INFERENCE_CONFIDENCE_MIN", "0.70")
+    ),
 }

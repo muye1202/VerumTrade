@@ -89,6 +89,7 @@ Leverage these insights to make an informed and strategic decision.""",
 
   ---
   FINAL TRANSACTION PROPOSAL:
+  - EXECUTION_INTENT: ACT_NOW / WAIT_FOR_TRIGGER
   - ACTION: BUY / SELL / HOLD
   - TICKER: {company_name}
   - QUANTITY: [INTEGER number of shares, or "N/A" for HOLD]
@@ -107,6 +108,10 @@ Leverage these insights to make an informed and strategic decision.""",
   ---
 
   IMPORTANT RULES:
+  - **CRITICAL**: You must choose exactly one `EXECUTION_INTENT`:
+    - `ACT_NOW` when this setup should be executed immediately.
+    - `WAIT_FOR_TRIGGER` when this setup should be monitored and activated later by explicit conditions.
+  - **CRITICAL**: If `EXECUTION_INTENT` is `WAIT_FOR_TRIGGER`, prefer HOLD action now and include clear trigger levels/conditions in your narrative.
   - **CRITICAL**: Anchor LIMIT/STOP/STOP_LOSS/TAKE_PROFIT to `market_snapshot.reference_price` when available.
   - **CRITICAL**: Any numeric level must be within +/-30% of `market_snapshot.reference_price` when that reference exists.
   - **CRITICAL**: Briefly justify numeric levels as % distance from reference in your narrative.

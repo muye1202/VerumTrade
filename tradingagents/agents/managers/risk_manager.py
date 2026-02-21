@@ -1,4 +1,5 @@
 import logging
+import re
 
 from tradingagents.dataflows.config import get_config
 from tradingagents.agents.utils.llm.llm_rate_limit import invoke_with_backoff
@@ -33,7 +34,8 @@ def create_risk_manager(llm, memory):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
         sentiment_report = state["sentiment_report"]
-        trader_plan = state["investment_plan"]
+        trader_plan = state.get("trader_investment_plan") or state["investment_plan"]
+        trader_intent = _extract_trader_execution_intent(trader_plan)
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -157,6 +159,7 @@ Reference analyst reports (compacted):
 Deliverables:
 - A clear and actionable recommendation: Buy, Sell, or Hold.
 - Detailed reasoning anchored in the debate and past reflections.
+- Preserve Trader-selected mode unless a hard risk/executability constraint requires override.
 
 ---
 
@@ -174,6 +177,7 @@ OUTPUT CONTRACT (STRICT):
   {{ ... }}
   END_DECISION_JSON
 - The executor uses ONLY this JSON block for trading execution.
+- Trader-selected execution intent for this ticker: `{trader_intent}`.
 
 JSON RULES:
 - Valid JSON only (no markdown inside JSON, no comments, no trailing commas).
@@ -181,6 +185,11 @@ JSON RULES:
 - Numeric fields must be numbers, not formatted strings (no `%`, commas, or currency symbols).
 - `quantity` must be an integer or null.
 - `decision_version` must be "v1" or "v2".
+- `execution_intent` is REQUIRED and must be:
+  - `act_now` for `v1`
+  - `wait_for_trigger` for `v2`
+- Treat Trader intent as primary mode selector; only override when hard constraints require it.
+- If you override Trader mode, include `override_reason` in canonical JSON and explain override in narrative.
 - Anchor all prices to market_snapshot.reference_price. `limit_price` (when used) must be within the current bid/ask range — it is the actual execution price of the order being placed right now, not a hypothetical future trigger. `stop_loss` and `take_profit` must be realistic risk levels relative to reference_price.
 
 Use `decision_version: "v1"` for immediate single-action decisions:
@@ -201,7 +210,9 @@ Use `decision_version: "v1"` for immediate single-action decisions:
   "time_horizon": "{holding_text}",
   "confidence": "HIGH | MEDIUM | LOW",
   "rationale": "2-3 sentence summary",
-  "decision_version": "v1"
+  "decision_version": "v1",
+  "execution_intent": "act_now",
+  "override_reason": null
 }}
 
 Use `decision_version: "v2"` for conditional scenario playbooks:
@@ -244,7 +255,9 @@ Use `decision_version: "v2"` for conditional scenario playbooks:
   "time_horizon": "{holding_text}",
   "confidence": "MEDIUM",
   "rationale": "Scenario-based plan for post-event execution.",
-  "action": "HOLD"
+  "action": "HOLD",
+  "execution_intent": "wait_for_trigger",
+  "override_reason": null
 }}
 
 Validation-critical constraints:
@@ -296,6 +309,18 @@ Validation-critical constraints:
         }
 
     return risk_manager_node
+
+
+def _extract_trader_execution_intent(trader_plan_text: str) -> str:
+    text = str(trader_plan_text or "")
+    m = re.search(
+        r"EXECUTION[_\s-]*INTENT\s*:\s*(ACT_NOW|WAIT_FOR_TRIGGER|ACT NOW|WAIT FOR TRIGGER)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return "UNSPECIFIED"
+    return m.group(1).upper().replace(" ", "_")
 
 
 

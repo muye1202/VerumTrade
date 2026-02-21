@@ -16,6 +16,7 @@ _ALLOWED_CONFIDENCE = {"HIGH", "MEDIUM", "LOW"}
 _NA_STRINGS = {"N/A", "NA", "NONE", "-"}
 _ALLOWED_PLAN_MODES = {"IMMEDIATE", "CONDITIONAL"}
 _ALLOWED_SESSIONS = {"ANY", "PREMARKET", "MARKET_HOURS", "AFTERHOURS", "OVERNIGHT", "WEEKEND"}
+_ALLOWED_EXECUTION_INTENTS = {"ACT_NOW", "WAIT_FOR_TRIGGER"}
 
 
 def extract_decision_json_block(text: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -186,6 +187,20 @@ def _normalize_action_template(
     return norm
 
 
+def _normalize_execution_intent(value: Any) -> str:
+    intent = str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
+    if intent not in _ALLOWED_EXECUTION_INTENTS:
+        raise ValueError("execution_intent must be one of act_now or wait_for_trigger.")
+    return intent.lower()
+
+
+def _normalize_override_reason(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s or None
+
+
 def validate_v1_decision(
     decision: Dict[str, Any],
     *,
@@ -210,6 +225,10 @@ def validate_v1_decision(
         if version != DECISION_VERSION_V1:
             raise ValueError(f"Unsupported decision_version '{version}'.")
         norm["decision_version"] = version
+        norm["execution_intent"] = _normalize_execution_intent(decision.get("execution_intent"))
+        if norm["execution_intent"] != "act_now":
+            raise ValueError("v1 requires execution_intent=act_now.")
+        norm["override_reason"] = _normalize_override_reason(decision.get("override_reason"))
     except Exception as e:
         return None, str(e)
 
@@ -325,6 +344,10 @@ def validate_v2_decision(
             raise ValueError(f"Unsupported decision_version '{version}'.")
         norm["decision_version"] = version
         norm["ticker"] = ticker
+        norm["execution_intent"] = _normalize_execution_intent(decision.get("execution_intent"))
+        if norm["execution_intent"] != "wait_for_trigger":
+            raise ValueError("v2 requires execution_intent=wait_for_trigger.")
+        norm["override_reason"] = _normalize_override_reason(decision.get("override_reason"))
 
         plan_mode = str(decision.get("plan_mode", "conditional")).strip().upper()
         if plan_mode not in _ALLOWED_PLAN_MODES:

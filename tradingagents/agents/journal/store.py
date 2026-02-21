@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, date
 from pathlib import Path
@@ -284,6 +285,22 @@ class JournalStore:
                 CREATE INDEX IF NOT EXISTS idx_action_exec_created
                     ON journal_action_executions(created_at);
 
+                CREATE TABLE IF NOT EXISTS journal_event_confirmations (
+                    id              TEXT PRIMARY KEY,
+                    ticker          TEXT NOT NULL,
+                    event_key       TEXT NOT NULL,
+                    value           TEXT NOT NULL,
+                    source          TEXT NOT NULL,
+                    confidence      REAL,
+                    timestamp       TEXT NOT NULL,
+                    expires_at      TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_event_conf_ticker_key
+                    ON journal_event_confirmations(ticker, event_key);
+                CREATE INDEX IF NOT EXISTS idx_event_conf_timestamp
+                    ON journal_event_confirmations(timestamp);
+
                 CREATE TABLE IF NOT EXISTS journal_meta (
                     key   TEXT PRIMARY KEY,
                     value TEXT
@@ -313,6 +330,29 @@ class JournalStore:
                 continue
             conn.execute(f"ALTER TABLE trade_theses ADD COLUMN {col_name} {col_type}")
             logger.info("Journal schema migration: added trade_theses.%s", col_name)
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS journal_event_confirmations (
+                id              TEXT PRIMARY KEY,
+                ticker          TEXT NOT NULL,
+                event_key       TEXT NOT NULL,
+                value           TEXT NOT NULL,
+                source          TEXT NOT NULL,
+                confidence      REAL,
+                timestamp       TEXT NOT NULL,
+                expires_at      TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_event_conf_ticker_key "
+            "ON journal_event_confirmations(ticker, event_key)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_event_conf_timestamp "
+            "ON journal_event_confirmations(timestamp)"
+        )
 
         # Keep schema version current after additive migrations.
         conn.execute(
@@ -351,6 +391,93 @@ class JournalStore:
                 "SELECT * FROM trade_theses WHERE id = ?", (thesis_id,)
             ).fetchone()
         return self._row_to_thesis(row) if row else None
+
+    def save_event_confirmation(
+        self,
+        *,
+        ticker: str,
+        event_key: str,
+        value: Any,
+        source: str,
+        confidence: Optional[float] = None,
+        timestamp: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> str:
+        rec_id = uuid.uuid4().hex[:12]
+        ts = timestamp or datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO journal_event_confirmations
+                (id, ticker, event_key, value, source, confidence, timestamp, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    rec_id,
+                    str(ticker or "").upper(),
+                    str(event_key or "").strip(),
+                    str(value),
+                    str(source or "manual"),
+                    _safe_float(confidence),
+                    ts,
+                    expires_at,
+                ),
+            )
+        return rec_id
+
+    def get_event_confirmations(
+        self,
+        *,
+        ticker: str,
+        as_of_ts: Optional[str] = None,
+        sources: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        ticker_u = str(ticker or "").upper()
+        as_of = as_of_ts or datetime.utcnow().isoformat()
+        source_filters: List[str] = []
+        if sources:
+            source_filters = [str(s).strip().lower() for s in sources if str(s).strip()]
+        where_source = ""
+        params: List[Any] = [ticker_u, as_of, as_of]
+        if source_filters:
+            placeholders = ", ".join(["?"] * len(source_filters))
+            where_source = f" AND lower(source) IN ({placeholders})"
+            params.extend(source_filters)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM journal_event_confirmations
+                WHERE ticker = ?
+                  AND timestamp <= ?
+                  AND (expires_at IS NULL OR expires_at = '' OR expires_at >= ?)
+                  {where_source}
+                ORDER BY
+                  CASE WHEN lower(source) IN ('manual','agent') THEN 0 ELSE 1 END,
+                  timestamp DESC
+                """,
+                params,
+            ).fetchall()
+
+        out: Dict[str, Any] = {}
+        for r in rows:
+            d = dict(r)
+            key = str(d.get("event_key") or "").strip()
+            if not key or key in out:
+                continue
+            out[key] = self._coerce_event_value(d.get("value"))
+        return out
+
+    @staticmethod
+    def _coerce_event_value(value: Any) -> Any:
+        if value is None:
+            return None
+        s = str(value).strip()
+        l = s.lower()
+        if l in {"true", "1", "yes", "y"}:
+            return True
+        if l in {"false", "0", "no", "n"}:
+            return False
+        return s
 
     def get_active_theses(self) -> List[TradeThesis]:
         """Fetch all theses with status='active'."""

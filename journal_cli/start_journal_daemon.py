@@ -142,12 +142,16 @@ def display_action_decisions_table(summary: dict) -> None:
     table.add_column("Conf", justify="right", width=6)
     table.add_column("Gate", width=8)
     table.add_column("Exec", width=10)
+    table.add_column("Branch", width=16)
+    table.add_column("Event Src", width=12)
     table.add_column("Block Reasons", overflow="fold")
 
     for row in rows:
         gate = "[green]PASS[/green]" if row.get("gates_passed") else "[red]BLOCK[/red]"
         block_reasons = ", ".join(row.get("block_reasons") or [])
         exec_status = str(row.get("execution_status") or "-")
+        branch = str(row.get("matched_branch_id") or "-")
+        event_src = str(row.get("event_confirmation_source") or "-")
         table.add_row(
             str(row.get("ticker") or "-"),
             str(row.get("decision_type") or "-"),
@@ -155,6 +159,8 @@ def display_action_decisions_table(summary: dict) -> None:
             f"{float(row.get('confidence') or 0):.1f}",
             gate,
             exec_status,
+            branch,
+            event_src,
             block_reasons or "-",
         )
 

@@ -686,11 +686,30 @@ class TradingAgentsGraph:
             final_state.get("final_trade_decision", ""),
             expected_ticker=expected_ticker,
         )
+        trader_intent = self._extract_trader_intent_from_state(final_state)
+        structured_intent = ""
+        if isinstance(structured, dict):
+            structured_intent = str(structured.get("execution_intent", "")).strip().lower()
+        mode_overridden = bool(
+            trader_intent in {"act_now", "wait_for_trigger"}
+            and structured_intent in {"act_now", "wait_for_trigger"}
+            and trader_intent != structured_intent
+        )
+        override_reason = (
+            str((structured or {}).get("override_reason") or "").strip()
+            if isinstance(structured, dict)
+            else ""
+        )
         final_state["final_trade_decision_structured"] = structured
         final_state["final_trade_decision_validation_error"] = err or ""
         final_state["decision_guard"] = {
             "validation_ok": isinstance(structured, dict) and not bool(err),
             "violations": [] if not err else [err],
+            "mode_selected_by": "risk_judge",
+            "trader_selected_execution_intent": trader_intent or "",
+            "final_execution_intent": structured_intent or "",
+            "mode_overridden": mode_overridden,
+            "override_reason": override_reason,
             "abort_reason": "",
         }
         return final_state
@@ -736,6 +755,19 @@ class TradingAgentsGraph:
                 validation_error = (
                     f"{validation_error}; {conflict_msg}" if validation_error else conflict_msg
                 )
+            trader_intent = self._extract_trader_intent_from_state(final_state)
+            final_intent = str(structured.get("execution_intent", "")).strip().lower()
+            override_reason = str(structured.get("override_reason", "") or "").strip()
+            if (
+                trader_intent in {"act_now", "wait_for_trigger"}
+                and final_intent in {"act_now", "wait_for_trigger"}
+                and trader_intent != final_intent
+                and not override_reason
+            ):
+                mismatch_msg = "mode override requires non-empty override_reason"
+                validation_error = (
+                    f"{validation_error}; {mismatch_msg}" if validation_error else mismatch_msg
+                )
 
         final_state["final_trade_decision_structured"] = structured
         final_state["final_trade_decision_validation_error"] = validation_error or ""
@@ -743,11 +775,41 @@ class TradingAgentsGraph:
             {
                 "validation_ok": isinstance(structured, dict) and not bool(validation_error),
                 "violations": [],
+                "mode_selected_by": "risk_judge",
+                "trader_selected_execution_intent": self._extract_trader_intent_from_state(final_state),
+                "final_execution_intent": (
+                    str((structured or {}).get("execution_intent", "")).strip().lower()
+                    if isinstance(structured, dict)
+                    else ""
+                ),
+                "mode_overridden": bool(
+                    self._extract_trader_intent_from_state(final_state) in {"act_now", "wait_for_trigger"}
+                    and str((structured or {}).get("execution_intent", "")).strip().lower() in {"act_now", "wait_for_trigger"}
+                    and self._extract_trader_intent_from_state(final_state)
+                    != str((structured or {}).get("execution_intent", "")).strip().lower()
+                ),
+                "override_reason": (
+                    str((structured or {}).get("override_reason") or "").strip()
+                    if isinstance(structured, dict)
+                    else ""
+                ),
                 "abort_reason": "",
             }
         )
         final_state["decision_guard"] = guard
         return final_state
+
+    @staticmethod
+    def _extract_trader_intent_from_state(final_state: Dict[str, Any]) -> str:
+        text = str(final_state.get("trader_investment_plan") or "")
+        m = re.search(
+            r"EXECUTION[_\s-]*INTENT\s*:\s*(ACT_NOW|WAIT_FOR_TRIGGER|ACT NOW|WAIT FOR TRIGGER)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if not m:
+            return ""
+        return m.group(1).upper().replace(" ", "_").lower()
 
     @staticmethod
     def _execution_abort_result(

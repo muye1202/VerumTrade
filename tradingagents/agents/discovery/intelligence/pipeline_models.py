@@ -94,6 +94,29 @@ class Stage1EnrichmentScorecard:
     days_to_cover: float = 0.0
     finra_short_volume_ratio_latest: float = 0.0
     insider_signal: str = "neutral"
+    
+    # NEW: Estimate revision tracking
+    eps_revision_breadth_30d: float = 0.0      # % of analysts revising up (0-100)
+    eps_revision_magnitude_30d: float = 0.0    # % change in consensus EPS
+    revenue_revision_direction: float = 0.0    # +1 / 0 / -1
+    
+    # NEW: Breakout persistence
+    distance_from_52w_high_pct: float = 0.0   # 0 = at high, -10 = 10% below
+    new_high_count_20d: int = 0                # days in last 20 that set a 20d new high
+    breakout_persistence_days: int = 0         # consecutive days above prior 52w high
+    
+    # NEW: Accumulation / distribution
+    accum_distrib_ratio_20d: float = 0.0  # accumulation days / distribution days
+    
+    # NEW: Multi-timeframe momentum
+    roc_5d: float = 0.0
+    roc_60d: float = 0.0
+    momentum_alignment_score: float = 0.0  # 0-100, how well aligned are all timeframes
+    
+    # NEW: Beat magnitude tracking
+    earnings_surprise_magnitudes: List[float] = field(default_factory=list)  # last 4 quarters
+    earnings_surprise_trend_slope: float = 0.0  # positive = accelerating beats
+
     data_quality_flags: List[str] = field(default_factory=list)
 
 
@@ -103,11 +126,14 @@ class Stage2ScoredCandidate:
     ticker: str
     composite_score: float = 0.0
     # Factor sub-scores (each 0-100, pre-weight)
-    earnings_surprise_score: float = 0.0   # 30% weight
-    technical_momentum_score: float = 0.0  # 25% weight
-    options_flow_score: float = 0.0        # 20% weight
-    sector_momentum_score: float = 0.0     # 15% weight
-    short_squeeze_score: float = 0.0       # 10% weight
+    earnings_surprise_score: float = 0.0   # 15% weight
+    technical_momentum_score: float = 0.0  # 20% weight
+    options_flow_score: float = 0.0        # 10% weight
+    sector_momentum_score: float = 0.0     # 5% weight
+    short_squeeze_score: float = 0.0       # 5% weight
+    estimate_revision_score: float = 0.0   # 20% weight (NEW)
+    breakout_persistence_score: float = 0.0# 15% weight (NEW)
+    accum_distrib_score: float = 0.0       # 10% weight (NEW)
     # Hard-filter metadata
     hard_filter_passed: bool = True
     hard_filter_fail_reasons: List[str] = field(default_factory=list)

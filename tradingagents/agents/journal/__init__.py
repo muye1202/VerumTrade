@@ -33,6 +33,10 @@ from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
 from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
 from tradingagents.agents.journal.monitor import PositionMonitor
 from tradingagents.agents.journal.outcome import OutcomeRecorder
+from tradingagents.agents.journal.news_event_inference import (
+    infer_event_flags,
+    event_inference_enabled,
+)
 
 # Optional components may require extra runtime dependencies (e.g., tzdata/chromadb).
 try:  # pragma: no cover
@@ -89,6 +93,8 @@ __all__ = [
     "ThesisExtractor",
     "PositionMonitor",
     "OutcomeRecorder",
+    "infer_event_flags",
+    "event_inference_enabled",
     "JournalScheduler",
     "ReflectionAgent",
     "LessonMemory",

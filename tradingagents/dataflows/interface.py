@@ -302,7 +302,7 @@ def route_to_vendor(method: str, *args, **kwargs):
                     
             except AlpacaConnectionError as e:
                 if vendor == "alpaca":
-                    logger.warning(
+                    logger.debug(
                         "Alpaca market data unavailable (%s); falling back to next vendor.",
                         e,
                     )
@@ -363,7 +363,7 @@ def route_to_vendor(method: str, *args, **kwargs):
                 )
                 break
         else:
-            logger.warning("Vendor '%s' produced no results for %s", vendor, method)
+            logger.debug("Vendor '%s' produced no results for %s", vendor, method)
 
     # Final result summary
     if not results:

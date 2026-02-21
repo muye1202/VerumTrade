@@ -934,6 +934,13 @@ def run_single_ticker_analysis(
                             default_action = structured_for_report.get("default_action")
                             f.write("\n## Conditional Plan Summary\n\n")
                             f.write(f"- Plan mode: `{structured_for_report.get('plan_mode')}`\n")
+                            f.write(
+                                f"- Execution intent: `{structured_for_report.get('execution_intent')}`\n"
+                            )
+                            if structured_for_report.get("override_reason"):
+                                f.write(
+                                    f"- Override reason: `{structured_for_report.get('override_reason')}`\n"
+                                )
                             f.write(f"- Branches: `{len(execution_plan)}`\n")
                             f.write(
                                 f"- Immediate branch: `{structured_for_report.get('immediate_branch_id') or 'none'}`\n"
@@ -1106,8 +1113,18 @@ def run_single_ticker_analysis(
             snapshot = (final_state or {}).get("market_snapshot", {}) if final_state else {}
             if guard:
                 lines.append(f"- Decision guard validation ok: `{guard.get('validation_ok')}`")
-                lines.append(f"- Decision guard repair attempted: `{guard.get('repair_attempted')}`")
-                lines.append(f"- Decision guard repair success: `{guard.get('repair_success')}`")
+                if guard.get("mode_selected_by") is not None:
+                    lines.append(f"- Decision mode selected by: `{guard.get('mode_selected_by')}`")
+                if guard.get("trader_selected_execution_intent") is not None:
+                    lines.append(
+                        f"- Trader selected execution intent: `{guard.get('trader_selected_execution_intent')}`"
+                    )
+                if guard.get("final_execution_intent") is not None:
+                    lines.append(f"- Final execution intent: `{guard.get('final_execution_intent')}`")
+                if guard.get("mode_overridden") is not None:
+                    lines.append(f"- Mode overridden: `{guard.get('mode_overridden')}`")
+                if guard.get("override_reason"):
+                    lines.append(f"- Override reason: `{guard.get('override_reason')}`")
                 if guard.get("violations"):
                     lines.append(f"- Decision guard violations: `{guard.get('violations')}`")
                 if guard.get("abort_reason"):

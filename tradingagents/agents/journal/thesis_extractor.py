@@ -68,6 +68,8 @@ class ThesisExtractor:
                 "execution_plan": structured_decision.get("execution_plan") or [],
                 "default_action": structured_decision.get("default_action"),
                 "immediate_branch_id": structured_decision.get("immediate_branch_id"),
+                "execution_intent": structured_decision.get("execution_intent"),
+                "override_reason": structured_decision.get("override_reason"),
             }
             try:
                 thesis.decision_plan_json = _truncate(json_dumps_safe(plan_payload), 4000)
