@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import json
 import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional
 
 from tradingagents.utils.market_session import now_et
-
-from tradingagents.graph.decision_schema import (
-    extract_decision_json_block,
-    validate_structured_decision,
-)
 
 
 def _to_float(value: Any) -> Optional[float]:
@@ -36,24 +29,59 @@ def _to_float(value: Any) -> Optional[float]:
 
 def extract_last_close_from_market_report(market_report: str) -> Optional[float]:
     text = str(market_report or "")
-    m = re.search(r"Last close:\s*([0-9]+(?:\.[0-9]+)?)", text, flags=re.IGNORECASE)
-    if m:
-        try:
-            return float(m.group(1))
-        except Exception:
-            return None
+    patterns = [
+        r"\blast close\s*[:|]\s*\$?\s*([0-9]+(?:\.[0-9]+)?)",
+        r"\blast close\b[^$\n]{0,48}\$\s*([0-9]+(?:\.[0-9]+)?)",
+        r"\bcurrent price\b[^$\n]{0,48}\$\s*([0-9]+(?:\.[0-9]+)?)",
+        r"\bsitting at\s*\$([0-9]+(?:\.[0-9]+)?)",
+        r"\btrading at\s*~?\$([0-9]+(?:\.[0-9]+)?)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, flags=re.IGNORECASE)
+        if m:
+            try:
+                return float(m.group(1))
+            except Exception:
+                continue
     return None
+
+
+def _extract_scored_dollar_amount(text: str) -> Optional[float]:
+    candidates = []
+    for m in re.finditer(r"\$\s*([0-9]+(?:\.[0-9]+)?)", text):
+        try:
+            value = float(m.group(1))
+        except Exception:
+            continue
+        start = max(0, m.start() - 64)
+        context = text[start : m.start()].lower()
+        score = 0
+        if "current price" in context:
+            score += 6
+        if "last close" in context:
+            score += 5
+        if "sitting at" in context or "trading at" in context:
+            score += 4
+        if "entry zone" in context:
+            score += 2
+        if "high" in context or "low" in context:
+            score -= 4
+        if "%" in context:
+            score -= 3
+        candidates.append((score, value, m.start()))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: (-x[0], x[2]))
+    return candidates[0][1]
 
 
 def extract_analysis_price_hint(market_report: str) -> Optional[float]:
     text = str(market_report or "")
-    matches = re.findall(r"price[^0-9]{0,20}\$?\s*([0-9]+(?:\.[0-9]+)?)", text, flags=re.IGNORECASE)
-    if not matches:
-        return None
-    try:
-        return float(matches[0])
-    except Exception:
-        return None
+    anchored = extract_last_close_from_market_report(text)
+    if anchored is not None:
+        return anchored
+    return _extract_scored_dollar_amount(text)
 
 
 def build_market_snapshot(
@@ -111,6 +139,20 @@ def build_market_snapshot(
             reference_price = float(decision_hint)
             source = "analysis_fallback"
 
+    anchor_conflict = False
+    anchor_conflict_reason = ""
+    if isinstance(reference_price, (int, float)) and isinstance(analysis_hint, (int, float)):
+        ref = float(reference_price)
+        hint = float(analysis_hint)
+        if ref > 0 and hint > 0:
+            rel_gap = abs(ref - hint) / ref
+            if rel_gap > 0.35:
+                anchor_conflict = True
+                anchor_conflict_reason = (
+                    f"reference_price ({ref:.4f}) and analysis_price_hint ({hint:.4f}) "
+                    f"diverge by {rel_gap:.1%}"
+                )
+
     return {
         "symbol": str(symbol or "").upper(),
         "asof": now_et().isoformat(),
@@ -120,116 +162,6 @@ def build_market_snapshot(
         "ask": ask,
         "last_close": last_close,
         "analysis_price_hint": analysis_hint,
+        "price_anchor_conflict": anchor_conflict,
+        "price_anchor_conflict_reason": anchor_conflict_reason,
     }
-
-
-def validate_decision_prices(
-    *,
-    decision: Dict[str, Any],
-    market_snapshot: Dict[str, Any],
-    band_pct: float,
-) -> List[str]:
-    ref = _to_float((market_snapshot or {}).get("reference_price"))
-    if not ref or ref <= 0:
-        return ["missing_reference_price"]
-
-    band = max(0.0, float(band_pct or 0.0)) / 100.0
-    action = str((decision or {}).get("action") or "").upper()
-    order_type = str((decision or {}).get("order_type") or "").upper()
-    values = {
-        "limit_price": _to_float((decision or {}).get("limit_price")),
-        "stop_price": _to_float((decision or {}).get("stop_price")),
-        "stop_loss": _to_float((decision or {}).get("stop_loss")),
-        "take_profit": _to_float((decision or {}).get("take_profit")),
-    }
-
-    violations: List[str] = []
-    for field, v in values.items():
-        if v is None:
-            continue
-        if abs(v - ref) / ref > band:
-            violations.append(f"{field}_out_of_band")
-
-    limit_price = values["limit_price"]
-    stop_loss = values["stop_loss"]
-    take_profit = values["take_profit"]
-
-    if action == "BUY":
-        if order_type == "LIMIT" and limit_price is not None and limit_price > ref * (1.0 + band):
-            violations.append("buy_limit_above_max_band")
-        if stop_loss is not None and stop_loss >= ref:
-            violations.append("buy_stop_loss_not_below_ref")
-        if take_profit is not None and take_profit <= ref:
-            violations.append("buy_take_profit_not_above_ref")
-    elif action == "SELL":
-        if order_type == "LIMIT" and limit_price is not None and limit_price < ref * (1.0 - band):
-            violations.append("sell_limit_below_min_band")
-        if stop_loss is not None and stop_loss <= ref:
-            violations.append("sell_stop_loss_not_above_ref")
-        if take_profit is not None and take_profit >= ref:
-            violations.append("sell_take_profit_not_below_ref")
-
-    return sorted(set(violations))
-
-
-def _repair_prompt(
-    *,
-    decision_text: str,
-    expected_ticker: str,
-    market_snapshot: Dict[str, Any],
-    validation_error: str,
-    price_violations: Sequence[str],
-) -> str:
-    return (
-        "You repair trading decisions into a strict canonical JSON block.\n"
-        "Output ONLY:\nBEGIN_DECISION_JSON\n{...}\nEND_DECISION_JSON\n"
-        "No markdown, no extra text.\n\n"
-        f"EXPECTED TICKER: {expected_ticker}\n"
-        f"MARKET SNAPSHOT JSON: {json.dumps(market_snapshot, ensure_ascii=False)}\n"
-        f"VALIDATION ERROR: {validation_error}\n"
-        f"PRICE VIOLATIONS: {list(price_violations)}\n\n"
-        "Constraints:\n"
-        "- Keep action intent from the original text when possible.\n"
-        "- decision_version must be 'v1'.\n"
-        "- Numeric fields must be numbers or null (never strings like N/A).\n"
-        "- For BUY/SELL/HOLD, stop_loss and take_profit must be numeric.\n"
-        "- LIMIT requires limit_price.\n"
-        "- Prices must be coherent with reference_price and violation notes.\n\n"
-        f"ORIGINAL DECISION TEXT:\n{decision_text}"
-    )
-
-
-def attempt_repair_canonical_decision(
-    *,
-    llm: Any,
-    decision_text: str,
-    expected_ticker: str,
-    market_snapshot: Dict[str, Any],
-    validation_error: str = "",
-    price_violations: Optional[Sequence[str]] = None,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str], str]:
-    prompt = _repair_prompt(
-        decision_text=decision_text,
-        expected_ticker=expected_ticker,
-        market_snapshot=market_snapshot,
-        validation_error=validation_error or "",
-        price_violations=price_violations or [],
-    )
-    try:
-        response = llm.invoke(prompt)
-    except Exception as e:
-        return None, f"repair_invoke_failed: {type(e).__name__}: {e}", ""
-
-    content = str(getattr(response, "content", "") or "")
-    raw, err = extract_decision_json_block(content)
-    if err:
-        return None, f"repair_parse_failed: {err}", content
-
-    normalized, validation_err = validate_structured_decision(
-        raw or {},
-        expected_ticker=expected_ticker,
-    )
-    if validation_err:
-        return None, f"repair_validation_failed: {validation_err}", content
-
-    return normalized, None, content

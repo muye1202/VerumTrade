@@ -52,6 +52,7 @@ class ActionDecisionType(str, enum.Enum):
     EXIT_POSITION = "exit_position"
     TAKE_PROFIT_PARTIAL = "take_profit_partial"
     TAKE_PROFIT_FULL = "take_profit_full"
+    ENTER_POSITION = "enter_position"
 
 
 class ActionReasonCode(str, enum.Enum):
@@ -64,6 +65,7 @@ class ActionReasonCode(str, enum.Enum):
     GAP_ADVERSE = "gap_adverse"
     VOLATILITY_SPIKE = "volatility_spike"
     RELATIVE_STRENGTH_BREAKDOWN = "relative_strength_breakdown"
+    PLAN_TRIGGER = "plan_trigger"
     NONE = "none"
 
 
@@ -131,6 +133,7 @@ class TradeThesis:
     news_summary: Optional[str] = None
     risk_judge_summary: Optional[str] = None
     final_decision_text: Optional[str] = None  # Raw FINAL TRADING DECISION block
+    decision_plan_json: Optional[str] = None  # Serialized v2 execution plan payload
 
     # Lifecycle
     status: str = ThesisStatus.ACTIVE.value

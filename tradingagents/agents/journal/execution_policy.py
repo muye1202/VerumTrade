@@ -101,8 +101,14 @@ class JournalExecutionPolicy:
                 reasons.append("cooldown_active")
 
         qty = float(position_qty or 0.0)
-        if qty <= 0:
-            reasons.append("no_position_qty")
+        if decision.decision_type in {
+            ActionDecisionType.EXIT_POSITION.value,
+            ActionDecisionType.REDUCE_POSITION.value,
+            ActionDecisionType.TAKE_PROFIT_PARTIAL.value,
+            ActionDecisionType.TAKE_PROFIT_FULL.value,
+        }:
+            if qty <= 0:
+                reasons.append("no_position_qty")
 
         allowed_sessions = {"market_hours", "premarket"}
         if market_session not in allowed_sessions:

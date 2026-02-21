@@ -1,11 +1,16 @@
 from __future__ import annotations
+"""
+Track A - Enrichment:
+Deep enrichment track focusing on multi-dimensional analysis including fundamental, technical, analyst and sentiment data.
+"""
 
 import json
 import logging
+import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from tradingagents.agents.utils.market_data.options_flow_tools import (
     _analyze_chain_for_unusual,
@@ -16,8 +21,16 @@ from tradingagents.agents.utils.market_data.short_interest_tools import (
     _get_yahoo_short_data,
 )
 
-from .models import Stage1EnrichmentScorecard
-from .utils import extract_indicator_value, parse_price_volume_csv, safe_float
+from .pipeline_models import Stage1EnrichmentScorecard
+from .pipeline_utils import (
+    compute_obv_slope,
+    compute_return_pct,
+    extract_indicator_value,
+    linear_regression_slope,
+    parse_ohlc_rows,
+    parse_price_volume_csv,
+    safe_float,
+)
 
 
 class Stage1BatchEnricher:
@@ -62,6 +75,7 @@ class Stage1BatchEnricher:
         universe: List[str],
         trade_date: str,
         max_workers: Optional[int] = None,
+        ohlcv_cache: Optional[Dict[str, str]] = None,
     ) -> List[Stage1EnrichmentScorecard]:
         cfg = self._settings()
         if not bool(cfg.get("enabled", True)):
@@ -78,7 +92,10 @@ class Stage1BatchEnricher:
             return []
 
         workers = int(max_workers or cfg.get("max_workers", 8))
-        spy_roc_20d = self._fetch_spy_roc_20d(trade_date)
+        spy_roc_20d, spy_prices = self._fetch_spy_context(
+            trade_date=trade_date,
+            ohlcv_cache=ohlcv_cache,
+        )
         scorecards: List[Stage1EnrichmentScorecard] = []
         self._emit_progress(
             "stage1.start",
@@ -87,7 +104,14 @@ class Stage1BatchEnricher:
 
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
             futures = {
-                pool.submit(self._enrich_ticker, symbol, trade_date, spy_roc_20d): symbol
+                pool.submit(
+                    self._enrich_ticker,
+                    symbol,
+                    trade_date,
+                    spy_roc_20d,
+                    spy_prices,
+                    ohlcv_cache,
+                ): symbol
                 for symbol in symbols
             }
             for future in as_completed(futures):
@@ -121,13 +145,21 @@ class Stage1BatchEnricher:
         ticker: str,
         trade_date: str,
         spy_roc_20d: float,
+        spy_prices: Optional[List[float]] = None,
+        ohlcv_cache: Optional[Dict[str, str]] = None,
     ) -> Optional[Stage1EnrichmentScorecard]:
         cfg = self._settings()
         fail_open = bool(cfg.get("requirements", {}).get("fail_open", True))
         flags: List[str] = []
 
         try:
-            technical = self._fetch_price_and_technical_block(ticker, trade_date, spy_roc_20d)
+            technical = self._fetch_price_and_technical_block(
+                ticker,
+                trade_date,
+                spy_roc_20d,
+                spy_prices=spy_prices,
+                ohlcv_cache=ohlcv_cache,
+            )
         except Exception as e:
             if not fail_open:
                 raise
@@ -183,6 +215,11 @@ class Stage1BatchEnricher:
             vwap_distance_pct=float(technical.get("vwap_distance_pct", 0.0)),
             earnings_beat_rate_4q=float(earnings.get("earnings_beat_rate_4q", 0.0)),
             eps_consensus_current_q=float(earnings.get("eps_consensus_current_q", 0.0)),
+            trend_quality_score=float(technical.get("trend_quality_score", 0.0)),
+            rv5_pct=float(technical.get("rv5_pct", 0.0)),
+            rv20_pct=float(technical.get("rv20_pct", 0.0)),
+            whipsaw_count_20=int(technical.get("whipsaw_count_20", 0)),
+            breakout_efficiency=float(technical.get("breakout_efficiency", 0.0)),
             options_unusual_score=float(options.get("options_unusual_score", 0.0)),
             options_call_put_notional_ratio=float(options.get("options_call_put_notional_ratio", 0.0)),
             short_interest_pct_float=float(shorts.get("short_interest_pct_float", 0.0)),
@@ -195,31 +232,108 @@ class Stage1BatchEnricher:
 
     @staticmethod
     def _compute_obv_slope_10d(prices: List[float], volumes: List[float]) -> float:
-        if len(prices) < 10 or len(volumes) < 10:
-            return 0.0
-        p = prices[-10:]
-        v = volumes[-10:]
-        obv = [0.0]
-        for i in range(1, len(p)):
-            if p[i] > p[i - 1]:
-                obv.append(obv[-1] + v[i])
-            elif p[i] < p[i - 1]:
-                obv.append(obv[-1] - v[i])
-            else:
-                obv.append(obv[-1])
+        return compute_obv_slope(prices, volumes, window=10)
 
-        n = float(len(obv))
-        x_mean = (n - 1.0) / 2.0
-        y_mean = sum(obv) / n
-        numerator = 0.0
-        denominator = 0.0
-        for i, y in enumerate(obv):
-            dx = i - x_mean
-            numerator += dx * (y - y_mean)
-            denominator += dx * dx
-        if denominator == 0:
-            return 0.0
-        return numerator / denominator
+    @staticmethod
+    def _linear_regression_slope(values: List[float]) -> float:
+        return linear_regression_slope(values)
+
+    @staticmethod
+    def _ema(values: List[float], period: int) -> List[float]:
+        if not values or period <= 0:
+            return []
+        alpha = 2.0 / (float(period) + 1.0)
+        out = [float(values[0])]
+        for v in values[1:]:
+            out.append(alpha * float(v) + (1.0 - alpha) * out[-1])
+        return out
+
+    @staticmethod
+    def _realized_vol_pct(prices: List[float], window: int) -> Optional[float]:
+        if window <= 1 or len(prices) < window + 1:
+            return None
+        rets: List[float] = []
+        for i in range(len(prices) - window, len(prices)):
+            prev = float(prices[i - 1])
+            cur = float(prices[i])
+            if prev <= 0 or cur <= 0:
+                continue
+            rets.append(math.log(cur / prev))
+        if len(rets) < max(2, window - 1):
+            return None
+        mean = sum(rets) / float(len(rets))
+        var = sum((x - mean) ** 2 for x in rets) / float(max(1, len(rets) - 1))
+        return (var ** 0.5) * (252.0 ** 0.5) * 100.0
+
+    @staticmethod
+    def _parse_ohlc_rows(raw_csv: str) -> List[Dict[str, float]]:
+        return parse_ohlc_rows(raw_csv)
+
+    @staticmethod
+    def _atr_pct(ohlc_rows: List[Dict[str, float]], window: int = 20) -> Optional[float]:
+        if len(ohlc_rows) < window + 1:
+            return None
+        tr: List[float] = []
+        for i in range(len(ohlc_rows) - window, len(ohlc_rows)):
+            row = ohlc_rows[i]
+            prev_close = ohlc_rows[i - 1]["close"] if i > 0 else row["close"]
+            high = float(row["high"])
+            low = float(row["low"])
+            tr.append(max(abs(high - low), abs(high - prev_close), abs(low - prev_close)))
+        if not tr:
+            return None
+        atr = sum(tr) / float(len(tr))
+        close = float(ohlc_rows[-1]["close"])
+        if close <= 0:
+            return None
+        return (atr / close) * 100.0
+
+    @staticmethod
+    def _extract_indicator_series(raw_text: str, max_points: int = 30) -> List[float]:
+        values: List[float] = []
+        for raw_line in str(raw_text or "").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            candidate: Optional[float] = None
+            if ":" in line:
+                candidate = safe_float(line.split(":")[-1].strip())
+            if candidate is None and "," in line:
+                parts = [p.strip() for p in line.split(",") if p.strip()]
+                for part in reversed(parts):
+                    candidate = safe_float(part)
+                    if candidate is not None:
+                        break
+            if candidate is None:
+                candidate = safe_float(line)
+            if candidate is not None:
+                values.append(float(candidate))
+        if max_points > 0:
+            return values[-max_points:]
+        return values
+
+    @staticmethod
+    def _whipsaw_count_around_ema(
+        prices: List[float],
+        ema20: List[float],
+        ema50: List[float],
+        lookback: int = 20,
+    ) -> int:
+        if not prices or not ema20 or not ema50:
+            return 0
+        n = min(len(prices), len(ema20), len(ema50), max(2, int(lookback)))
+        p = prices[-n:]
+        e20 = ema20[-n:]
+        e50 = ema50[-n:]
+        signs20 = [1 if px >= ma else -1 for px, ma in zip(p, e20)]
+        signs50 = [1 if px >= ma else -1 for px, ma in zip(p, e50)]
+        flips = 0
+        for i in range(1, n):
+            if signs20[i] != signs20[i - 1]:
+                flips += 1
+            if signs50[i] != signs50[i - 1]:
+                flips += 1
+        return flips
 
     @staticmethod
     def _parse_vwap_series(raw_csv: str) -> List[float]:
@@ -250,21 +364,36 @@ class Stage1BatchEnricher:
         return extract_indicator_value(raw_text)
 
     def _fetch_spy_roc_20d(self, trade_date: str) -> float:
+        roc, _ = self._fetch_spy_context(trade_date=trade_date, ohlcv_cache=None)
+        return float(roc)
+
+    def _fetch_spy_context(
+        self,
+        trade_date: str,
+        ohlcv_cache: Optional[Dict[str, str]] = None,
+    ) -> Tuple[float, List[float]]:
         from tradingagents.dataflows.interface import route_to_vendor
 
+        cache = ohlcv_cache if ohlcv_cache is not None else {}
         end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
-        start = (end_dt - timedelta(days=90)).strftime("%Y-%m-%d")
-        raw_csv = route_to_vendor("get_stock_data", "SPY", start, trade_date)
-        prices, _ = parse_price_volume_csv(raw_csv)
-        if len(prices) < 20:
-            return 0.0
-        return ((prices[-1] - prices[-20]) / prices[-20]) * 100.0
+        start = (end_dt - timedelta(days=120)).strftime("%Y-%m-%d")
+        raw_csv = cache.get("SPY")
+        if raw_csv is None:
+            raw_csv = route_to_vendor("get_stock_data", "SPY", start, trade_date)
+            cache["SPY"] = str(raw_csv or "")
+        prices, _ = parse_price_volume_csv(str(raw_csv or ""))
+        ret = compute_return_pct(prices, 20)
+        if ret is None:
+            return 0.0, prices
+        return float(ret), prices
 
     def _fetch_price_and_technical_block(
         self,
         ticker: str,
         trade_date: str,
         spy_roc_20d: float,
+        spy_prices: Optional[List[float]] = None,
+        ohlcv_cache: Optional[Dict[str, str]] = None,
     ) -> Dict[str, float]:
         from tradingagents.dataflows.interface import route_to_vendor
 
@@ -272,14 +401,22 @@ class Stage1BatchEnricher:
         end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
         start_date = (end_dt - timedelta(days=max(60, lookback_days))).strftime("%Y-%m-%d")
 
-        raw_csv = route_to_vendor("get_stock_data", ticker, start_date, trade_date)
+        cache = ohlcv_cache if ohlcv_cache is not None else {}
+        raw_csv = cache.get(ticker)
+        if raw_csv is None:
+            raw_csv = route_to_vendor("get_stock_data", ticker, start_date, trade_date)
+            cache[ticker] = str(raw_csv or "")
         prices, volumes = parse_price_volume_csv(raw_csv)
+        ohlc_rows = self._parse_ohlc_rows(raw_csv)
         vwap_series = self._parse_vwap_series(raw_csv)
         if len(prices) < 30 or len(volumes) < 20:
             raise RuntimeError("insufficient_price_history")
 
         price = float(prices[-1])
-        roc_20d = ((price - prices[-20]) / prices[-20]) * 100.0
+        roc_20d_raw = compute_return_pct(prices, 20)
+        if roc_20d_raw is None:
+            raise RuntimeError("insufficient_price_history")
+        roc_20d = float(roc_20d_raw)
         avg_vol_20d = sum(volumes[-20:]) / 20.0
         avg_vol_5d = sum(volumes[-5:]) / 5.0
         volume_ratio = (avg_vol_5d / avg_vol_20d) if avg_vol_20d > 0 else 0.0
@@ -311,6 +448,64 @@ class Stage1BatchEnricher:
         latest_vwap = float(vwap_series[-1]) if vwap_series else 0.0
         vwap_distance = ((price - latest_vwap) / latest_vwap) * 100.0 if latest_vwap > 0 else 0.0
 
+        # --- Noise-aware trend quality stack ---
+        ema20 = self._ema(prices, 20)
+        ema50 = self._ema(prices, 50)
+        atr_pct = self._atr_pct(ohlc_rows, 20) or 0.0
+        log_ema20 = [math.log(max(1e-9, x)) for x in ema20[-20:]] if len(ema20) >= 20 else []
+        ema_log_slope = self._linear_regression_slope(log_ema20)
+        slope_norm = 0.0
+        if atr_pct > 0:
+            slope_norm = max(0.0, min(100.0, ((ema_log_slope * 100.0) / atr_pct + 1.0) * 40.0))
+
+        trend_persistence = 0.0
+        if len(prices) >= 15 and len(ema20) >= 15:
+            closes_15 = prices[-15:]
+            ema20_15 = ema20[-15:]
+            trend_persistence = sum(1 for px, ma in zip(closes_15, ema20_15) if px > ma) / 15.0
+
+        adx_series = self._extract_indicator_series(
+            route_to_vendor("get_indicators", ticker, "adx", trade_date, 25),
+            max_points=20,
+        )
+        adx_persistence = 0.0
+        if len(adx_series) >= 10:
+            window = adx_series[-15:] if len(adx_series) >= 15 else adx_series
+            adx_persistence = sum(1 for v in window if v > 22.0) / float(len(window))
+        else:
+            adx_persistence = 1.0 if float(adx or 0.0) > 22.0 else 0.0
+
+        rs_slope_norm = 50.0
+        if spy_prices and len(spy_prices) >= 40 and len(prices) >= 40:
+            span = min(len(spy_prices), len(prices), 40)
+            rs_line = []
+            for stock_px, spy_px in zip(prices[-span:], spy_prices[-span:]):
+                if spy_px > 0:
+                    rs_line.append(stock_px / spy_px)
+            if len(rs_line) >= 10:
+                rs_slope = self._linear_regression_slope([math.log(max(1e-9, x)) for x in rs_line])
+                rs_slope_norm = max(0.0, min(100.0, ((rs_slope * 10000.0) + 50.0)))
+
+        breakout_eff = 0.0
+        breakout_eff_norm = 0.0
+        if len(prices) >= 56 and atr_pct > 0:
+            prior_high_55 = max(prices[-56:-1])
+            if price > prior_high_55:
+                breakout_eff = (price - prior_high_55) / max(1e-9, (atr_pct / 100.0) * price)
+                breakout_eff_norm = max(0.0, min(100.0, (breakout_eff / 2.0) * 100.0))
+
+        rv5 = self._realized_vol_pct(prices, 5) or 0.0
+        rv20 = self._realized_vol_pct(prices, 20) or 0.0
+        whipsaw_count_20 = self._whipsaw_count_around_ema(prices, ema20, ema50, lookback=20)
+
+        trend_quality = (
+            slope_norm * 0.25
+            + (trend_persistence * 100.0) * 0.25
+            + (adx_persistence * 100.0) * 0.20
+            + rs_slope_norm * 0.20
+            + breakout_eff_norm * 0.10
+        )
+
         return {
             "price": round(price, 2),
             "roc_20d": round(roc_20d, 2),
@@ -324,6 +519,11 @@ class Stage1BatchEnricher:
             "avg_dollar_volume_20d": round(avg_dollar_volume_20d, 2),
             "vwap": round(latest_vwap, 4),
             "vwap_distance_pct": round(vwap_distance, 2),
+            "trend_quality_score": round(trend_quality, 2),
+            "rv5_pct": round(rv5, 2),
+            "rv20_pct": round(rv20, 2),
+            "whipsaw_count_20": int(whipsaw_count_20),
+            "breakout_efficiency": round(breakout_eff, 4),
         }
 
     @staticmethod

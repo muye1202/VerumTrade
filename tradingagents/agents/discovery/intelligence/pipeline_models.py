@@ -1,4 +1,8 @@
 from __future__ import annotations
+"""
+Pipeline Models:
+Data structures and types representing the discovery pipeline intelligence models.
+"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -77,6 +81,11 @@ class Stage1EnrichmentScorecard:
     avg_dollar_volume_20d: float = 0.0
     vwap: float = 0.0
     vwap_distance_pct: float = 0.0
+    trend_quality_score: float = 0.0
+    rv5_pct: float = 0.0
+    rv20_pct: float = 0.0
+    whipsaw_count_20: int = 0
+    breakout_efficiency: float = 0.0
     earnings_beat_rate_4q: float = 0.0
     eps_consensus_current_q: float = 0.0
     options_unusual_score: float = 0.0
@@ -113,6 +122,32 @@ class MomentumScanHit:
     scan_name: str  # "momentum_acceleration" | "volatility_breakout" | "rs_divergence" | "stealth_accumulation"
     signal_value: float  # Primary signal metric
     trigger_details: Dict[str, float] = field(default_factory=dict)
+    # Optional normalized signal used for cross-scan ranking.
+    normalized_strength: float = 0.0
+    # Optional raw signal for explainability when signal_value is transformed.
+    raw_value: float = 0.0
+    # Expected direction of the signal; "up" for bullish anomalies.
+    direction: str = "up"
+
+
+@dataclass
+class FeatureRow:
+    """Canonical per-ticker feature row for discovery stages."""
+    ticker: str
+    prices: List[float] = field(default_factory=list)
+    volumes: List[float] = field(default_factory=list)
+    indicators: Dict[str, float] = field(default_factory=dict)
+    data_quality_flags: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ScanSignal:
+    """Unified cross-scan signal schema for ranking."""
+    ticker: str
+    scan_name: str
+    raw_value: float = 0.0
+    normalized_strength: float = 0.0
+    direction: str = "up"
 
 
 @dataclass
@@ -147,6 +182,9 @@ class IntelligenceResult:
     llm_bias_profile: Dict[str, Any] = field(default_factory=dict)
     indicator_availability: Dict[str, Any] = field(default_factory=dict)
     stage0_metrics: Dict[str, Any] = field(default_factory=dict)
+    vendor_calls_by_stage: Dict[str, Any] = field(default_factory=dict)
+    data_quality_summary: Dict[str, Any] = field(default_factory=dict)
+    filter_relaxations_applied: List[str] = field(default_factory=list)
     discovery_track: str = "enricher"  # "enricher" | "anomaly_scan" | "dual_track"
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""

@@ -1,4 +1,9 @@
-# tradingagents/agents/discovery/intelligence/momentum_anomaly_scans.py
+from __future__ import annotations
+"""
+Track B - Anomaly Scans:
+Purely technical scanner to flag specific quantitative phenomena based on calculated momentum metrics.
+"""
+# tradingagents/agents/discovery/intelligence/track_b_anomaly_scans.py
 """
 Track B: Momentum Anomaly Scans.
 
@@ -11,7 +16,6 @@ Scan 3: Relative Strength Divergence
 Scan 4: Stealth Accumulation (Volume Anomaly Without Price Move)
 """
 
-from __future__ import annotations
 
 import logging
 import math
@@ -19,9 +23,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from .models import MomentumScanHit
-from .stage2_scoring import SECTOR_ETF_MAP
-from .utils import parse_price_volume_csv, extract_indicator_value
+from .pipeline_models import MomentumScanHit
+from .candidate_scoring import SECTOR_ETF_MAP
+from .pipeline_utils import (
+    compute_obv_series,
+    compute_return_pct,
+    extract_indicator_value,
+    linear_regression_slope,
+    parse_price_volume_csv,
+)
 
 logger = logging.getLogger(__name__)
 _ALLOWED_SCAN_NAMES = {
@@ -38,13 +48,7 @@ _ALLOWED_SCAN_NAMES = {
 
 def _roc(prices: List[float], period: int) -> Optional[float]:
     """Rate of change over *period* days (percent)."""
-    if len(prices) < period + 1:
-        return None
-    p_now = prices[-1]
-    p_then = prices[-period]
-    if p_then == 0:
-        return None
-    return ((p_now - p_then) / p_then) * 100.0
+    return compute_return_pct(prices, period)
 
 
 def _sma(values: List[float], period: int) -> Optional[float]:
@@ -82,36 +86,12 @@ def _bb_width(upper: float, lower: float, middle: float) -> float:
 
 def _obv_series(prices: List[float], volumes: List[float]) -> List[float]:
     """Compute OBV series from aligned price and volume lists."""
-    n = min(len(prices), len(volumes))
-    if n == 0:
-        return []
-    obv = [0.0]
-    for i in range(1, n):
-        if prices[i] > prices[i - 1]:
-            obv.append(obv[-1] + volumes[i])
-        elif prices[i] < prices[i - 1]:
-            obv.append(obv[-1] - volumes[i])
-        else:
-            obv.append(obv[-1])
-    return obv
+    return compute_obv_series(prices, volumes)
 
 
 def _linear_regression_slope(values: List[float]) -> float:
     """Slope of a simple linear regression on *values* (index = x)."""
-    n = float(len(values))
-    if n < 2:
-        return 0.0
-    x_mean = (n - 1.0) / 2.0
-    y_mean = sum(values) / n
-    num = 0.0
-    den = 0.0
-    for i, y in enumerate(values):
-        dx = i - x_mean
-        num += dx * (y - y_mean)
-        den += dx * dx
-    if den == 0:
-        return 0.0
-    return num / den
+    return linear_regression_slope(values)
 
 
 def _percentile_rank(value: float, history: List[float]) -> float:
@@ -316,10 +296,16 @@ class MomentumAnomalyScanner:
             if vol_ratio <= float(thresholds["momentum_acceleration_min_vol_ratio"]):
                 continue
 
+            min_acc = float(thresholds["momentum_acceleration_min"])
+            strength = ((momentum_acc - min_acc) / max(0.1, 4.0 - min_acc)) * 100.0
+            strength = max(0.0, min(100.0, strength))
             hits.append(MomentumScanHit(
                 ticker=td.ticker,
                 scan_name="momentum_acceleration",
                 signal_value=round(momentum_acc, 4),
+                raw_value=round(momentum_acc, 4),
+                normalized_strength=round(strength, 2),
+                direction="up",
                 trigger_details={
                     "roc_5d": round(roc5, 4),
                     "roc_20d": round(roc20, 4),
@@ -398,13 +384,18 @@ class MomentumAnomalyScanner:
             if current_vol <= float(thresholds["breakout_min_volume_ratio"]) * avg_vol_20d:
                 continue
 
+            breakout_strength = max(0.0, min(100.0, 100.0 - float(pct_rank)))
             hits.append(MomentumScanHit(
                 ticker=td.ticker,
                 scan_name="volatility_breakout",
-                signal_value=round(pct_rank, 2),
+                signal_value=round(breakout_strength, 2),
+                raw_value=round(pct_rank, 2),
+                normalized_strength=round(breakout_strength, 2),
+                direction="up",
                 trigger_details={
                     "bb_width": round(current_bbw, 6),
                     "bb_width_percentile": round(pct_rank, 2),
+                    "breakout_strength": round(breakout_strength, 2),
                     "close": round(close, 2),
                     "upper_band": round(upper, 2),
                     "volume": round(current_vol, 0),
@@ -486,16 +477,23 @@ class MomentumAnomalyScanner:
         q_idx = max(0, min(q_idx, len(sorted_divs) - 1))
         top_decile_threshold = sorted_divs[q_idx] if sorted_divs else 0.0
 
+        max_divergence = max(d for _, d, _ in divergences) if divergences else top_decile_threshold
         hits: List[MomentumScanHit] = []
         for ticker, divergence, rs_stock_vs_spy in divergences:
             if divergence < top_decile_threshold:
                 continue
             if rs_stock_vs_spy <= float(thresholds["rs_divergence_min_rs_stock_vs_spy"]):
                 continue
+            span = max(1e-6, float(max_divergence - top_decile_threshold))
+            strength = ((float(divergence) - float(top_decile_threshold)) / span) * 100.0
+            strength = max(0.0, min(100.0, strength))
             hits.append(MomentumScanHit(
                 ticker=ticker,
                 scan_name="rs_divergence",
                 signal_value=round(divergence, 4),
+                raw_value=round(divergence, 4),
+                normalized_strength=round(strength, 2),
+                direction="up",
                 trigger_details={
                     "rs_stock_vs_spy": round(rs_stock_vs_spy, 4),
                     "divergence": round(divergence, 4),
@@ -554,10 +552,15 @@ class MomentumAnomalyScanner:
             if abs(roc_10d) >= float(thresholds["stealth_max_abs_roc_10d_pct"]):
                 continue
 
+            ratio = float(slope) / float(threshold) if threshold > 0 else 1.0
+            strength = max(0.0, min(100.0, (ratio - 1.0) * 100.0))
             hits.append(MomentumScanHit(
                 ticker=ticker,
                 scan_name="stealth_accumulation",
                 signal_value=round(slope, 4),
+                raw_value=round(slope, 4),
+                normalized_strength=round(strength, 2),
+                direction="up",
                 trigger_details={
                     "obv_slope_10d": round(slope, 4),
                     "price_change_10d_pct": round(roc_10d, 4),

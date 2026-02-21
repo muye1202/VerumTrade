@@ -120,6 +120,10 @@ def write_discovery_report(
     metadata = getattr(result, "metadata", None) or {}
     stage0 = metadata.get("stage0", {}) if isinstance(metadata, dict) else {}
     stage1 = metadata.get("stage1", {}) if isinstance(metadata, dict) else {}
+    stage2 = metadata.get("stage2", {}) if isinstance(metadata, dict) else {}
+    vendor_calls_by_stage = metadata.get("vendor_calls_by_stage", {}) if isinstance(metadata, dict) else {}
+    data_quality_summary = metadata.get("data_quality_summary", {}) if isinstance(metadata, dict) else {}
+    filter_relaxations_applied = metadata.get("filter_relaxations_applied", []) if isinstance(metadata, dict) else []
 
     lines: list[str] = []
     lines.append("# Stock Discovery Report")
@@ -180,6 +184,26 @@ def write_discovery_report(
                 lines.append(
                     f"| {ticker} | {float(beat):.1f} | {float(options):.1f} | {float(short_pct):.1f} | {insider} | {flags} |"
                 )
+
+    if isinstance(stage2, dict) and stage2:
+        lines.append("")
+        lines.append("## Stage 2 Metadata")
+        lines.append("")
+        lines.append(f"- Scored candidates: `{stage2.get('count', 0)}`")
+    if isinstance(filter_relaxations_applied, list) and filter_relaxations_applied:
+        lines.append(f"- Filter relaxations applied: `{', '.join(str(x) for x in filter_relaxations_applied)}`")
+    if isinstance(data_quality_summary, dict) and data_quality_summary:
+        lines.append(
+            f"- Data quality flagged: `{data_quality_summary.get('flagged', 0)}/"
+            f"{data_quality_summary.get('total', 0)}` "
+            f"(`{data_quality_summary.get('flagged_pct', 0.0)}%`)"
+        )
+    if isinstance(vendor_calls_by_stage, dict) and vendor_calls_by_stage:
+        lines.append("")
+        lines.append("## Vendor Calls by Stage")
+        lines.append("")
+        for stage, metrics in sorted(vendor_calls_by_stage.items()):
+            lines.append(f"- {stage}: `{metrics}`")
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path

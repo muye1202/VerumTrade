@@ -23,11 +23,7 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory.memory import FinancialSituationMemory
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.utils.market_session import now_et
-from tradingagents.execution.decision_guard import (
-    attempt_repair_canonical_decision,
-    build_market_snapshot,
-    validate_decision_prices,
-)
+from tradingagents.execution.decision_guard import build_market_snapshot
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
@@ -690,40 +686,11 @@ class TradingAgentsGraph:
             final_state.get("final_trade_decision", ""),
             expected_ticker=expected_ticker,
         )
-        repair_attempted = False
-        repair_success = False
-        if (
-            not isinstance(structured, dict)
-            and int(self.config.get("decision_repair_max_attempts", 1) or 1) > 0
-        ):
-            repair_attempted = True
-            repaired, repair_err, repaired_text = attempt_repair_canonical_decision(
-                llm=self.quick_thinking_llm,
-                decision_text=final_state.get("final_trade_decision", ""),
-                expected_ticker=expected_ticker or final_state.get("company_of_interest", ""),
-                market_snapshot=market_snapshot,
-                validation_error=err or "",
-                price_violations=[],
-            )
-            if isinstance(repaired, dict):
-                structured = repaired
-                err = ""
-                repair_success = True
-                if repaired_text:
-                    final_state["final_trade_decision"] = self._merge_repaired_decision_text(
-                        final_state.get("final_trade_decision", ""),
-                        repaired_text,
-                    )
-            elif repair_err:
-                err = f"{err or ''}; {repair_err}".strip("; ").strip()
-
         final_state["final_trade_decision_structured"] = structured
         final_state["final_trade_decision_validation_error"] = err or ""
         final_state["decision_guard"] = {
             "validation_ok": isinstance(structured, dict) and not bool(err),
             "violations": [] if not err else [err],
-            "repair_attempted": repair_attempted,
-            "repair_success": repair_success,
             "abort_reason": "",
         }
         return final_state
@@ -759,76 +726,24 @@ class TradingAgentsGraph:
         )
         final_state["market_snapshot"] = market_snapshot
 
-        violations: List[str] = []
-        price_guard_error = ""
-        repair_attempted = bool(guard.get("repair_attempted"))
-        repair_success = bool(guard.get("repair_success"))
-
-        if isinstance(structured, dict) and bool(self.config.get("decision_price_guard_enabled", True)):
-            band_pct = float(self.config.get("decision_price_guard_band_pct", 30) or 30)
-            violations = validate_decision_prices(
-                decision=structured,
-                market_snapshot=market_snapshot,
-                band_pct=band_pct,
-            )
-            if violations:
-                price_guard_error = f"price_guard_violations: {violations}"
-
-        should_repair = (
-            int(self.config.get("decision_repair_max_attempts", 1) or 1) > 0
-            and (
-                not isinstance(structured, dict)
-                or bool(validation_error)
-                or bool(violations)
-            )
-            and str(self.config.get("decision_price_guard_mode", "repair_then_abort")).strip().lower()
-            == "repair_then_abort"
-        )
-
-        if should_repair:
-            repair_attempted = True
-            repaired, repair_err, repaired_text = attempt_repair_canonical_decision(
-                llm=self.quick_thinking_llm,
-                decision_text=final_state.get("final_trade_decision", ""),
-                expected_ticker=expected_ticker,
-                market_snapshot=market_snapshot,
-                validation_error=validation_error or price_guard_error,
-                price_violations=violations,
-            )
-            if isinstance(repaired, dict):
-                structured = repaired
-                validation_error = ""
-                repair_success = True
-                if repaired_text:
-                    final_state["final_trade_decision"] = self._merge_repaired_decision_text(
-                        final_state.get("final_trade_decision", ""),
-                        repaired_text,
-                    )
-                if bool(self.config.get("decision_price_guard_enabled", True)):
-                    violations = validate_decision_prices(
-                        decision=structured,
-                        market_snapshot=market_snapshot,
-                        band_pct=float(self.config.get("decision_price_guard_band_pct", 30) or 30),
-                    )
-                    price_guard_error = (
-                        f"price_guard_violations: {violations}" if violations else ""
-                    )
-            elif repair_err:
-                if validation_error:
-                    validation_error = f"{validation_error}; {repair_err}"
-                else:
-                    validation_error = repair_err
+        if isinstance(structured, dict):
+            action = str(structured.get("action", "")).strip().upper()
+            if action in {"BUY", "SELL"} and bool(market_snapshot.get("price_anchor_conflict")):
+                conflict_msg = str(
+                    market_snapshot.get("price_anchor_conflict_reason")
+                    or "price anchor conflict detected"
+                )
+                validation_error = (
+                    f"{validation_error}; {conflict_msg}" if validation_error else conflict_msg
+                )
 
         final_state["final_trade_decision_structured"] = structured
         final_state["final_trade_decision_validation_error"] = validation_error or ""
         guard.update(
             {
-                "validation_ok": isinstance(structured, dict) and not validation_error and not violations,
-                "violations": list(violations),
-                "repair_attempted": repair_attempted,
-                "repair_success": repair_success,
+                "validation_ok": isinstance(structured, dict) and not bool(validation_error),
+                "violations": [],
                 "abort_reason": "",
-                "price_guard_error": price_guard_error,
             }
         )
         final_state["decision_guard"] = guard
@@ -841,7 +756,6 @@ class TradingAgentsGraph:
         trade_date: str,
         validation_error: str,
         *,
-        price_guard_error: str = "",
         market_snapshot: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         return {
@@ -856,10 +770,65 @@ class TradingAgentsGraph:
             "decision_version": None,
             "decision_validation_ok": False,
             "decision_validation_error": validation_error or "structured decision unavailable",
-            "decision_price_guard_error": price_guard_error or "",
             "market_snapshot_reference_price": (market_snapshot or {}).get("reference_price"),
             "market_snapshot_source": (market_snapshot or {}).get("source"),
         }
+
+    @staticmethod
+    def _resolve_immediate_execution_payload(
+        structured: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve an immediately executable order payload from canonical decision JSON.
+        Returns None for conditional-only v2 plans.
+        """
+        if not isinstance(structured, dict):
+            return None
+        version = str(structured.get("decision_version", "v1")).strip().lower() or "v1"
+        if version == "v1":
+            return structured
+        if version != "v2":
+            return None
+
+        plan_mode = str(structured.get("plan_mode", "conditional")).strip().lower()
+        execution_plan = structured.get("execution_plan") or []
+        if not isinstance(execution_plan, list):
+            execution_plan = []
+
+        immediate_template = None
+        immediate_branch_id = str(structured.get("immediate_branch_id", "")).strip()
+        if immediate_branch_id:
+            for branch in execution_plan:
+                if str((branch or {}).get("branch_id", "")).strip() == immediate_branch_id:
+                    immediate_template = (branch or {}).get("action_template")
+                    break
+
+        if immediate_template is None and plan_mode == "immediate":
+            for branch in execution_plan:
+                cond = (branch or {}).get("conditions") or {}
+                if not any(
+                    [
+                        bool(cond.get("price")),
+                        bool(cond.get("volume")),
+                        bool((cond.get("schedule") or {}).get("valid_from")),
+                        bool((cond.get("schedule") or {}).get("valid_to")),
+                        str((cond.get("schedule") or {}).get("session_constraint", "ANY")).upper() != "ANY",
+                        bool(cond.get("event_conditions")),
+                    ]
+                ):
+                    immediate_template = (branch or {}).get("action_template")
+                    break
+
+        if immediate_template is None and plan_mode == "immediate":
+            default_action = structured.get("default_action")
+            if isinstance(default_action, dict):
+                immediate_template = default_action
+
+        if not isinstance(immediate_template, dict):
+            return None
+        payload = dict(immediate_template)
+        payload["decision_version"] = "v2"
+        return payload
 
     def propagate_and_execute(
         self,
@@ -891,12 +860,15 @@ class TradingAgentsGraph:
             )
             structured = final_state.get("final_trade_decision_structured")
             validation_error = final_state.get("final_trade_decision_validation_error", "")
-            price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
-            if not isinstance(structured, dict):
+            if not isinstance(structured, dict) or validation_error:
                 decision = self.process_signal(final_state.get("final_trade_decision", ""))
                 final_state["decision_guard"] = {
                     **(final_state.get("decision_guard") or {}),
-                    "abort_reason": "invalid_or_missing_structured_decision",
+                    "abort_reason": (
+                        "invalid_or_missing_structured_decision"
+                        if not isinstance(structured, dict)
+                        else "decision_guard_validation_error"
+                    ),
                 }
                 return (
                     final_state,
@@ -906,43 +878,45 @@ class TradingAgentsGraph:
                         decision,
                         trade_date,
                         validation_error or "Structured decision missing.",
-                        price_guard_error=price_guard_error,
                         market_snapshot=final_state.get("market_snapshot") or {},
                     ),
                 )
-            if price_guard_error:
-                decision = structured.get("action") or decision
-                final_state["decision_guard"] = {
-                    **(final_state.get("decision_guard") or {}),
-                    "abort_reason": "price_guard_violation_after_repair",
-                }
+            resolved_execution = self._resolve_immediate_execution_payload(structured)
+            if resolved_execution is None:
+                decision = "HOLD"
                 return (
                     final_state,
                     decision,
-                    self._execution_abort_result(
-                        company_name,
-                        decision,
-                        trade_date,
-                        validation_error or "Decision failed price guard.",
-                        price_guard_error=price_guard_error,
-                        market_snapshot=final_state.get("market_snapshot") or {},
-                    ),
+                    {
+                        "ticker": company_name,
+                        "signal": decision,
+                        "trade_date": trade_date,
+                        "timestamp": now_et().isoformat(),
+                        "executed": False,
+                        "order": None,
+                        "error": None,
+                        "message": "Conditional decision plan captured; no immediate execution.",
+                        "decision_source": "final_trade_decision_structured",
+                        "decision_version": structured.get("decision_version"),
+                        "decision_validation_ok": True,
+                        "decision_validation_error": "",
+                    },
                 )
-            decision = structured.get("action") or decision
+            decision = resolved_execution.get("action") or structured.get("action") or decision
 
             execution_result = executor.execute_signal(
                 ticker=company_name,
                 signal=decision,
                 analysis_state=final_state,
                 trade_date=trade_date,
-                agent_quantity=structured.get("quantity"),
-                agent_limit_price=structured.get("limit_price"),
-                agent_position_size_pct=structured.get("position_size_pct"),
-                agent_order_type=structured.get("order_type"),
-                agent_time_in_force=structured.get("time_in_force"),
-                agent_stop_price=structured.get("stop_price"),
-                agent_trail_percent=structured.get("trail_percent"),
-                agent_trail_price=structured.get("trail_price"),
+                agent_quantity=resolved_execution.get("quantity"),
+                agent_limit_price=resolved_execution.get("limit_price"),
+                agent_position_size_pct=resolved_execution.get("position_size_pct"),
+                agent_order_type=resolved_execution.get("order_type"),
+                agent_time_in_force=resolved_execution.get("time_in_force"),
+                agent_stop_price=resolved_execution.get("stop_price"),
+                agent_trail_percent=resolved_execution.get("trail_percent"),
+                agent_trail_price=resolved_execution.get("trail_price"),
             )
 
         return final_state, decision, execution_result
@@ -976,12 +950,15 @@ class TradingAgentsGraph:
             )
             structured = final_state.get("final_trade_decision_structured")
             validation_error = final_state.get("final_trade_decision_validation_error", "")
-            price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
-            if not isinstance(structured, dict):
+            if not isinstance(structured, dict) or validation_error:
                 decision = self.process_signal(final_state.get("final_trade_decision", ""))
                 final_state["decision_guard"] = {
                     **(final_state.get("decision_guard") or {}),
-                    "abort_reason": "invalid_or_missing_structured_decision",
+                    "abort_reason": (
+                        "invalid_or_missing_structured_decision"
+                        if not isinstance(structured, dict)
+                        else "decision_guard_validation_error"
+                    ),
                 }
                 return (
                     final_state,
@@ -991,29 +968,31 @@ class TradingAgentsGraph:
                         decision,
                         trade_date,
                         validation_error or "Structured decision missing.",
-                        price_guard_error=price_guard_error,
                         market_snapshot=final_state.get("market_snapshot") or {},
                     ),
                 )
-            if price_guard_error:
-                decision = structured.get("action") or decision
-                final_state["decision_guard"] = {
-                    **(final_state.get("decision_guard") or {}),
-                    "abort_reason": "price_guard_violation_after_repair",
-                }
+            resolved_execution = self._resolve_immediate_execution_payload(structured)
+            if resolved_execution is None:
+                decision = "HOLD"
                 return (
                     final_state,
                     decision,
-                    self._execution_abort_result(
-                        company_name,
-                        decision,
-                        trade_date,
-                        validation_error or "Decision failed price guard.",
-                        price_guard_error=price_guard_error,
-                        market_snapshot=final_state.get("market_snapshot") or {},
-                    ),
+                    {
+                        "ticker": company_name,
+                        "signal": decision,
+                        "trade_date": trade_date,
+                        "timestamp": now_et().isoformat(),
+                        "executed": False,
+                        "order": None,
+                        "error": None,
+                        "message": "Conditional decision plan captured; no immediate execution.",
+                        "decision_source": "final_trade_decision_structured",
+                        "decision_version": structured.get("decision_version"),
+                        "decision_validation_ok": True,
+                        "decision_validation_error": "",
+                    },
                 )
-            decision = structured.get("action") or decision
+            decision = resolved_execution.get("action") or structured.get("action") or decision
 
             # executor.execute_signal is currently sync.
             # If we want to make it async later, we'd await it.
@@ -1026,14 +1005,14 @@ class TradingAgentsGraph:
                 signal=decision,
                 analysis_state=final_state,
                 trade_date=trade_date,
-                agent_quantity=structured.get("quantity"),
-                agent_limit_price=structured.get("limit_price"),
-                agent_position_size_pct=structured.get("position_size_pct"),
-                agent_order_type=structured.get("order_type"),
-                agent_time_in_force=structured.get("time_in_force"),
-                agent_stop_price=structured.get("stop_price"),
-                agent_trail_percent=structured.get("trail_percent"),
-                agent_trail_price=structured.get("trail_price"),
+                agent_quantity=resolved_execution.get("quantity"),
+                agent_limit_price=resolved_execution.get("limit_price"),
+                agent_position_size_pct=resolved_execution.get("position_size_pct"),
+                agent_order_type=resolved_execution.get("order_type"),
+                agent_time_in_force=resolved_execution.get("time_in_force"),
+                agent_stop_price=resolved_execution.get("stop_price"),
+                agent_trail_percent=resolved_execution.get("trail_percent"),
+                agent_trail_price=resolved_execution.get("trail_price"),
             )
 
         return final_state, decision, execution_result

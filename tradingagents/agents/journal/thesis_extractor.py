@@ -9,6 +9,7 @@ data the journal needs to monitor positions.
 from __future__ import annotations
 
 import logging
+import json
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -59,18 +60,30 @@ class ThesisExtractor:
             status=ThesisStatus.ACTIVE.value,
         )
 
+        decision_version = str(structured_decision.get("decision_version", "v1")).lower()
+        if decision_version == "v2":
+            plan_payload = {
+                "decision_version": "v2",
+                "plan_mode": structured_decision.get("plan_mode"),
+                "execution_plan": structured_decision.get("execution_plan") or [],
+                "default_action": structured_decision.get("default_action"),
+                "immediate_branch_id": structured_decision.get("immediate_branch_id"),
+            }
+            try:
+                thesis.decision_plan_json = _truncate(json_dumps_safe(plan_payload), 4000)
+            except Exception:
+                thesis.decision_plan_json = None
+
         # --- From structured decision ---
         thesis.conviction = _parse_float(structured_decision.get("confidence"))
-        thesis.stop_loss = _parse_float(structured_decision.get("stop_loss"))
-        thesis.target_1 = _parse_float(structured_decision.get("take_profit"))
-        thesis.order_type = structured_decision.get("order_type")
-        thesis.quantity = _parse_int(structured_decision.get("quantity"))
-        thesis.position_size_pct = _parse_float(
-            structured_decision.get("position_size_pct")
-        )
-        thesis.trailing_stop_pct = _parse_float(
-            structured_decision.get("trail_percent")
-        )
+        branch_template = _resolve_v2_reference_template(structured_decision)
+        source = branch_template if branch_template else structured_decision
+        thesis.stop_loss = _parse_float(source.get("stop_loss"))
+        thesis.target_1 = _parse_float(source.get("take_profit"))
+        thesis.order_type = source.get("order_type")
+        thesis.quantity = _parse_int(source.get("quantity"))
+        thesis.position_size_pct = _parse_float(source.get("position_size_pct"))
+        thesis.trailing_stop_pct = _parse_float(source.get("trail_percent"))
         thesis.time_horizon_label = structured_decision.get("time_horizon")
 
         # --- From execution result ---
@@ -272,6 +285,42 @@ def _estimate_holding_days(label: Optional[str]) -> Optional[int]:
     if "long" in label_lower:
         return 60
 
+    return None
+
+
+def json_dumps_safe(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _resolve_v2_reference_template(structured_decision: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if str(structured_decision.get("decision_version", "")).lower() != "v2":
+        return None
+    execution_plan = structured_decision.get("execution_plan") or []
+    if not isinstance(execution_plan, list) or not execution_plan:
+        return None
+
+    immediate_id = str(structured_decision.get("immediate_branch_id", "")).strip()
+    if immediate_id:
+        for branch in execution_plan:
+            if str((branch or {}).get("branch_id", "")).strip() == immediate_id:
+                template = (branch or {}).get("action_template")
+                if isinstance(template, dict):
+                    return template
+
+    default_action = structured_decision.get("default_action")
+    if isinstance(default_action, str):
+        default_branch_id = default_action.strip()
+        for branch in execution_plan:
+            if str((branch or {}).get("branch_id", "")).strip() == default_branch_id:
+                template = (branch or {}).get("action_template")
+                if isinstance(template, dict):
+                    return template
+    elif isinstance(default_action, dict):
+        return default_action
+
+    first_template = (execution_plan[0] or {}).get("action_template")
+    if isinstance(first_template, dict):
+        return first_template
     return None
 
 

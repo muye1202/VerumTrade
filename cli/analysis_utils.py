@@ -17,6 +17,7 @@ from tradingagents.execution.execution_kwargs import executor_kwargs_from_struct
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
 from tradingagents.agents.utils.llm.llm_metrics import (
     snapshot_llm_api_calls,
     diff_llm_api_calls,
@@ -513,13 +514,14 @@ def run_single_ticker_analysis(
         func = getattr(obj, func_name)
         @wraps(func)
         def wrapper(section_name, content):
-            func(section_name, content)
+            sanitized = _strip_thinking_blocks(content)
+            func(section_name, sanitized)
             if section_name in obj.report_sections and obj.report_sections[section_name] is not None:
-                content = obj.report_sections[section_name]
-                if content:
+                section_content = _strip_thinking_blocks(obj.report_sections[section_name])
+                if section_content:
                     file_name = f"{section_name}.md"
                     with open(report_dir / file_name, "w", encoding="utf-8") as f:
-                        f.write(content)
+                        f.write(section_content)
         return wrapper
 
     message_buffer.add_message = save_message_decorator(message_buffer, "add_message")
@@ -927,6 +929,42 @@ def run_single_ticker_analysis(
                             )
                         )
                         f.write("\n```\n")
+                        if str(structured_for_report.get("decision_version", "")).lower() == "v2":
+                            execution_plan = structured_for_report.get("execution_plan") or []
+                            default_action = structured_for_report.get("default_action")
+                            f.write("\n## Conditional Plan Summary\n\n")
+                            f.write(f"- Plan mode: `{structured_for_report.get('plan_mode')}`\n")
+                            f.write(f"- Branches: `{len(execution_plan)}`\n")
+                            f.write(
+                                f"- Immediate branch: `{structured_for_report.get('immediate_branch_id') or 'none'}`\n"
+                            )
+                            if isinstance(default_action, str):
+                                f.write(f"- Default action branch: `{default_action}`\n")
+                            elif isinstance(default_action, dict):
+                                f.write(
+                                    f"- Default action template: `{default_action.get('action', 'HOLD')}`\n"
+                                )
+                            for branch in execution_plan[:5]:
+                                if not isinstance(branch, dict):
+                                    continue
+                                cond = branch.get("conditions") or {}
+                                f.write(
+                                    f"- `{branch.get('branch_id')}` -> `{((branch.get('action_template') or {}).get('action') or 'HOLD')}`"
+                                )
+                                notes = []
+                                price = cond.get("price") or {}
+                                if price.get("close_above") is not None:
+                                    notes.append(f"close>{price.get('close_above')}")
+                                if price.get("close_below") is not None:
+                                    notes.append(f"close<{price.get('close_below')}")
+                                volume = cond.get("volume") or {}
+                                if volume.get("volume_ratio_min") is not None:
+                                    notes.append(f"vol>={volume.get('volume_ratio_min')}x")
+                                if (cond.get("event_conditions") or []):
+                                    notes.append("event_confirm")
+                                if notes:
+                                    f.write(f" ({', '.join(notes)})")
+                                f.write("\n")
         except Exception:
             pass
 
@@ -934,7 +972,7 @@ def run_single_ticker_analysis(
         final_report_path = report_dir / "final_report.md"
         if message_buffer.final_report:
             with open(final_report_path, "w", encoding="utf-8") as f:
-                f.write(message_buffer.final_report)
+                f.write(_strip_thinking_blocks(message_buffer.final_report))
 
         # Persist a separate execution report (includes "no action" / disabled).
         try:
@@ -947,9 +985,6 @@ def run_single_ticker_analysis(
             )
             llm_calls_exact = int(
                 llm_metrics.get("llm_api_calls_total", 0)
-            )
-            llm_calls_heuristic = sum(
-                1 for _, msg_type, _ in message_buffer.messages if msg_type == "Reasoning"
             )
             reports_count = sum(
                 1 for content in message_buffer.report_sections.values() if content is not None
@@ -1062,8 +1097,7 @@ def run_single_ticker_analysis(
             lines.append(f"- Duration (s): `{elapsed_s:.2f}`")
             lines.append(f"- Stream chunks: `{len(trace)}`")
             lines.append(f"- Tool calls: `{tool_calls_count}`")
-            lines.append(f"- LLM calls (exact API): `{llm_calls_exact}`")
-            lines.append(f"- LLM calls (heuristic debug): `{llm_calls_heuristic}`")
+            lines.append(f"- LLM calls (API): `{llm_calls_exact}`")
             by_model = llm_metrics.get("llm_api_calls_by_model") or {}
             if by_model:
                 lines.append(f"- LLM calls by model: `{by_model}`")

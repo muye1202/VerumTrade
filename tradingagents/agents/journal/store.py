@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Default location next to execution logs
 DEFAULT_DB_PATH = Path("./journal/trade_journal.db")
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 class JournalStore:
@@ -109,6 +109,7 @@ class JournalStore:
                     news_summary    TEXT,
                     risk_judge_summary TEXT,
                     final_decision_text TEXT,
+                    decision_plan_json TEXT,
                     status          TEXT NOT NULL DEFAULT 'active',
                     created_at      TEXT NOT NULL,
                     closed_at       TEXT
@@ -305,6 +306,7 @@ class JournalStore:
             ("entry_price_source", "TEXT"),
             ("entry_price_pending", "INTEGER NOT NULL DEFAULT 0"),
             ("last_reconciled_at", "TEXT"),
+            ("decision_plan_json", "TEXT"),
         ]
         for col_name, col_type in migrations:
             if col_name in cols:

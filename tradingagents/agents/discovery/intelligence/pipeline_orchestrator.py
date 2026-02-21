@@ -1,15 +1,21 @@
 from __future__ import annotations
+"""
+Pipeline Orchestrator:
+The central top-level orchestrator that unifies pre-stage, track A, track B, and the final scoring stage of the discovery pipeline.
+"""
 
 import logging
+import hashlib
 from typing import Dict, List, Optional, Any, Tuple
 
-from .models import IntelligenceResult
-from .momentum_anomaly_scans import MomentumAnomalyScanner
-from .pre_stage0_intelligence import PreStage0IntelligenceBuilder
-from .pre_stage0_llm import build_llm_bias_profile
-from .stage1_enrichment import Stage1BatchEnricher
-from .stage2_scoring import Stage2Scorer
-from .technical_momentum import TechnicalMomentumScanner
+from .pipeline_models import IntelligenceResult
+from .track_b_anomaly_scans import MomentumAnomalyScanner
+from .feature_matrix import build_ohlcv_cache
+from .market_context_snapshot import PreStage0IntelligenceBuilder
+from .market_policy_llm import build_llm_bias_profile
+from .track_a_enrichment import Stage1BatchEnricher
+from .candidate_scoring import Stage2Scorer
+from .technical_momentum_metrics import TechnicalMomentumScanner
 
 
 class IntelligenceScanner:
@@ -44,6 +50,16 @@ class IntelligenceScanner:
         )
         return {**base_cfg, **numeric_cache}
 
+    def _feature_matrix_cache_cfg(self) -> Dict[str, Any]:
+        feature_cfg = dict(((self.config.get("discovery") or {}).get("feature_matrix") or {}))
+        ttl = int(feature_cfg.get("cache_ttl_hours", 24))
+        return {
+            "enabled": True,
+            "ttl_hours": max(1, ttl),
+            "force_refresh": bool(feature_cfg.get("force_refresh", False)),
+            "dir": feature_cfg.get("dir"),
+        }
+
     @staticmethod
     def _cap_universe(universe: List[str], max_tickers: int) -> List[str]:
         if max_tickers <= 0:
@@ -62,18 +78,24 @@ class IntelligenceScanner:
         self,
         universe: List[str],
         sector_weights: Dict[str, float],
+        trade_date: str,
     ) -> List[str]:
+        deduped = sorted({str(t).strip().upper() for t in universe if str(t).strip()})
         if not sector_weights:
-            return sorted({str(t).strip().upper() for t in universe if str(t).strip()})
+            return deduped
         try:
             all_neutral = all(abs(float(v) - 1.0) < 1e-9 for v in sector_weights.values())
         except Exception:
             all_neutral = False
         if all_neutral:
-            return sorted({str(t).strip().upper() for t in universe if str(t).strip()})
+            # Deterministic date-seeded shuffle avoids persistent alphabetical bias.
+            def _seeded_key(ticker: str) -> str:
+                payload = f"{trade_date}:{ticker}".encode("utf-8")
+                return hashlib.sha256(payload).hexdigest()
+            return sorted(deduped, key=_seeded_key)
 
         ordered: List[Tuple[float, str]] = []
-        for ticker in sorted({str(t).strip().upper() for t in universe if str(t).strip()}):
+        for ticker in deduped:
             etf = self.stage2_scorer._ticker_to_sector_etf(ticker)
             try:
                 multiplier = float(sector_weights.get(str(etf or "").upper(), 1.0))
@@ -110,8 +132,22 @@ class IntelligenceScanner:
             anomaly_n = 1
             enricher_n = max(1, len(capped) - 1)
 
-        track_a = capped[:enricher_n]
-        track_b = capped[-anomaly_n:]
+        # Ratio-preserving split over seeded order avoids head/tail concentration.
+        track_a: List[str] = []
+        track_b: List[str] = []
+        for ticker in capped:
+            if len(track_a) >= enricher_n:
+                track_b.append(ticker)
+                continue
+            if len(track_b) >= anomaly_n:
+                track_a.append(ticker)
+                continue
+            next_total = len(track_a) + len(track_b) + 1
+            projected = (len(track_a) + 1) / float(next_total)
+            if projected <= enricher_ratio:
+                track_a.append(ticker)
+            else:
+                track_b.append(ticker)
         return track_a, track_b
 
     def run_pre_stage0_intelligence(
@@ -120,21 +156,70 @@ class IntelligenceScanner:
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         snapshot, availability = self.pre_stage0_builder.build(trade_date=trade_date)
         cache_metrics = dict(snapshot.get("cache_metrics") or {})
+        policy_cfg = dict((self.config.get("discovery") or {}))
+        policy_mode = str(policy_cfg.get("policy_mode", "off")).strip().lower()
+        min_conf = float(policy_cfg.get("min_regime_confidence_for_no_llm", 0.70))
+        allow_llm = False
+        uncertainty = self._estimate_regime_uncertainty(snapshot)
+        regime_confidence = max(0.0, min(1.0, 1.0 - uncertainty))
+        if policy_mode == "adaptive":
+            allow_llm = regime_confidence < max(0.0, min(1.0, min_conf))
+        elif policy_mode == "cached_only":
+            allow_llm = False
+        elif policy_mode == "off":
+            allow_llm = False
+        else:
+            # Unknown mode falls back to deterministic behavior.
+            allow_llm = False
         bias = build_llm_bias_profile(
             llm=self.llm,
             trade_date=trade_date,
             snapshot=snapshot,
             cache_config=self._pre_stage0_cache_cfg(ttl_hours=12),
             metrics=cache_metrics,
+            allow_llm_call=allow_llm,
         )
+        if policy_mode == "off":
+            bias["scan_notes"] = "Deterministic policy mode (LLM disabled)."
+        elif policy_mode == "cached_only":
+            bias["scan_notes"] = "Cached-only policy mode (no new LLM calls)."
+        elif policy_mode == "adaptive":
+            bias["scan_notes"] = (
+                f"Adaptive policy mode: regime_confidence={regime_confidence:.2f}, "
+                f"llm_called={allow_llm}"
+            )
         snapshot["cache_metrics"] = cache_metrics
         return snapshot, bias, availability
+
+    @staticmethod
+    def _estimate_regime_uncertainty(snapshot: Dict[str, Any]) -> float:
+        """Higher value means more conflicting market-regime evidence."""
+        idx = ((snapshot.get("index_regime") or {}).get("indices") or {})
+        if not idx:
+            return 1.0
+        trend_votes = 0
+        mean_rev_votes = 0
+        considered = 0
+        for data in idx.values():
+            flags = dict((data or {}).get("regime_flags") or {})
+            if not flags:
+                continue
+            considered += 1
+            if bool(flags.get("TRENDING")):
+                trend_votes += 1
+            if bool(flags.get("MEAN_REVERTING")):
+                mean_rev_votes += 1
+        if considered == 0:
+            return 1.0
+        spread = abs(trend_votes - mean_rev_votes) / float(max(1, considered))
+        # Uncertainty is inverse of vote spread.
+        return max(0.0, min(1.0, 1.0 - spread))
 
     def scan_with_prefilter_universe(
         self,
         trade_date: str,
         excluded_tickers: Optional[List[str]] = None,
-        discovery_track: str = "anomaly_scan",
+        discovery_track: str = "enricher",
     ) -> IntelligenceResult:
         import time
 
@@ -185,6 +270,7 @@ class IntelligenceScanner:
         ordered_universe = self._order_universe_by_sector_weights(
             prefiltered_universe,
             sector_weight_multipliers,
+            trade_date=trade_date,
         )
 
         if track == "anomaly_scan":
@@ -240,24 +326,45 @@ class IntelligenceScanner:
         stage2_weight_tilts: Optional[Dict[str, float]] = None,
         stage2_hard_filter_overrides: Optional[Dict[str, Any]] = None,
         sector_weight_multipliers: Optional[Dict[str, float]] = None,
+        shared_ohlcv_cache: Optional[Dict[str, str]] = None,
+        prefetch_metrics: Optional[Dict[str, Any]] = None,
     ) -> IntelligenceResult:
         import time
+
+        stage1_ohlcv_cache: Dict[str, str] = dict(shared_ohlcv_cache or {})
+        track_a_prefetch_metrics: Dict[str, Any] = dict(prefetch_metrics or {})
+        if not stage1_ohlcv_cache:
+            try:
+                stage1_ohlcv_cache, track_a_prefetch_metrics = build_ohlcv_cache(
+                    universe=universe,
+                    trade_date=trade_date,
+                    max_workers=8,
+                    cache_config=self._feature_matrix_cache_cfg(),
+                )
+            except Exception as e:
+                self.logger.debug(f"Track A OHLCV prefetch failed: {e}")
+                stage1_ohlcv_cache, track_a_prefetch_metrics = {}, {}
 
         # Stage 1: batch enrichment (no LLM).
         try:
             stage1_scorecards = self.stage1_enricher.enrich_universe(
                 universe=universe,
                 trade_date=trade_date,
+                ohlcv_cache=stage1_ohlcv_cache,
             )
         except Exception as e:
             self.logger.error(f"Stage 1 enrichment failed: {e}")
             stage1_scorecards = []
 
         try:
-            technical_signals = self.technical_scanner.scan_numeric_filter(
-                universe=universe,
-                trade_date=trade_date,
+            technical_signals = self.technical_scanner.technical_signals_from_scorecards(
+                stage1_scorecards,
             )
+            if not technical_signals:
+                technical_signals = self.technical_scanner.scan_numeric_filter(
+                    universe=universe,
+                    trade_date=trade_date,
+                )
         except Exception as e:
             self.logger.error(f"Technical scan failed: {e}")
             technical_signals = []
@@ -274,6 +381,11 @@ class IntelligenceScanner:
         except Exception as e:
             self.logger.error(f"Stage 2 scoring failed: {e}")
             stage2_candidates = []
+        stage2_meta = self.stage2_scorer.get_last_run_metadata()
+        data_quality_summary = dict(stage2_meta.get("data_quality_summary") or {})
+        breadth_context = dict(stage2_meta.get("breadth_context") or {})
+        if breadth_context:
+            data_quality_summary["breadth_context"] = breadth_context
 
         result = IntelligenceResult(
             sector_signals=[],
@@ -285,6 +397,12 @@ class IntelligenceScanner:
             llm_bias_profile=dict(llm_bias_profile or {}),
             indicator_availability=dict(indicator_availability or {}),
             stage0_metrics=self.technical_scanner.get_stage0_last_metrics(),
+            vendor_calls_by_stage={
+                "stage0": dict(self.technical_scanner.get_stage0_last_metrics()),
+                "track_a_prefetch": dict(track_a_prefetch_metrics or {}),
+            },
+            data_quality_summary=data_quality_summary,
+            filter_relaxations_applied=list(stage2_meta.get("filter_relaxations_applied") or []),
             discovery_track="enricher",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -312,13 +430,33 @@ class IntelligenceScanner:
         llm_bias_profile: Optional[Dict[str, Any]] = None,
         indicator_availability: Optional[Dict[str, Any]] = None,
         anomaly_scan_policy: Optional[Dict[str, Any]] = None,
+        shared_ohlcv_cache: Optional[Dict[str, str]] = None,
+        prefetch_metrics: Optional[Dict[str, Any]] = None,
     ) -> IntelligenceResult:
         import time
+
+        if shared_ohlcv_cache is not None:
+            ohlcv_cache = shared_ohlcv_cache
+            track_b_metrics = dict(prefetch_metrics or {})
+        else:
+            ohlcv_cache = {}
+            track_b_metrics: Dict[str, Any] = {}
+            try:
+                ohlcv_cache, track_b_metrics = build_ohlcv_cache(
+                    universe=universe,
+                    trade_date=trade_date,
+                    max_workers=8,
+                    cache_config=self._feature_matrix_cache_cfg(),
+                )
+            except Exception as e:
+                self.logger.debug(f"Track B OHLCV prefetch failed: {e}")
+                ohlcv_cache, track_b_metrics = {}, {}
 
         try:
             momentum_hits = self.anomaly_scanner.run_all_scans(
                 universe=universe,
                 trade_date=trade_date,
+                ohlcv_cache=ohlcv_cache,
                 policy_overrides=anomaly_scan_policy,
             )
         except Exception as e:
@@ -331,6 +469,10 @@ class IntelligenceScanner:
             llm_bias_profile=dict(llm_bias_profile or {}),
             indicator_availability=dict(indicator_availability or {}),
             stage0_metrics=self.technical_scanner.get_stage0_last_metrics(),
+            vendor_calls_by_stage={
+                "stage0": dict(self.technical_scanner.get_stage0_last_metrics()),
+                "track_b_prefetch": dict(track_b_metrics or {}),
+            },
             discovery_track="anomaly_scan",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -370,6 +512,24 @@ class IntelligenceScanner:
         """
         import time
 
+        shared_universe = sorted({
+            str(t).strip().upper()
+            for t in (track_a_universe + track_b_universe)
+            if str(t).strip()
+        })
+        shared_ohlcv_cache: Dict[str, str] = {}
+        shared_prefetch_metrics: Dict[str, Any] = {}
+        try:
+            shared_ohlcv_cache, shared_prefetch_metrics = build_ohlcv_cache(
+                universe=shared_universe,
+                trade_date=trade_date,
+                max_workers=8,
+                cache_config=self._feature_matrix_cache_cfg(),
+            )
+        except Exception as e:
+            self.logger.debug(f"Dual-track shared OHLCV prefetch failed: {e}")
+            shared_ohlcv_cache, shared_prefetch_metrics = {}, {}
+
         # Run Track A (uses its own intermediate timer internally; we ignore
         # that timing and track total wall-time here).
         result_a = self._run_track_a(
@@ -382,6 +542,8 @@ class IntelligenceScanner:
             stage2_weight_tilts=stage2_weight_tilts,
             stage2_hard_filter_overrides=stage2_hard_filter_overrides,
             sector_weight_multipliers=sector_weight_multipliers,
+            shared_ohlcv_cache=shared_ohlcv_cache,
+            prefetch_metrics={**shared_prefetch_metrics, "shared_for_dual_track": True},
         )
         result_b = self._run_track_b(
             track_b_universe,
@@ -391,6 +553,8 @@ class IntelligenceScanner:
             llm_bias_profile=llm_bias_profile,
             indicator_availability=indicator_availability,
             anomaly_scan_policy=anomaly_scan_policy,
+            shared_ohlcv_cache=shared_ohlcv_cache,
+            prefetch_metrics={**shared_prefetch_metrics, "shared_for_dual_track": True},
         )
 
         merged = IntelligenceResult(
@@ -404,6 +568,12 @@ class IntelligenceScanner:
             llm_bias_profile=dict(llm_bias_profile or {}),
             indicator_availability=dict(indicator_availability or {}),
             stage0_metrics=result_a.stage0_metrics or result_b.stage0_metrics,
+            vendor_calls_by_stage={
+                **dict(result_a.vendor_calls_by_stage or {}),
+                **dict(result_b.vendor_calls_by_stage or {}),
+            },
+            data_quality_summary=dict(result_a.data_quality_summary or {}),
+            filter_relaxations_applied=list(result_a.filter_relaxations_applied or []),
             discovery_track="dual_track",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),

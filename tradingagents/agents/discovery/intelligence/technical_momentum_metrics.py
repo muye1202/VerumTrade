@@ -1,4 +1,8 @@
 from __future__ import annotations
+"""
+Technical Momentum Metrics:
+Calculates technical momentum signals and underlying metrics used by anomaly scans.
+"""
 
 import logging
 import time
@@ -8,17 +12,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .models import TechnicalSignal
+from .pipeline_models import TechnicalSignal
 from .universe_prefilters import (
     filter_by_avg_daily_dollar_volume,
     filter_by_upcoming_earnings,
 )
-from .stage0_cache import (
+from .pipeline_cache import (
     load_cache_value,
     save_cache_value,
     stable_key,
 )
-from .utils import (
+from .pipeline_utils import (
+    compute_obv_slope,
+    compute_return_pct,
     extract_indicator_value,
     fetch_alpaca_tradeable_assets,
     fetch_alpaca_primary_us_equities,
@@ -112,7 +118,7 @@ class TechnicalMomentumScanner:
                 "mode": "daily_calendar",
                 "window_days": 7,
                 "max_workers": 4,
-                "failure_policy": "fail_open",
+                "failure_policy": "fail_closed",
                 "http_timeout_s": 12,
                 "calendar_page_size": 100,
             },
@@ -223,7 +229,7 @@ class TechnicalMomentumScanner:
                 "trade_date": trade_date,
                 "catalyst_mode": str(cfg.get("mode", "daily_calendar")),
                 "catalyst_window_days": int(cfg.get("window_days", 7)),
-                "failure_policy": str(cfg.get("failure_policy", "fail_open")),
+                "failure_policy": str(cfg.get("failure_policy", "fail_closed")),
                 "http_timeout_s": int(cfg.get("http_timeout_s", 12)),
                 "calendar_page_size": int(cfg.get("calendar_page_size", 100)),
                 "adv_min": float(universe_cfg["min_avg_dollar_volume_20d"]),
@@ -267,7 +273,7 @@ class TechnicalMomentumScanner:
             "Stage 0 catalyst prefilter settings: "
             f"mode={cfg.get('mode', 'daily_calendar')} "
             f"window_days={cfg.get('window_days', 7)} "
-            f"failure_policy={cfg.get('failure_policy', 'fail_open')} "
+            f"failure_policy={cfg.get('failure_policy', 'fail_closed')} "
             f"base_universe={len(base)}"
         )
         if not bool(cfg.get("enabled", True)):
@@ -320,7 +326,7 @@ class TechnicalMomentumScanner:
                 mode=mode,
                 window_days=int(cfg.get("window_days", 7)),
                 max_workers=int(cfg.get("max_workers", 4)),
-                failure_policy=str(cfg.get("failure_policy", "fail_open")),
+                failure_policy=str(cfg.get("failure_policy", "fail_closed")),
                 http_timeout_s=int(cfg.get("http_timeout_s", 12)),
                 calendar_page_size=int(cfg.get("calendar_page_size", 100)),
                 cache_config=stage0_cache_cfg,
@@ -359,7 +365,7 @@ class TechnicalMomentumScanner:
                 mode=mode,
                 window_days=int(cfg.get("window_days", 7)),
                 max_workers=int(cfg.get("max_workers", 4)),
-                failure_policy=str(cfg.get("failure_policy", "fail_open")),
+                failure_policy=str(cfg.get("failure_policy", "fail_closed")),
                 http_timeout_s=int(cfg.get("http_timeout_s", 12)),
                 calendar_page_size=int(cfg.get("calendar_page_size", 100)),
                 cache_config=stage0_cache_cfg,
@@ -436,31 +442,7 @@ class TechnicalMomentumScanner:
 
     @staticmethod
     def _compute_obv_slope_10d(prices: List[float], volumes: List[float]) -> float:
-        if len(prices) < 10 or len(volumes) < 10:
-            return 0.0
-        p = prices[-10:]
-        v = volumes[-10:]
-        obv = [0.0]
-        for i in range(1, len(p)):
-            if p[i] > p[i - 1]:
-                obv.append(obv[-1] + v[i])
-            elif p[i] < p[i - 1]:
-                obv.append(obv[-1] - v[i])
-            else:
-                obv.append(obv[-1])
-
-        n = float(len(obv))
-        x_mean = (n - 1.0) / 2.0
-        y_mean = sum(obv) / n
-        num = 0.0
-        den = 0.0
-        for i, y in enumerate(obv):
-            dx = i - x_mean
-            num += dx * (y - y_mean)
-            den += dx * dx
-        if den == 0:
-            return 0.0
-        return num / den
+        return compute_obv_slope(prices, volumes, window=10)
 
     @staticmethod
     def _compute_bollinger_pct_b(price: float, upper: float, lower: float) -> float:
@@ -520,7 +502,10 @@ class TechnicalMomentumScanner:
                 return None
 
             current_price = prices[-1]
-            roc_20d = ((current_price - prices[-20]) / prices[-20]) * 100.0
+            roc_20d_raw = compute_return_pct(prices, 20)
+            if roc_20d_raw is None:
+                return None
+            roc_20d = float(roc_20d_raw)
             avg_vol_20d = sum(volumes[-20:]) / 20.0
             avg_vol_5d = sum(volumes[-5:]) / 5.0
             volume_ratio = avg_vol_5d / avg_vol_20d if avg_vol_20d > 0 else 0.0
@@ -564,9 +549,10 @@ class TechnicalMomentumScanner:
         start = (end_dt - timedelta(days=90)).strftime("%Y-%m-%d")
         raw_csv = route_to_vendor("get_stock_data", "SPY", start, trade_date)
         prices, _ = self._parse_price_volume_csv(raw_csv)
-        if len(prices) < 20:
+        ret = compute_return_pct(prices, 20)
+        if ret is None:
             raise RuntimeError("Unable to compute SPY ROC(20d) for numeric filter.")
-        return ((prices[-1] - prices[-20]) / prices[-20]) * 100.0
+        return float(ret)
 
     def scan_numeric_filter(
         self,
@@ -621,6 +607,66 @@ class TechnicalMomentumScanner:
             for r in passed[:top_n]
         ]
 
+    def technical_signals_from_scorecards(
+        self,
+        scorecards: List[Any],
+        top_n: int = 50,
+    ) -> List[TechnicalSignal]:
+        """Build technical signals from Stage 1 scorecards to avoid duplicate data pulls."""
+        cfg = self._numeric_filter_settings()
+        rows: List[Dict[str, Any]] = []
+        for sc in scorecards or []:
+            try:
+                row = {
+                    "ticker": str(getattr(sc, "ticker", "")).strip().upper(),
+                    "price": float(getattr(sc, "price", 0.0)),
+                    "momentum_20d": float(getattr(sc, "roc_20d", 0.0)),
+                    "roc_20d": float(getattr(sc, "roc_20d", 0.0)),
+                    "rs_vs_spy_20d": float(getattr(sc, "rs_vs_spy_20d", 0.0)),
+                    "relative_strength_vs_spy": round(1.0 + (float(getattr(sc, "rs_vs_spy_20d", 0.0)) / 100.0), 4),
+                    "vs_sma50_pct": float(getattr(sc, "vs_sma50_pct", 0.0)),
+                    "vs_sma200_pct": float(getattr(sc, "vs_sma200_pct", 0.0)),
+                    "adx": float(getattr(sc, "adx", 0.0)),
+                    "volume_ratio": float(getattr(sc, "volume_ratio", 0.0)),
+                    "avg_volume_20d": float(getattr(sc, "avg_dollar_volume_20d", 0.0)),
+                    "bollinger_pct_b": float(getattr(sc, "bollinger_pct_b", 0.5)),
+                    "obv_slope_10d": float(getattr(sc, "obv_slope_10d", 0.0)),
+                }
+            except Exception:
+                continue
+            if not row["ticker"]:
+                continue
+            gate_passed, gate_fail_reasons = self._apply_hard_gates(row)
+            row["gate_passed"] = gate_passed
+            row["gate_fail_reasons"] = gate_fail_reasons
+            row["composite_score"] = self._compute_weighted_score(row, cfg)
+            rows.append(row)
+
+        passed = [r for r in rows if r["gate_passed"]]
+        passed.sort(key=lambda x: x["composite_score"], reverse=True)
+        return [
+            TechnicalSignal(
+                ticker=r["ticker"],
+                price=r["price"],
+                vs_sma50_pct=r["vs_sma50_pct"],
+                vs_sma200_pct=r["vs_sma200_pct"],
+                momentum_20d=r["momentum_20d"],
+                adx=r["adx"],
+                obv_trend="neutral",
+                relative_strength_vs_spy=r["relative_strength_vs_spy"],
+                volume_ratio=r["volume_ratio"],
+                composite_score=r["composite_score"],
+                roc_20d=r["roc_20d"],
+                rs_vs_spy_20d=r["rs_vs_spy_20d"],
+                bollinger_pct_b=r["bollinger_pct_b"],
+                obv_slope_10d=r["obv_slope_10d"],
+                avg_volume_20d=r["avg_volume_20d"],
+                gate_passed=r["gate_passed"],
+                gate_fail_reasons=r["gate_fail_reasons"],
+            )
+            for r in passed[:top_n]
+        ]
+
     def _fetch_ticker_technicals(self, ticker: str, trade_date: str) -> Optional[Dict[str, Any]]:
         from tradingagents.dataflows.interface import route_to_vendor
 
@@ -628,31 +674,15 @@ class TechnicalMomentumScanner:
         start_30d = (end_dt - timedelta(days=45)).strftime("%Y-%m-%d")
         try:
             raw_csv = route_to_vendor("get_stock_data", ticker, start_30d, trade_date)
-            lines = [l for l in raw_csv.split("\n") if l.strip() and not l.startswith("#")]
-            if len(lines) < 15:
-                return None
-
-            header = lines[0].split(",")
-            close_idx = header.index("Close")
-            vol_idx = header.index("Volume") if "Volume" in header else None
-
-            prices = []
-            volumes = []
-            for line in lines[1:]:
-                parts = line.split(",")
-                try:
-                    prices.append(float(parts[close_idx]))
-                    if vol_idx is not None:
-                        volumes.append(float(parts[vol_idx]))
-                except (ValueError, IndexError):
-                    continue
+            prices, volumes = parse_price_volume_csv(str(raw_csv or ""))
             if len(prices) < 10:
                 return None
 
             current_price = prices[-1]
-            idx_20d = max(0, len(prices) - 20)
-            price_20d_ago = prices[idx_20d]
-            momentum_20d = ((current_price - price_20d_ago) / price_20d_ago) * 100
+            momentum_20d_raw = compute_return_pct(prices, 20)
+            if momentum_20d_raw is None:
+                return None
+            momentum_20d = float(momentum_20d_raw)
 
             volume_ratio = 0.0
             if volumes and len(volumes) >= 20:
@@ -704,24 +734,13 @@ class TechnicalMomentumScanner:
         start = (end_dt - timedelta(days=35)).strftime("%Y-%m-%d")
         try:
             raw_csv = route_to_vendor("get_stock_data", "SPY", start, trade_date)
-            lines = [l for l in raw_csv.split("\n") if l.strip() and not l.startswith("#")]
-            if len(lines) < 15:
-                return 0.0, 0.0
-            header = lines[0].split(",")
-            close_idx = header.index("Close")
-            prices = []
-            for line in lines[1:]:
-                try:
-                    prices.append(float(line.split(",")[close_idx]))
-                except (ValueError, IndexError):
-                    continue
+            prices, _ = parse_price_volume_csv(str(raw_csv or ""))
             if len(prices) < 10:
                 return 0.0, 0.0
-            idx_20d = max(0, len(prices) - 20)
-            spy_current = prices[-1]
-            spy_20d_ago = prices[idx_20d]
-            spy_return_20d = ((spy_current - spy_20d_ago) / spy_20d_ago) * 100
-            return spy_current, spy_return_20d
+            spy_return_20d = compute_return_pct(prices, 20)
+            if spy_return_20d is None:
+                return 0.0, 0.0
+            return prices[-1], float(spy_return_20d)
         except Exception:
             return 0.0, 0.0
 
@@ -771,12 +790,16 @@ class TechnicalMomentumScanner:
             table += f"{t['ticker']}: prices=[{p_str}] volumes=[{v_str}]\n"
 
         signals = None
-        try:
-            result = self.llm.invoke([SystemMessage(content=TECHNICAL_SCANNER_SYSTEM_PROMPT), HumanMessage(content=table)])
-            content = result.content if hasattr(result, "content") else str(result)
-            signals = self._parse_technical_response(content)
-        except Exception as e:
-            self.logger.warning(f"LLM technical scoring failed, using quant fallback: {e}")
+        llm_scoring_enabled = bool(
+            ((self.config.get("discovery") or {}).get("enable_legacy_llm_technical_scoring", False))
+        )
+        if llm_scoring_enabled and self.llm is not None:
+            try:
+                result = self.llm.invoke([SystemMessage(content=TECHNICAL_SCANNER_SYSTEM_PROMPT), HumanMessage(content=table)])
+                content = result.content if hasattr(result, "content") else str(result)
+                signals = self._parse_technical_response(content)
+            except Exception as e:
+                self.logger.warning(f"LLM technical scoring failed, using quant fallback: {e}")
 
         if not signals:
             signals = self._quant_fallback_scoring(raw_technicals)

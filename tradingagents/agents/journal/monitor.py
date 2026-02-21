@@ -41,6 +41,9 @@ from tradingagents.agents.journal.execution_policy import (
     JournalExecutionPolicy,
     PolicyResult,
 )
+from tradingagents.agents.journal.decision_plan_evaluator import (
+    evaluate_decision_plan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +179,12 @@ class PositionMonitor:
 
         # Check if position still exists in brokerage
         if ticker not in brokerage_tickers:
+            if self._has_decision_plan(thesis):
+                self._monitor_plan_only_thesis(
+                    thesis=thesis,
+                    summary=summary,
+                )
+                return
             self._handle_position_closed(thesis, summary)
             return
 
@@ -251,6 +260,47 @@ class PositionMonitor:
             ineligibility_reason=ineligibility_reason,
             summary=summary,
         )
+
+    def _monitor_plan_only_thesis(
+        self,
+        *,
+        thesis: TradeThesis,
+        summary: Dict[str, Any],
+    ) -> None:
+        """
+        Monitor conditional-entry theses even when no brokerage position exists.
+        """
+        ticker = thesis.ticker.upper()
+        quote_data = self._fetch_current_price(ticker)
+        current_price = _safe_float(quote_data.get("price"))
+        if current_price is None:
+            current_price = _safe_float(quote_data.get("ask")) or _safe_float(quote_data.get("bid"))
+        if current_price is None:
+            logger.info("Plan-only thesis %s skipped: no quote price available", ticker)
+            return
+
+        snapshot = self._build_snapshot(
+            thesis=thesis,
+            pos_data=None,
+            current_price=current_price,
+            bid=_safe_float(quote_data.get("bid")),
+            ask=_safe_float(quote_data.get("ask")),
+        )
+        self.store.save_snapshot(snapshot)
+        summary["snapshots_taken"] += 1
+
+        self._evaluate_action_pipeline(
+            thesis=thesis,
+            snapshot=snapshot,
+            pos_data=None,
+            recent_alerts=[],
+            thesis_execution_eligible=True,
+            ineligibility_reason=None,
+            summary=summary,
+        )
+
+    def _has_decision_plan(self, thesis: TradeThesis) -> bool:
+        return bool(getattr(thesis, "decision_plan_json", None))
 
     def _resolve_effective_side(
         self,
@@ -651,6 +701,24 @@ class PositionMonitor:
         """Evaluate deterministic action rules and optionally execute guarded actions."""
         summary["actions_evaluated"] += 1
 
+        plan_decision = self._build_plan_trigger_decision(
+            thesis=thesis,
+            snapshot=snapshot,
+            market_session=self._get_market_session(),
+        )
+        if plan_decision is not None:
+            self._process_action_decision(
+                thesis=thesis,
+                decision=plan_decision,
+                pos_data=pos_data,
+                recent_alerts=recent_alerts,
+                market_session=self._get_market_session(),
+                thesis_execution_eligible=thesis_execution_eligible,
+                ineligibility_reason=ineligibility_reason,
+                summary=summary,
+            )
+            return
+
         ticker_lessons, semantic_lessons, memory_unavailable = self._fetch_memory_context(
             thesis=thesis,
             snapshot=snapshot,
@@ -682,6 +750,79 @@ class PositionMonitor:
                 decision.context_summary, "memory_unavailable", True
             )
 
+        self._process_action_decision(
+            thesis=thesis,
+            decision=decision,
+            pos_data=pos_data,
+            recent_alerts=recent_alerts,
+            market_session=market_session,
+            thesis_execution_eligible=thesis_execution_eligible,
+            ineligibility_reason=ineligibility_reason,
+            summary=summary,
+        )
+
+    def _build_plan_trigger_decision(
+        self,
+        *,
+        thesis: TradeThesis,
+        snapshot: PositionSnapshot,
+        market_session: str,
+    ) -> Optional[JournalActionDecision]:
+        matched = evaluate_decision_plan(
+            thesis=thesis,
+            snapshot=snapshot,
+            market_session=market_session,
+            event_confirmations={},
+            volume_ratio=None,
+        )
+        if not matched:
+            return None
+        template = matched.get("action_template") or {}
+        action = str(template.get("action", "HOLD")).strip().upper()
+        if action == "BUY":
+            decision_type = ActionDecisionType.ENTER_POSITION.value
+            qty_pct = _safe_float(template.get("position_size_pct"))
+        elif action == "SELL":
+            decision_type = ActionDecisionType.EXIT_POSITION.value
+            qty_pct = 1.0
+        else:
+            return None
+
+        context_summary = {
+            "source": "decision_plan_v2",
+            "matched_branch_id": matched.get("branch_id"),
+            "market_session": market_session,
+            "action_template": template,
+            "plan_summary": matched.get("summary") or {},
+        }
+        return JournalActionDecision(
+            thesis_id=thesis.id,
+            ticker=thesis.ticker.upper(),
+            tick_timestamp=snapshot.timestamp,
+            decision_type=decision_type,
+            reason_code=ActionReasonCode.PLAN_TRIGGER.value,
+            confidence=85.0,
+            recommended_qty_pct=qty_pct,
+            dry_run=True,
+            gates_passed=False,
+            gate_block_reasons=json.dumps([]),
+            context_summary=json.dumps(context_summary),
+            linked_alert_ids=json.dumps([]),
+            created_at=datetime.utcnow().isoformat(),
+        )
+
+    def _process_action_decision(
+        self,
+        *,
+        thesis: TradeThesis,
+        decision: JournalActionDecision,
+        pos_data: Optional[Dict[str, Any]],
+        recent_alerts: List[JournalAlert],
+        market_session: str,
+        thesis_execution_eligible: bool,
+        ineligibility_reason: Optional[str],
+        summary: Dict[str, Any],
+    ) -> None:
         is_actionable = self.execution_advisor.is_actionable(decision)
         if is_actionable:
             summary["actions_recommended"] += 1
@@ -749,16 +890,20 @@ class PositionMonitor:
         dry_run: bool,
     ) -> JournalActionExecution:
         """Execute a decision through AlpacaExecutor or produce a dry-run artifact."""
+        signal = "BUY" if decision.decision_type == ActionDecisionType.ENTER_POSITION.value else "SELL"
+        action_template = self._extract_action_template(decision)
         qty = self._resolve_exec_qty(
             position_qty=position_qty,
             recommended_qty_pct=decision.recommended_qty_pct,
+            signal=signal,
+            explicit_quantity=_safe_float((action_template or {}).get("quantity")),
         )
-        if qty <= 0:
+        if signal == "SELL" and qty <= 0:
             return JournalActionExecution(
                 decision_id=decision.id,
                 thesis_id=thesis.id,
                 ticker=thesis.ticker.upper(),
-                submitted_signal="SELL",
+                submitted_signal=signal,
                 submitted_qty=0,
                 status="rejected",
                 error="resolved_qty_is_zero",
@@ -770,9 +915,9 @@ class PositionMonitor:
                 decision_id=decision.id,
                 thesis_id=thesis.id,
                 ticker=thesis.ticker.upper(),
-                submitted_signal="SELL",
+                submitted_signal=signal,
                 submitted_qty=qty,
-                order_type="MARKET",
+                order_type=(action_template or {}).get("order_type") or "MARKET",
                 status="dry_run",
                 raw_result_json=json.dumps(
                     {
@@ -780,6 +925,8 @@ class PositionMonitor:
                         "reason_code": decision.reason_code,
                         "dry_run": True,
                         "executor_available": self.executor is not None,
+                        "signal": signal,
+                        "action_template": action_template,
                     }
                 ),
                 created_at=datetime.utcnow().isoformat(),
@@ -788,7 +935,7 @@ class PositionMonitor:
         try:
             result = self.executor.execute_signal(
                 ticker=thesis.ticker.upper(),
-                signal="SELL",
+                signal=signal,
                 analysis_state={
                     "journal_action_decision_id": decision.id,
                     "journal_decision_type": decision.decision_type,
@@ -796,8 +943,14 @@ class PositionMonitor:
                     "journal_confidence": decision.confidence,
                 },
                 trade_date=datetime.utcnow().date().isoformat(),
-                agent_quantity=int(qty),
-                agent_order_type="MARKET",
+                agent_quantity=int(qty) if qty > 0 else None,
+                agent_order_type=(action_template or {}).get("order_type") or "MARKET",
+                agent_time_in_force=(action_template or {}).get("time_in_force"),
+                agent_limit_price=_safe_float((action_template or {}).get("limit_price")),
+                agent_stop_price=_safe_float((action_template or {}).get("stop_price")),
+                agent_trail_percent=_safe_float((action_template or {}).get("trail_percent")),
+                agent_trail_price=_safe_float((action_template or {}).get("trail_price")),
+                agent_position_size_pct=_safe_float((action_template or {}).get("position_size_pct")),
             )
             executed = bool((result or {}).get("executed"))
             status = "submitted" if executed else "rejected"
@@ -806,9 +959,9 @@ class PositionMonitor:
                 decision_id=decision.id,
                 thesis_id=thesis.id,
                 ticker=thesis.ticker.upper(),
-                submitted_signal="SELL",
+                submitted_signal=signal,
                 submitted_qty=qty,
-                order_type="MARKET",
+                order_type=(action_template or {}).get("order_type") or "MARKET",
                 status=status,
                 broker_order_id=str(order_id) if order_id else None,
                 error=None if executed else str((result or {}).get("reason") or "execution_rejected"),
@@ -820,13 +973,25 @@ class PositionMonitor:
                 decision_id=decision.id,
                 thesis_id=thesis.id,
                 ticker=thesis.ticker.upper(),
-                submitted_signal="SELL",
+                submitted_signal=signal,
                 submitted_qty=qty,
-                order_type="MARKET",
+                order_type=(action_template or {}).get("order_type") or "MARKET",
                 status="failed",
                 error=str(e),
                 created_at=datetime.utcnow().isoformat(),
             )
+
+    def _extract_action_template(self, decision: JournalActionDecision) -> Optional[Dict[str, Any]]:
+        if not decision.context_summary:
+            return None
+        try:
+            payload = json.loads(decision.context_summary)
+        except Exception:
+            return None
+        template = payload.get("action_template")
+        if isinstance(template, dict):
+            return template
+        return None
 
     def _fetch_memory_context(
         self,
@@ -861,7 +1026,14 @@ class PositionMonitor:
         *,
         position_qty: Optional[float],
         recommended_qty_pct: Optional[float],
+        signal: str,
+        explicit_quantity: Optional[float] = None,
     ) -> int:
+        if explicit_quantity is not None:
+            q = int(round(abs(float(explicit_quantity))))
+            return max(0, q)
+        if str(signal).upper() == "BUY":
+            return 0
         qty = abs(_safe_float(position_qty) or 0.0)
         if qty <= 0:
             return 0

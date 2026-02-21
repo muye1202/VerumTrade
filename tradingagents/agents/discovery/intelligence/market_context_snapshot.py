@@ -1,4 +1,8 @@
 from __future__ import annotations
+"""
+Market Context Snapshot:
+Computes macro-level indicators, volatility indices, and broader market trend data to establish a "market regime" snapshot.
+"""
 
 import math
 from datetime import date, datetime, timedelta
@@ -6,8 +10,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tradingagents.dataflows.config import get_config
 
-from .stage0_cache import load_cache_value, save_cache_value, stable_key
+from .pipeline_cache import load_cache_value, save_cache_value, stable_key
 from .universe_prefilters import _fetch_daily_earnings_symbols_from_yahoo
+from .pipeline_utils import parse_ohlcv_rows
 
 
 class PreStage0IntelligenceBuilder:
@@ -41,30 +46,7 @@ class PreStage0IntelligenceBuilder:
 
     @staticmethod
     def _parse_ohlcv(raw_csv: str) -> List[Dict[str, Any]]:
-        lines = [l for l in str(raw_csv).split("\n") if l.strip() and not l.startswith("#")]
-        if len(lines) < 3:
-            return []
-        header = [h.strip() for h in lines[0].split(",")]
-        if "Date" not in header or "Close" not in header:
-            return []
-        idx = {name: i for i, name in enumerate(header)}
-        out: List[Dict[str, Any]] = []
-        for line in lines[1:]:
-            parts = [p.strip() for p in line.split(",")]
-            try:
-                dt = parts[idx["Date"]]
-                row = {
-                    "Date": dt,
-                    "Open": float(parts[idx["Open"]]) if "Open" in idx and idx["Open"] < len(parts) else None,
-                    "High": float(parts[idx["High"]]) if "High" in idx and idx["High"] < len(parts) else None,
-                    "Low": float(parts[idx["Low"]]) if "Low" in idx and idx["Low"] < len(parts) else None,
-                    "Close": float(parts[idx["Close"]]),
-                    "Volume": float(parts[idx["Volume"]]) if "Volume" in idx and idx["Volume"] < len(parts) else None,
-                }
-            except Exception:
-                continue
-            out.append(row)
-        return out
+        return parse_ohlcv_rows(raw_csv)
 
     @staticmethod
     def _safe_pct(a: float, b: float) -> float:

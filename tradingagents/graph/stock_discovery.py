@@ -187,7 +187,7 @@ class StockDiscoveryGraph:
         self,
         trade_date: Optional[str] = None,
         exclude_tickers: Optional[List[str]] = None,
-        discovery_track: str = "anomaly_scan",
+        discovery_track: str = "enricher",
     ) -> DiscoveryResult:
         """
         Run the stock discovery process.
@@ -226,6 +226,9 @@ class StockDiscoveryGraph:
                     "stage0": result.get("stage0", {}),
                     "stage1": result.get("stage1", {}),
                     "stage2": result.get("stage2", {}),
+                    "vendor_calls_by_stage": result.get("vendor_calls_by_stage", {}),
+                    "data_quality_summary": result.get("data_quality_summary", {}),
+                    "filter_relaxations_applied": result.get("filter_relaxations_applied", []),
                 },
             )
 

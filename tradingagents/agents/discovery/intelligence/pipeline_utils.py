@@ -1,15 +1,15 @@
 from __future__ import annotations
+"""
+Pipeline Utilities:
+General technical and numerical utilities required across different stages of the discovery pipeline.
+"""
 
 import json
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from .universe_prefilters import (
-    filter_by_avg_daily_dollar_volume,
-    filter_tradeable_primary_us_equities,
-)
-from .stage0_cache import (
+from .pipeline_cache import (
     load_cache_value,
     save_cache_value,
     stable_key,
@@ -46,32 +46,133 @@ def safe_float(value: Any) -> Optional[float]:
         return None
 
 
-def parse_price_volume_csv(raw_csv: str) -> Tuple[List[float], List[float]]:
+def parse_ohlcv_rows(raw_csv: str) -> List[Dict[str, Any]]:
+    """Parse canonical OHLCV CSV payload into row dicts."""
     lines = [l for l in str(raw_csv).split("\n") if l.strip() and not l.startswith("#")]
-    if len(lines) < 3:
-        return [], []
+    if len(lines) < 2:
+        return []
 
     header = [h.strip() for h in lines[0].split(",")]
-    if "Close" not in header:
-        return [], []
-    close_idx = header.index("Close")
-    vol_idx = header.index("Volume") if "Volume" in header else None
+    idx = {name: i for i, name in enumerate(header)}
+    if "Close" not in idx:
+        return []
 
+    out: List[Dict[str, Any]] = []
+    for line in lines[1:]:
+        parts = [p.strip() for p in line.split(",")]
+
+        def _get(name: str) -> Optional[str]:
+            i = idx.get(name)
+            if i is None or i >= len(parts):
+                return None
+            return parts[i]
+
+        row: Dict[str, Any] = {}
+        dt = _get("Date")
+        if dt is not None:
+            row["Date"] = dt
+
+        for field in ("Open", "High", "Low", "Close", "Volume"):
+            raw_val = _get(field)
+            row[field] = safe_float(raw_val) if raw_val is not None else None
+        out.append(row)
+    return out
+
+
+def parse_ohlc_rows(raw_csv: str) -> List[Dict[str, float]]:
+    """Extract rows with valid High/Low/Close numeric fields."""
+    out: List[Dict[str, float]] = []
+    for row in parse_ohlcv_rows(raw_csv):
+        high = row.get("High")
+        low = row.get("Low")
+        close = row.get("Close")
+        if high is None or low is None or close is None:
+            continue
+        out.append(
+            {
+                "high": float(high),
+                "low": float(low),
+                "close": float(close),
+            }
+        )
+    return out
+
+
+def parse_daily_dollar_volumes(raw_csv: str) -> List[float]:
+    """Extract daily close*volume values from OHLCV CSV payload."""
+    out: List[float] = []
+    for row in parse_ohlcv_rows(raw_csv):
+        close = row.get("Close")
+        volume = row.get("Volume")
+        if close is None or volume is None:
+            continue
+        close_val = float(close)
+        volume_val = float(volume)
+        if close_val <= 0 or volume_val < 0:
+            continue
+        out.append(close_val * volume_val)
+    return out
+
+
+def parse_price_volume_csv(raw_csv: str) -> Tuple[List[float], List[float]]:
     prices: List[float] = []
     volumes: List[float] = []
-    for line in lines[1:]:
-        parts = line.split(",")
-        if close_idx >= len(parts):
-            continue
-        close_val = safe_float(parts[close_idx])
+    for row in parse_ohlcv_rows(raw_csv):
+        close_val = row.get("Close")
         if close_val is None:
             continue
-        prices.append(close_val)
-        if vol_idx is not None and vol_idx < len(parts):
-            vol_val = safe_float(parts[vol_idx])
-            if vol_val is not None:
-                volumes.append(vol_val)
+        prices.append(float(close_val))
+        vol_val = row.get("Volume")
+        if vol_val is not None:
+            volumes.append(float(vol_val))
     return prices, volumes
+
+
+def linear_regression_slope(values: List[float]) -> float:
+    """Slope of linear regression over a sequence where x is the index."""
+    n = float(len(values))
+    if n < 2:
+        return 0.0
+    x_mean = (n - 1.0) / 2.0
+    y_mean = sum(values) / n
+    numerator = 0.0
+    denominator = 0.0
+    for i, y in enumerate(values):
+        dx = i - x_mean
+        numerator += dx * (y - y_mean)
+        denominator += dx * dx
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator
+
+
+def compute_obv_series(prices: List[float], volumes: List[float], window: Optional[int] = None) -> List[float]:
+    """Compute OBV time series from aligned price and volume arrays."""
+    n = min(len(prices), len(volumes))
+    if window is not None and window > 0:
+        n = min(n, int(window))
+    if n <= 0:
+        return []
+    p = prices[-n:]
+    v = volumes[-n:]
+    out = [0.0]
+    for i in range(1, n):
+        if p[i] > p[i - 1]:
+            out.append(out[-1] + v[i])
+        elif p[i] < p[i - 1]:
+            out.append(out[-1] - v[i])
+        else:
+            out.append(out[-1])
+    return out
+
+
+def compute_obv_slope(prices: List[float], volumes: List[float], window: int = 10) -> float:
+    """OBV trend slope over the requested trailing window."""
+    if window <= 1:
+        return 0.0
+    if len(prices) < window or len(volumes) < window:
+        return 0.0
+    return linear_regression_slope(compute_obv_series(prices, volumes, window=window))
 
 
 def extract_indicator_value(raw_text: str) -> Optional[float]:
@@ -111,6 +212,17 @@ def normalize_linear(value: float, low: float, high: float) -> float:
     return 100.0 * clamp(pct, 0.0, 1.0)
 
 
+def compute_return_pct(prices: List[float], period: int) -> Optional[float]:
+    """Return percent change over *period* sessions using period+1 bars."""
+    if period <= 0 or len(prices) < period + 1:
+        return None
+    prev = prices[-(period + 1)]
+    cur = prices[-1]
+    if prev == 0:
+        return None
+    return ((cur - prev) / prev) * 100.0
+
+
 def fetch_alpaca_tradeable_assets(
     trade_date: Optional[str] = None,
     min_avg_dollar_volume_20d: float = 10_000_000.0,
@@ -119,6 +231,10 @@ def fetch_alpaca_tradeable_assets(
     cache_config: Optional[Dict[str, Any]] = None,
     metrics: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
+    from .universe_prefilters import (
+        filter_by_avg_daily_dollar_volume,
+    )
+
     symbols = fetch_alpaca_primary_us_equities(
         trade_date=trade_date,
         cache_config=cache_config,
@@ -185,6 +301,8 @@ def fetch_alpaca_primary_us_equities(
         assets = client.get_all_assets()
     except Exception as e:
         raise RuntimeError(f"Failed to fetch Alpaca tradable assets: {e}") from e
+
+    from .universe_prefilters import filter_tradeable_primary_us_equities
 
     exchange_filtered_symbols = filter_tradeable_primary_us_equities(assets)
     if not exchange_filtered_symbols:

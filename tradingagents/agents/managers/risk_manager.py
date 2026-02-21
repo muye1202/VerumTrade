@@ -180,10 +180,10 @@ JSON RULES:
 - Use `null` for missing values (never "N/A", "NA", "-", or "NONE").
 - Numeric fields must be numbers, not formatted strings (no `%`, commas, or currency symbols).
 - `quantity` must be an integer or null.
-- `decision_version` must be "v1".
-- If `market_snapshot.reference_price` exists, all numeric prices (limit/stop/stop_loss/take_profit) must stay within +/-30% of that reference.
+- `decision_version` must be "v1" or "v2".
+- Anchor all prices to market_snapshot.reference_price. `limit_price` (when used) must be within the current bid/ask range — it is the actual execution price of the order being placed right now, not a hypothetical future trigger. `stop_loss` and `take_profit` must be realistic risk levels relative to reference_price.
 
-Required JSON shape:
+Use `decision_version: "v1"` for immediate single-action decisions:
 {{
   "action": "BUY | SELL | HOLD",
   "ticker": "{company_name}",
@@ -204,6 +204,49 @@ Required JSON shape:
   "decision_version": "v1"
 }}
 
+Use `decision_version: "v2"` for conditional scenario playbooks:
+{{
+  "decision_version": "v2",
+  "ticker": "{company_name}",
+  "plan_mode": "immediate | conditional",
+  "execution_plan": [
+    {{
+      "branch_id": "post_earnings_breakout",
+      "priority": 1,
+      "conditions": {{
+        "price": {{"close_above": 80.0}},
+        "volume": {{"volume_ratio_min": 1.5}},
+        "schedule": {{"valid_from": "2026-02-26", "valid_to": "2026-03-05", "session_constraint": "MARKET_HOURS"}}
+      }},
+      "event_conditions": [
+        {{"event_key": "neutron_commentary_clean", "requires_confirmation": true, "expected_value": "true"}}
+      ],
+      "action_template": {{
+        "action": "BUY",
+        "quantity": null,
+        "order_type": "LIMIT",
+        "time_in_force": "DAY",
+        "extended_hours": false,
+        "limit_price": 81.0,
+        "stop_price": null,
+        "trail_percent": null,
+        "trail_price": null,
+        "stop_loss": 72.0,
+        "take_profit": 95.0,
+        "position_size_pct": 0.06,
+        "time_horizon": "{holding_text}",
+        "confidence": "MEDIUM",
+        "rationale": "Conditional breakout entry after binary event."
+      }}
+    }}
+  ],
+  "default_action": "post_earnings_breakout",
+  "time_horizon": "{holding_text}",
+  "confidence": "MEDIUM",
+  "rationale": "Scenario-based plan for post-event execution.",
+  "action": "HOLD"
+}}
+
 Validation-critical constraints:
 - For EVERY action (BUY/SELL/HOLD), provide numeric `stop_loss` and `take_profit`.
 - BUY requires at least one of: `quantity` or `position_size_pct`.
@@ -212,7 +255,14 @@ Validation-critical constraints:
 - STOP requires `stop_price`.
 - STOP_LIMIT requires BOTH `stop_price` and `limit_price`.
 - TRAILING_STOP requires exactly one of `trail_percent` or `trail_price`.
-- If market is closed, do not use MARKET; use LIMIT with a concrete `limit_price` and DAY tif.
+- HOLD-specific rules (when action is HOLD):
+  - Set `order_type` to "MARKET" — the executor does not submit any order for HOLD; MARKET is the correct sentinel.
+  - Set `limit_price` to null.
+  - Set `quantity` to null and `position_size_pct` to null.
+  - Set `stop_loss` and `take_profit` to realistic numeric risk levels relative to reference_price.
+- For BUY or SELL when market is closed, do not use MARKET; use LIMIT with a concrete `limit_price` near the current bid/ask, and DAY time_in_force. For HOLD, always use `order_type: "MARKET"` and `limit_price: null` regardless of market session.
+
+- For v2 scenario trees, put conditional logic in execution_plan and event_conditions.
 - Include a short "price anchor rationale" in your narrative before the JSON block, describing % distance from the snapshot reference.
   """
 
@@ -246,3 +296,6 @@ Validation-critical constraints:
         }
 
     return risk_manager_node
+
+
+

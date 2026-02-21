@@ -1,4 +1,8 @@
 from __future__ import annotations
+"""
+Universe Prefilters:
+Provides initial quantitative filtering mechanisms (e.g., liquidity, catalysts) to prune the universe of tradeable tickers prior to deeper evaluation.
+"""
 
 import logging
 import re
@@ -9,11 +13,12 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 import requests
 
 from tradingagents.dataflows.config import get_config
-from .stage0_cache import (
+from .pipeline_cache import (
     load_cache_value,
     save_cache_value,
     stable_key,
 )
+from .pipeline_utils import parse_daily_dollar_volumes
 
 PRIMARY_EXCHANGES = {"NYSE", "NASDAQ"}
 _YAHOO_EARNINGS_URL = "https://finance.yahoo.com/calendar/earnings"
@@ -91,33 +96,6 @@ def filter_tradeable_primary_us_equities(assets: Iterable[Any]) -> List[str]:
     return sorted(symbols)
 
 
-def _parse_daily_dollar_volumes(raw_csv: str) -> List[float]:
-    lines = [l for l in str(raw_csv).split("\n") if l.strip() and not l.startswith("#")]
-    if len(lines) < 2:
-        return []
-
-    header = [h.strip() for h in lines[0].split(",")]
-    if "Close" not in header or "Volume" not in header:
-        return []
-
-    close_idx = header.index("Close")
-    volume_idx = header.index("Volume")
-    dollar_volumes: List[float] = []
-    for line in lines[1:]:
-        parts = [p.strip() for p in line.split(",")]
-        if close_idx >= len(parts) or volume_idx >= len(parts):
-            continue
-        try:
-            close_val = float(parts[close_idx])
-            volume_val = float(parts[volume_idx])
-        except (TypeError, ValueError):
-            continue
-        if close_val <= 0 or volume_val < 0:
-            continue
-        dollar_volumes.append(close_val * volume_val)
-    return dollar_volumes
-
-
 def compute_avg_daily_dollar_volume(
     symbol: str,
     trade_date: Optional[str] = None,
@@ -164,7 +142,7 @@ def compute_avg_daily_dollar_volume(
     if raw_csv is None:
         _record_metric(metrics, "vendor_calls_estimate", 1)
         raw_csv = route_to_vendor("get_stock_data", symbol, start_date, end_date)
-    dollar_volumes = _parse_daily_dollar_volumes(raw_csv or "")
+    dollar_volumes = parse_daily_dollar_volumes(raw_csv or "")
     if len(dollar_volumes) < lookback_days:
         return None
     window = dollar_volumes[-lookback_days:]
@@ -592,7 +570,7 @@ def filter_by_upcoming_earnings(
     mode: str = "daily_calendar",
     window_days: int = 7,
     max_workers: int = 4,
-    failure_policy: str = "fail_open",
+    failure_policy: str = "fail_closed",
     http_timeout_s: int = 12,
     calendar_page_size: int = 100,
     cache_config: Optional[Dict[str, Any]] = None,

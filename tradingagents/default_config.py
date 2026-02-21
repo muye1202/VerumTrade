@@ -78,11 +78,7 @@ DEFAULT_CONFIG = {
     "max_tool_calls_total": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_TOTAL", "50")),
     # When true, expose bundled one-shot tools per analyst to reduce extra LLM turns.
     "enable_bundle_tools": _env_flag("TRADINGAGENTS_ENABLE_BUNDLE_TOOLS", True),
-    # Decision integrity hardening
-    "decision_price_guard_enabled": _env_flag("TRADINGAGENTS_DECISION_PRICE_GUARD_ENABLED", True),
-    "decision_price_guard_band_pct": float(os.getenv("TRADINGAGENTS_DECISION_PRICE_GUARD_BAND_PCT", "30")),
-    "decision_price_guard_mode": os.getenv("TRADINGAGENTS_DECISION_PRICE_GUARD_MODE", "repair_then_abort"),
-    "decision_repair_max_attempts": int(os.getenv("TRADINGAGENTS_DECISION_REPAIR_MAX_ATTEMPTS", "1")),
+    # Decision integrity: market snapshot used to provide reference price context to LLM
     "decision_snapshot_source": os.getenv("TRADINGAGENTS_DECISION_SNAPSHOT_SOURCE", "executor_quote_first"),
     "executor_quote_max_rel_spread": float(os.getenv("TRADINGAGENTS_EXECUTOR_QUOTE_MAX_REL_SPREAD", "0.01")),
 
@@ -112,6 +108,34 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
         # Example: "get_news": "openai",               # Override category default
+    },
+
+    # Discovery pipeline controls
+    "discovery": {
+        # off: deterministic-only policy; cached_only: read cache but never invoke LLM;
+        # adaptive: call LLM only when regime uncertainty is elevated.
+        "policy_mode": os.getenv("TRADINGAGENTS_DISCOVERY_POLICY_MODE", "off"),
+        "min_regime_confidence_for_no_llm": float(
+            os.getenv("TRADINGAGENTS_DISCOVERY_MIN_REGIME_CONFIDENCE", "0.70")
+        ),
+        "enable_legacy_llm_technical_scoring": _env_flag(
+            "TRADINGAGENTS_DISCOVERY_ENABLE_LEGACY_LLM_TECHNICAL_SCORING",
+            False,
+        ),
+        "feature_matrix": {
+            "cache_ttl_hours": int(os.getenv("TRADINGAGENTS_DISCOVERY_FEATURE_CACHE_TTL_HOURS", "24")),
+        },
+    },
+
+    "stage2_scoring": {
+        "output": {
+            "min_candidates_relaxation": [
+                "loosen_rs_floor",
+                "disable_sma50_requirement",
+                "loosen_gap_down",
+                "lower_dollar_volume_floor",
+            ],
+        },
     },
 
     # Portfolio analysis rate-limiting delays

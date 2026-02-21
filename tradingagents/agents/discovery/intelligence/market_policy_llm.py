@@ -1,12 +1,16 @@
 from __future__ import annotations
+"""
+Market Policy LLM:
+Uses an LLM to ingest the market context snapshot and dynamically generate a risk policy adjusting pipeline thresholds and sector weights.
+"""
 
 import json
 from typing import Any, Dict, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .stage0_cache import load_cache_value, save_cache_value, stable_key
-from .utils import parse_json_dict
+from .pipeline_cache import load_cache_value, save_cache_value, stable_key
+from .pipeline_utils import parse_json_dict
 
 _SCHEMA_VERSION = "1.0"
 _PROMPT_VERSION = "policy_v1"
@@ -433,6 +437,7 @@ def build_llm_bias_profile(
     snapshot: Dict[str, Any],
     cache_config: Optional[Dict[str, Any]] = None,
     metrics: Optional[Dict[str, Any]] = None,
+    allow_llm_call: bool = True,
 ) -> Dict[str, Any]:
     key = stable_key({
         "type": "pre_stage0_llm_bias",
@@ -450,7 +455,7 @@ def build_llm_bias_profile(
     if hit and isinstance(cached, dict):
         return _sanitize_bias(cached)
 
-    if llm is None:
+    if llm is None or not bool(allow_llm_call):
         return _neutral_bias()
 
     prompt_payload = {
@@ -461,8 +466,11 @@ def build_llm_bias_profile(
     if isinstance(metrics, dict):
         metrics["llm_calls"] = int(metrics.get("llm_calls", 0)) + 1
 
-    parsed = _invoke_policy_llm(llm, prompt_payload)
-    bias = _sanitize_bias(parsed)
+    try:
+        parsed = _invoke_policy_llm(llm, prompt_payload)
+        bias = _sanitize_bias(parsed)
+    except Exception:
+        return _neutral_bias()
 
     save_cache_value(
         namespace="pre_stage0_llm_bias",

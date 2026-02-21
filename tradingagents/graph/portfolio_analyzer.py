@@ -393,7 +393,6 @@ class PortfolioAnalyzer:
                         )
                         structured = final_state.get("final_trade_decision_structured")
                         validation_error = final_state.get("final_trade_decision_validation_error", "")
-                        price_guard_error = (final_state.get("decision_guard") or {}).get("price_guard_error", "")
                         if not isinstance(structured, dict):
                             exec_result = {
                                 "ticker": ticker,
@@ -405,32 +404,6 @@ class PortfolioAnalyzer:
                                 "decision_version": None,
                                 "decision_validation_ok": False,
                                 "decision_validation_error": validation_error or "structured decision unavailable",
-                                "decision_price_guard_error": price_guard_error or "",
-                                "market_snapshot_reference_price": (
-                                    (final_state.get("market_snapshot") or {}).get("reference_price")
-                                ),
-                                "market_snapshot_source": (
-                                    (final_state.get("market_snapshot") or {}).get("source")
-                                ),
-                            }
-                            analysis["execution_result"] = exec_result
-                            if on_stock_executed:
-                                on_stock_executed(ticker, exec_result)
-                            continue
-                        if price_guard_error:
-                            exec_result = {
-                                "ticker": ticker,
-                                "signal": decision,
-                                "trade_date": self.analysis_date,
-                                "executed": False,
-                                "error": "Decision failed price guard; execution aborted",
-                                "decision_source": "final_trade_decision_structured",
-                                "decision_version": (
-                                    (final_state.get("final_trade_decision_structured") or {}).get("decision_version")
-                                ),
-                                "decision_validation_ok": False,
-                                "decision_validation_error": validation_error or "decision failed price guard",
-                                "decision_price_guard_error": price_guard_error,
                                 "market_snapshot_reference_price": (
                                     (final_state.get("market_snapshot") or {}).get("reference_price")
                                 ),
@@ -760,11 +733,6 @@ class PortfolioAnalyzer:
                     )
                     structured = final_state.get("final_trade_decision_structured", {})
                     validation_error = final_state.get("final_trade_decision_validation_error", "")
-                price_guard_error = (
-                    ((final_state or {}).get("decision_guard") or {}).get("price_guard_error", "")
-                    if isinstance(final_state, dict)
-                    else ""
-                )
 
                 if not isinstance(structured, dict) or not structured:
                     results.append(
@@ -781,37 +749,6 @@ class PortfolioAnalyzer:
                                 "decision_version": None,
                                 "decision_validation_ok": False,
                                 "decision_validation_error": validation_error or "structured decision unavailable",
-                                "decision_price_guard_error": price_guard_error or "",
-                                "market_snapshot_reference_price": (
-                                    ((final_state or {}).get("market_snapshot") or {}).get("reference_price")
-                                ),
-                                "market_snapshot_source": (
-                                    ((final_state or {}).get("market_snapshot") or {}).get("source")
-                                ),
-                            },
-                        }
-                    )
-                    continue
-                if price_guard_error:
-                    results.append(
-                        {
-                            "ticker": ticker,
-                            "action": action,
-                            "execution_result": {
-                                "ticker": ticker,
-                                "signal": action,
-                                "trade_date": self.analysis_date,
-                                "executed": False,
-                                "error": "Decision failed price guard; execution aborted",
-                                "decision_source": "final_trade_decision_structured",
-                                "decision_version": (
-                                    (structured or {}).get("decision_version")
-                                    if isinstance(structured, dict)
-                                    else None
-                                ),
-                                "decision_validation_ok": False,
-                                "decision_validation_error": validation_error or "decision failed price guard",
-                                "decision_price_guard_error": price_guard_error,
                                 "market_snapshot_reference_price": (
                                     ((final_state or {}).get("market_snapshot") or {}).get("reference_price")
                                 ),
@@ -1077,4 +1014,3 @@ class PortfolioAnalyzer:
             "Schedule monthly portfolio review to maintain optimal allocation"
         )
         return suggestions
-

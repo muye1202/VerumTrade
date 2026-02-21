@@ -141,6 +141,9 @@ class IntelligenceDrivenRecommender:
             "indicator_availability": dict(intelligence.indicator_availability or {}),
             "stage1": self._build_stage1_payload(intelligence.stage1_scorecards),
             "stage2": self._build_stage2_payload(intelligence.stage2_candidates),
+            "vendor_calls_by_stage": dict(intelligence.vendor_calls_by_stage or {}),
+            "data_quality_summary": dict(intelligence.data_quality_summary or {}),
+            "filter_relaxations_applied": list(intelligence.filter_relaxations_applied or []),
             "excluded_tickers": sorted(excluded_set),
             "discovery_track": track,
         }
@@ -201,6 +204,12 @@ class IntelligenceDrivenRecommender:
             )
             report_parts.append("")
 
+        if intelligence.vendor_calls_by_stage:
+            report_parts.append("## Vendor Calls by Stage")
+            for stage, metrics in sorted((intelligence.vendor_calls_by_stage or {}).items()):
+                report_parts.append(f"- {stage}: {metrics}")
+            report_parts.append("")
+
         if track == "anomaly_scan":
             report_parts.extend(
                 self._build_track_b_report_section(intelligence.momentum_scan_hits)
@@ -210,7 +219,11 @@ class IntelligenceDrivenRecommender:
                 self._build_stage1_report_section(intelligence.stage1_scorecards)
             )
             report_parts.extend(
-                self._build_stage2_report_section(intelligence.stage2_candidates)
+                self._build_stage2_report_section(
+                    intelligence.stage2_candidates,
+                    filter_relaxations_applied=intelligence.filter_relaxations_applied,
+                    data_quality_summary=intelligence.data_quality_summary,
+                )
             )
             report_parts.extend(
                 self._build_track_b_report_section(intelligence.momentum_scan_hits)
@@ -223,7 +236,11 @@ class IntelligenceDrivenRecommender:
                 self._build_stage1_report_section(intelligence.stage1_scorecards)
             )
             report_parts.extend(
-                self._build_stage2_report_section(intelligence.stage2_candidates)
+                self._build_stage2_report_section(
+                    intelligence.stage2_candidates,
+                    filter_relaxations_applied=intelligence.filter_relaxations_applied,
+                    data_quality_summary=intelligence.data_quality_summary,
+                )
             )
 
         if rankings:
@@ -495,6 +512,43 @@ class IntelligenceDrivenRecommender:
     # Track B ranking helpers
     # ------------------------------------------------------------------
     @staticmethod
+    def _track_b_hit_strength(hit: MomentumScanHit) -> float:
+        """Return normalized 0-100 strength for cross-scan ranking."""
+        if isinstance(getattr(hit, "normalized_strength", None), (int, float)):
+            v = float(getattr(hit, "normalized_strength"))
+            if v > 0:
+                return max(0.0, min(100.0, v))
+
+        details = dict(getattr(hit, "trigger_details", {}) or {})
+        scan = str(getattr(hit, "scan_name", "")).strip().lower()
+        raw = abs(float(getattr(hit, "signal_value", 0.0)))
+        if scan == "volatility_breakout":
+            pct = details.get("bb_width_percentile")
+            if isinstance(pct, (int, float)):
+                return max(0.0, min(100.0, 100.0 - float(pct)))
+            return max(0.0, min(100.0, raw))
+        if scan == "momentum_acceleration":
+            return max(0.0, min(100.0, (raw / 4.0) * 100.0))
+        if scan == "rs_divergence":
+            return max(0.0, min(100.0, (raw / 10.0) * 100.0))
+        if scan == "stealth_accumulation":
+            threshold = details.get("obv_slope_threshold")
+            if isinstance(threshold, (int, float)) and float(threshold) > 0:
+                ratio = raw / float(threshold)
+                return max(0.0, min(100.0, (ratio - 1.0) * 100.0))
+            return max(0.0, min(100.0, raw))
+        return max(0.0, min(100.0, raw))
+
+    @classmethod
+    def _track_b_composite_for_hits(cls, ticker_hits: List[MomentumScanHit]) -> float:
+        # Multi-signal alignment: 25 points per scan triggered.
+        base_score = min(len(ticker_hits) * 25, 100)
+        strongest_strength = max(cls._track_b_hit_strength(h) for h in ticker_hits)
+        # Strength bonus contributes up to +20 points.
+        bonus = min(20.0, strongest_strength * 0.20)
+        return min(base_score + bonus, 100.0)
+
+    @staticmethod
     def _rankings_from_track_b(
         hits: List[MomentumScanHit],
         excluded_set: Set[str],
@@ -516,17 +570,18 @@ class IntelligenceDrivenRecommender:
 
         rankings: List[Dict[str, Any]] = []
         for ticker, ticker_hits in by_ticker.items():
-            # Multi-signal alignment: 25 points per scan triggered.
-            base_score = min(len(ticker_hits) * 25, 100)
-            # Add a bonus from the strongest signal value (capped at 20).
-            strongest = max(abs(h.signal_value) for h in ticker_hits)
-            composite = min(base_score + min(strongest, 20), 100)
+            composite = IntelligenceDrivenRecommender._track_b_composite_for_hits(ticker_hits)
 
             scan_names = sorted({h.scan_name for h in ticker_hits})
             thesis_parts = []
-            for h in sorted(ticker_hits, key=lambda x: abs(x.signal_value), reverse=True):
+            for h in sorted(
+                ticker_hits,
+                key=lambda x: IntelligenceDrivenRecommender._track_b_hit_strength(x),
+                reverse=True,
+            ):
+                strength = IntelligenceDrivenRecommender._track_b_hit_strength(h)
                 thesis_parts.append(
-                    f"{h.scan_name}(signal={h.signal_value:.2f})"
+                    f"{h.scan_name}(signal={h.signal_value:.2f},strength={strength:.1f})"
                 )
 
             rankings.append(
@@ -558,17 +613,16 @@ class IntelligenceDrivenRecommender:
             lines.append(f"  - {name}: {count}")
         lines.append("")
 
-        lines.append(
-            "| Ticker | Scan | Signal Value | Key Details |"
-        )
-        lines.append("|---|---|---:|---|")
+        lines.append("| Ticker | Scan | Signal Value | Strength | Key Details |")
+        lines.append("|---|---|---:|---:|---|")
         for h in sorted(hits, key=lambda x: (x.scan_name, -abs(x.signal_value))):
             details = ", ".join(
                 f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
                 for k, v in sorted(h.trigger_details.items())
             )
+            strength = IntelligenceDrivenRecommender._track_b_hit_strength(h)
             lines.append(
-                f"| {h.ticker} | {h.scan_name} | {h.signal_value:.4f} | {details} |"
+                f"| {h.ticker} | {h.scan_name} | {h.signal_value:.4f} | {strength:.1f} | {details} |"
             )
         lines.append("")
         return lines
@@ -624,13 +678,21 @@ class IntelligenceDrivenRecommender:
 
         track_b: Dict[str, Dict[str, Any]] = {}
         for ticker, ticker_hits in by_ticker.items():
-            base_score = min(len(ticker_hits) * 25, 100)
-            strongest = max(abs(h.signal_value) for h in ticker_hits)
-            composite = round(min(base_score + min(strongest, 20), 100), 2)
+            composite = round(
+                IntelligenceDrivenRecommender._track_b_composite_for_hits(ticker_hits),
+                2,
+            )
             scan_names = sorted({h.scan_name for h in ticker_hits})
             thesis_parts = [
-                f"{h.scan_name}(signal={h.signal_value:.2f})"
-                for h in sorted(ticker_hits, key=lambda x: abs(x.signal_value), reverse=True)
+                (
+                    f"{h.scan_name}(signal={h.signal_value:.2f},"
+                    f"strength={IntelligenceDrivenRecommender._track_b_hit_strength(h):.1f})"
+                )
+                for h in sorted(
+                    ticker_hits,
+                    key=lambda x: IntelligenceDrivenRecommender._track_b_hit_strength(x),
+                    reverse=True,
+                )
             ]
             track_b[ticker] = {
                 "ticker": ticker,
@@ -729,12 +791,30 @@ class IntelligenceDrivenRecommender:
     @staticmethod
     def _build_stage2_report_section(
         candidates: List[Stage2ScoredCandidate],
+        filter_relaxations_applied: Optional[List[str]] = None,
+        data_quality_summary: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
         if not candidates:
             return ["## Stage 2 Scoring\nNo Stage 2 candidates generated.\n"]
 
         lines: List[str] = ["## Stage 2 Scoring & Filtering"]
         lines.append(f"- Candidates passed: {len(candidates)}")
+        if filter_relaxations_applied:
+            lines.append(f"- Min-candidate relaxations applied: {', '.join(filter_relaxations_applied)}")
+        quality = dict(data_quality_summary or {})
+        if quality:
+            lines.append(
+                f"- Data quality flagged: {quality.get('flagged', 0)}/{quality.get('total', 0)} "
+                f"({quality.get('flagged_pct', 0.0)}%)"
+            )
+            breadth = dict(quality.get("breadth_context") or {})
+            if breadth:
+                lines.append(
+                    f"- Breadth proxy: %>50DMA={breadth.get('pct_above_50dma', 'N/A')} "
+                    f"%>200DMA={breadth.get('pct_above_200dma', 'N/A')} "
+                    f"NH-NL={breadth.get('new_high_minus_new_low_proxy_pct', 'N/A')} "
+                    f"weak={breadth.get('weak_breadth', False)}"
+                )
         lines.append("")
         lines.append(
             "| Ticker | Composite | Earnings | Momentum | Options | Sector | Squeeze |"
