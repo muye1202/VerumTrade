@@ -41,6 +41,21 @@ Simple utility to inspect the journal database contents.
 python scripts/journal/check_journal.py
 ```
 
+### `import_scheduled_reports.py`
+Import canonical v2 scheduled-order reports from `results/stocks/{date}` into the journal database.
+
+**Usage:**
+```bash
+# Dry run preview
+python journal_cli/import_scheduled_reports.py --date 2026-02-20 --dry-run --verbose
+
+# Apply import to journal DB
+python journal_cli/import_scheduled_reports.py --date 2026-02-20
+
+# JSON output for automation
+python journal_cli/import_scheduled_reports.py --date 2026-02-20 --json
+```
+
 ## Requirements
 
 All scripts require:

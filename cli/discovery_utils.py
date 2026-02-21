@@ -157,6 +157,8 @@ def _run_discovery_deep_analysis(
     import logging
     from rich.live import Live
     from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from functools import wraps
+    from tradingagents.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
     from cli.analysis_utils import (
         process_analysis_stream,
         _reset_message_buffer,
@@ -205,6 +207,76 @@ def _run_discovery_deep_analysis(
         args = graph.propagator.get_graph_args()
 
         layout = create_layout()
+
+        # --- Inject log/report writers for this ticker ---
+        # Store original methods if not already saved to prevent stacking
+        if not hasattr(message_buffer, "_orig_add_message"):
+            message_buffer._orig_add_message = message_buffer.add_message
+        if not hasattr(message_buffer, "_orig_add_tool_call"):
+            message_buffer._orig_add_tool_call = message_buffer.add_tool_call
+        if not hasattr(message_buffer, "_orig_update_report_section"):
+            message_buffer._orig_update_report_section = message_buffer.update_report_section
+
+        # Restore originals before wrapping to prevent recursive nesting
+        message_buffer.add_message = message_buffer._orig_add_message
+        message_buffer.add_tool_call = message_buffer._orig_add_tool_call
+        message_buffer.update_report_section = message_buffer._orig_update_report_section
+
+        # Directories
+        results_dir = Path(config["results_dir"]) / "stocks" / trade_date / ticker
+        results_dir.mkdir(parents=True, exist_ok=True)
+        report_dir = results_dir / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        log_file = results_dir / "message_tool.log"
+        log_file.touch(exist_ok=True)
+
+        def save_message_decorator(obj, func_name):
+            func = getattr(obj, func_name)
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                func(*args, **kwargs)
+                if not obj.messages:
+                    return
+                timestamp, message_type, content = obj.messages[-1]
+                content = str(content).replace("\n", " ")
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"{timestamp} [{message_type}] {content}\n")
+            return wrapper
+        
+        def save_tool_call_decorator(obj, func_name):
+            func = getattr(obj, func_name)
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                func(*args, **kwargs)
+                if not obj.tool_calls:
+                    return
+                timestamp, tool_name, kwargs_args = obj.tool_calls[-1]
+                if isinstance(kwargs_args, dict):
+                    args_str = ", ".join(f"{k}={v}" for k, v in kwargs_args.items())
+                else:
+                    args_str = str(kwargs_args)
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
+            return wrapper
+
+        def save_report_section_decorator(obj, func_name):
+            func = getattr(obj, func_name)
+            @wraps(func)
+            def wrapper(section_name, content):
+                sanitized = _strip_thinking_blocks(content)
+                func(section_name, sanitized)
+                if section_name in obj.report_sections and obj.report_sections[section_name] is not None:
+                    section_content = _strip_thinking_blocks(obj.report_sections[section_name])
+                    if section_content:
+                        file_name = f"{section_name}.md"
+                        with open(report_dir / file_name, "w", encoding="utf-8") as f:
+                            f.write(section_content)
+            return wrapper
+
+        message_buffer.add_message = save_message_decorator(message_buffer, "add_message")
+        message_buffer.add_tool_call = save_tool_call_decorator(message_buffer, "add_tool_call")
+        message_buffer.update_report_section = save_report_section_decorator(message_buffer, "update_report_section")
+        # --- End log/report injection ---
 
         try:
             with Live(layout, refresh_per_second=4):

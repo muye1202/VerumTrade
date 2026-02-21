@@ -33,6 +33,7 @@ from rich.text import Text
 
 from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.models import AlertType, ThesisStatus
+from tradingagents.agents.journal.report_import import import_scheduled_reports
 
 console = Console()
 journal_app = typer.Typer(
@@ -271,6 +272,72 @@ def check_now(
         if new_alerts:
             console.print()
             _display_alerts(new_alerts, title="New Alerts")
+
+
+@journal_app.command(name="import-scheduled")
+def import_scheduled(
+    date: str = typer.Option(..., "--date", help="Date folder under results/stocks (YYYY-MM-DD)"),
+    results_root: str = typer.Option("./results/stocks", "--results-root", help="Root folder for stock analysis results"),
+    db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview import without writing to DB"),
+    verbose: bool = typer.Option(False, "--verbose", help="Show per-ticker status"),
+):
+    """Import v2 scheduled-order reports into journal theses."""
+    store = _get_store(db_path)
+    summary = import_scheduled_reports(
+        store=store,
+        date=date,
+        results_root=results_root,
+        dry_run=dry_run,
+    )
+
+    lines = [
+        f"[bold]Date:[/bold] {summary.get('date')}",
+        f"[bold]Date dir:[/bold] {summary.get('date_dir')}",
+        f"[bold]Dry run:[/bold] {bool(summary.get('dry_run'))}",
+        "",
+        f"[bold]Tickers scanned:[/bold] {int(summary.get('tickers_scanned', 0) or 0)}",
+        f"[bold]Imported:[/bold] {int(summary.get('imported', 0) or 0)}",
+        f"[bold]Updated:[/bold] {int(summary.get('updated', 0) or 0)}",
+        f"[bold]Created:[/bold] {int(summary.get('created', 0) or 0)}",
+        f"[bold]Skipped:[/bold] {int(summary.get('skipped', 0) or 0)}",
+        f"[bold]Errors:[/bold] {len(summary.get('errors') or [])}",
+    ]
+    dedup_closed = int(summary.get("dedup_closed", 0) or 0)
+    if not dry_run:
+        lines.append(f"[bold]Dedup closed:[/bold] {dedup_closed}")
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="[bold green]Scheduled Report Import[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+
+    errors = list(summary.get("errors") or [])
+    if errors:
+        err_table = Table(show_header=True, header_style="bold red", box=box.SIMPLE_HEAD, expand=True)
+        err_table.add_column("Error")
+        for err in errors[:20]:
+            err_table.add_row(str(err))
+        console.print(Panel(err_table, title="[bold red]Import Errors[/bold red]", border_style="red"))
+
+    if verbose:
+        item_table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, expand=True)
+        item_table.add_column("Ticker", width=8, style="cyan")
+        item_table.add_column("Status", width=10)
+        item_table.add_column("Reason", no_wrap=False)
+        item_table.add_column("Path", no_wrap=False)
+        for item in summary.get("items") or []:
+            item_table.add_row(
+                str(item.get("ticker") or ""),
+                str(item.get("status") or ""),
+                str(item.get("reason") or ""),
+                str(item.get("path") or ""),
+            )
+        console.print(Panel(item_table, title="[bold]Per-Ticker Import Results[/bold]", border_style="blue"))
 
 
 @journal_app.command()

@@ -30,6 +30,7 @@ from tradingagents.agents.journal.models import (
 )
 from tradingagents.agents.journal.store import JournalStore
 from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
+from tradingagents.agents.journal.report_import import import_scheduled_reports
 from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
 from tradingagents.agents.journal.monitor import PositionMonitor
 from tradingagents.agents.journal.outcome import OutcomeRecorder
@@ -90,6 +91,7 @@ __all__ = [
     "JournalActionExecution",
     "JournalStore",
     "sync_missing_positions",
+    "import_scheduled_reports",
     "ThesisExtractor",
     "PositionMonitor",
     "OutcomeRecorder",
