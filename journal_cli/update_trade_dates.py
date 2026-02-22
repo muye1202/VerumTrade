@@ -1,4 +1,4 @@
-"""
+﻿"""
 Update journal trade dates from Alpaca order history.
 
 This script fetches historical filled orders from Alpaca and updates
@@ -31,7 +31,7 @@ except ImportError:
                     os.environ[key.strip()] = value.strip().strip("'\"")
 
 from tradingagents.execution import AlpacaExecutor
-from tradingagents.agents.journal.models import TradeThesis
+from tradingagents.agents.journal.core.models import TradeThesis
 
 def fetch_filled_orders(executor: AlpacaExecutor, limit: int = 500) -> List[Any]:
     """Fetch all filled orders from Alpaca."""

@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import re
 from typing import Any, Dict, Iterable, Optional
 
-from tradingagents.agents.journal.models import TradeThesis
+from tradingagents.agents.journal.core.models import TradeThesis
 
 
 def infer_event_flags(

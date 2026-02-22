@@ -1,4 +1,4 @@
-"""
+﻿"""
 Reflection Agent — LLM-powered analysis of completed trades.
 
 Takes a TradeThesis + TradeOutcome pair and produces structured lessons with
@@ -12,7 +12,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     TradeThesis,
     TradeOutcome,
     TradeLesson,
@@ -253,8 +253,8 @@ def create_reflection_callback(
     Factory function to create an on_outcome_recorded callback.
 
     Usage:
-        from tradingagents.agents.journal.reflection_agent import create_reflection_callback
-        from tradingagents.agents.journal.lesson_memory import LessonMemory
+        from tradingagents.agents.journal.learning.reflection_agent import create_reflection_callback
+        from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
 
         memory = LessonMemory()
         callback = create_reflection_callback(lesson_memory=memory)

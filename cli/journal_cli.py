@@ -1,4 +1,4 @@
-"""
+﻿"""
 CLI commands for the Trade Journal system.
 
 Register with the main CLI by importing and adding to the typer app:
@@ -31,9 +31,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tradingagents.agents.journal.store import JournalStore
-from tradingagents.agents.journal.models import AlertType, ThesisStatus
-from tradingagents.agents.journal.report_import import import_scheduled_reports
+from tradingagents.agents.journal.core.store import JournalStore
+from tradingagents.agents.journal.core.models import AlertType, ThesisStatus
+from tradingagents.agents.journal.ingestion.report_import import import_scheduled_reports
 
 console = Console()
 journal_app = typer.Typer(
@@ -44,6 +44,37 @@ journal_app = typer.Typer(
 
 # Default DB path (configurable via env var)
 _DEFAULT_DB = os.getenv("JOURNAL_DB_PATH", "./journal/trade_journal.db")
+
+def _resolve_llm_config() -> Optional[dict]:
+    """
+    Return the LLM config for Tier 2 evaluation from environment variables:
+
+      JOURNAL_LLM_PROVIDER  one of: openai, anthropic, qwen3-cn,
+                            deepseek, openrouter, glm, google
+      JOURNAL_LLM_MODEL     model name, e.g. gpt-4o-mini
+      JOURNAL_BACKEND_URL   base URL override (optional)
+
+    If neither JOURNAL_LLM_PROVIDER nor JOURNAL_LLM_MODEL is set,
+    returns None (Tier 1 rule-based evaluation only, zero LLM cost).
+    """
+    journal_provider = os.getenv("JOURNAL_LLM_PROVIDER", "").strip()
+    journal_model = os.getenv("JOURNAL_LLM_MODEL", "").strip()
+
+    if not journal_provider and not journal_model:
+        return None
+
+    # Build a minimal config dict that ConfiguredLLMClient understands,
+    # inheriting the standard app defaults for everything not specified.
+    from tradingagents.default_config import DEFAULT_CONFIG
+    config = dict(DEFAULT_CONFIG)
+    if journal_provider:
+        config["llm_provider"] = journal_provider
+    if journal_model:
+        config["quick_think_llm"] = journal_model
+    journal_backend_url = os.getenv("JOURNAL_BACKEND_URL", "").strip()
+    if journal_backend_url:
+        config["backend_url"] = journal_backend_url
+    return config
 
 
 def _get_store(db_path: Optional[str] = None) -> JournalStore:
@@ -231,12 +262,12 @@ def check_now(
     db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
 ):
     """Run a single monitoring tick immediately."""
-    from tradingagents.agents.journal.scheduler import JournalScheduler
+    from tradingagents.agents.journal.monitoring.scheduler import JournalScheduler
 
     store = _get_store(db_path)
     executor = _get_executor()
 
-    scheduler = JournalScheduler(store=store, executor=executor)
+    scheduler = JournalScheduler(store=store, executor=executor, llm_config=_resolve_llm_config())
     console.print("[yellow]Running monitoring tick...[/yellow]")
 
     summary = scheduler.run_once()
@@ -346,7 +377,7 @@ def daemon(
     interval: int = typer.Option(15, "--interval", "-i", help="Market-hours interval (minutes)"),
 ):
     """Start the journal scheduler daemon (foreground, Ctrl+C to stop)."""
-    from tradingagents.agents.journal.scheduler import JournalScheduler
+    from tradingagents.agents.journal.monitoring.scheduler import JournalScheduler
 
     store = _get_store(db_path)
     executor = _get_executor()
@@ -368,6 +399,7 @@ def daemon(
     scheduler = JournalScheduler(
         store=store,
         executor=executor,
+        llm_config=_resolve_llm_config(),
         market_interval_minutes=interval,
         on_tick_complete=on_tick,
     )
@@ -796,7 +828,7 @@ def lesson_memory_stats(
 ):
     """Show lesson memory (ChromaDB) statistics."""
     try:
-        from tradingagents.agents.journal.lesson_memory import LessonMemory
+        from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
         memory = LessonMemory()
         stats = memory.get_stats()
 
@@ -841,7 +873,7 @@ def query_lessons(
 ):
     """Search lessons using semantic similarity."""
     try:
-        from tradingagents.agents.journal.lesson_memory import LessonMemory
+        from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
         memory = LessonMemory()
 
         console.print(f"[dim]Searching for: '{query}'...[/dim]\n")

@@ -234,12 +234,38 @@ def main() -> None:
 
         console.print()
 
+    # ── Optional Tier 2 LLM eval ─────────────────────────────────────────────
+    # Set JOURNAL_LLM_PROVIDER + JOURNAL_LLM_MODEL in .env to enable.
+    # Example:
+    #   JOURNAL_LLM_PROVIDER=openai
+    #   JOURNAL_LLM_MODEL=gpt-4o-mini
+    _journal_provider = os.getenv("JOURNAL_LLM_PROVIDER", "").strip()
+    _journal_model    = os.getenv("JOURNAL_LLM_MODEL", "").strip()
+    _journal_url      = os.getenv("JOURNAL_BACKEND_URL", "").strip()
+    _llm_config: dict | None = None
+    if _journal_provider or _journal_model:
+        from tradingagents.default_config import DEFAULT_CONFIG
+        _llm_config = dict(DEFAULT_CONFIG)
+        if _journal_provider:
+            _llm_config["llm_provider"] = _journal_provider
+        if _journal_model:
+            _llm_config["quick_think_llm"] = _journal_model
+        if _journal_url:
+            _llm_config["backend_url"] = _journal_url
+        console.print(
+            f"[dim]Journal LLM (Tier 2): provider={_llm_config['llm_provider']}, "
+            f"model={_llm_config['quick_think_llm']}[/dim]"
+        )
+    else:
+        console.print("[dim]Journal LLM (Tier 2): disabled (set JOURNAL_LLM_PROVIDER + JOURNAL_LLM_MODEL to enable)[/dim]")
+
     scheduler = JournalScheduler(
         store=store,
         executor=executor,
         lesson_memory=memory,
         execution_advisor=execution_advisor,
         execution_policy=execution_policy,
+        llm_config=_llm_config,
         market_interval_minutes=15,
         on_outcome_recorded=callback,
         on_tick_complete=on_tick,

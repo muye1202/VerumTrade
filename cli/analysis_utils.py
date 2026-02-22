@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 import json
 import time
 import asyncio
@@ -457,6 +457,7 @@ def run_single_ticker_analysis(
     config["backend_url"] = selections["backend_url"]
     config["llm_provider"] = selections["llm_provider"].lower()
 
+
     # Persist execution preferences into config (graph/other components may read this).
     if "alpaca_execution" in config:
         exec_sel = selections.get("execution") or {}
@@ -467,13 +468,14 @@ def run_single_ticker_analysis(
             "position_size_pct": float(exec_sel.get("position_size_pct", config.get("alpaca_execution", {}).get("position_size_pct", 0.10) or 0.10)),
         }
 
+
     # Initialize the graph
     graph = TradingAgentsGraph(
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
     )
 
     # Create result directory
-    results_dir = Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
+    results_dir = Path(config["results_dir"]) / "stocks" / selections["analysis_date"] / selections["ticker"]
     results_dir.mkdir(parents=True, exist_ok=True)
     report_dir = results_dir / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -761,8 +763,8 @@ def run_single_ticker_analysis(
 
                         # Journal capture (non-critical)
                         try:
-                            from tradingagents.agents.journal.store import JournalStore
-                            from tradingagents.agents.journal.hooks import capture_trade_thesis
+                            from tradingagents.agents.journal.core.store import JournalStore
+                            from tradingagents.agents.journal.ingestion.hooks import capture_trade_thesis
                             
                             journal_store = JournalStore()
                             capture_trade_thesis(

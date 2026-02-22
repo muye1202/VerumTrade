@@ -1,4 +1,4 @@
-"""
+﻿"""
 Import canonical v2 scheduled-order reports into the journal database.
 
 Scans:
@@ -20,7 +20,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tradingagents.agents.journal import JournalStore
-from tradingagents.agents.journal.report_import import import_scheduled_reports
+from tradingagents.agents.journal.ingestion.report_import import import_scheduled_reports
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -101,6 +101,43 @@ def main() -> int:
             status = str(item.get("status") or "")
             reason = str(item.get("reason") or "")
             print(f"  {ticker} {status:8s} {reason}")
+            parsed = item.get("parsed") or {}
+            if parsed:
+                print(
+                    "    parsed: "
+                    f"version={parsed.get('decision_version')} "
+                    f"intent={parsed.get('execution_intent')} "
+                    f"mode={parsed.get('plan_mode')} "
+                    f"action={parsed.get('action')} "
+                    f"branches={parsed.get('branch_count')} "
+                    f"immediate={parsed.get('immediate_branch_id') or 'none'}"
+                )
+                branch_ids = parsed.get("branch_ids") or []
+                if branch_ids:
+                    print(f"    branch_ids: {', '.join(str(x) for x in branch_ids)}")
+                ref = parsed.get("reference_template") or {}
+                print(
+                    "    mapped_for_import: "
+                    f"stop_loss={ref.get('stop_loss')} "
+                    f"target_1={ref.get('target_1')} "
+                    f"order_type={ref.get('order_type')} "
+                    f"position_size_pct={ref.get('position_size_pct')} "
+                    f"trailing_stop_pct={ref.get('trailing_stop_pct')} "
+                    f"time_horizon={ref.get('time_horizon_label')} "
+                    f"conviction={ref.get('conviction')}"
+                )
+            applied = item.get("import_applied") or {}
+            if applied:
+                print(
+                    "    applied: "
+                    f"action={applied.get('action')} "
+                    f"qty={applied.get('quantity')} "
+                    f"stop_loss={applied.get('stop_loss')} "
+                    f"target_1={applied.get('target_1')}"
+                )
+            preserved = item.get("preserved_fields") or []
+            if preserved:
+                print(f"    preserved: {', '.join(str(x) for x in preserved)}")
 
     return 0
 

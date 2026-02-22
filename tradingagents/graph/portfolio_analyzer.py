@@ -1,4 +1,4 @@
-"""
+﻿"""
 Portfolio-level analysis and rebalancing engine.
 Analyzes all positions, generates recommendations, and provides strategic insights.
 
@@ -320,8 +320,8 @@ class PortfolioAnalyzer:
         journal_store = None
         journal_refresh_fn = None
         try:
-            from tradingagents.agents.journal.store import JournalStore
-            from tradingagents.agents.journal.hooks import (
+            from tradingagents.agents.journal.core.store import JournalStore
+            from tradingagents.agents.journal.ingestion.hooks import (
                 refresh_active_thesis_from_portfolio_analysis,
             )
 
@@ -436,8 +436,8 @@ class PortfolioAnalyzer:
 
                         # Journal capture (non-critical)
                         try:
-                            from tradingagents.agents.journal.store import JournalStore
-                            from tradingagents.agents.journal.hooks import capture_trade_thesis
+                            from tradingagents.agents.journal.core.store import JournalStore
+                            from tradingagents.agents.journal.ingestion.hooks import capture_trade_thesis
 
                             journal_store = JournalStore()
                             capture_trade_thesis(
@@ -780,8 +780,8 @@ class PortfolioAnalyzer:
 
                 # Journal capture (non-critical)
                 try:
-                    from tradingagents.agents.journal.store import JournalStore
-                    from tradingagents.agents.journal.hooks import capture_trade_thesis
+                    from tradingagents.agents.journal.core.store import JournalStore
+                    from tradingagents.agents.journal.ingestion.hooks import capture_trade_thesis
 
                     journal_store = JournalStore()
                     capture_trade_thesis(

@@ -439,6 +439,7 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
     config["backend_url"] = selections["backend_url"]
     config["llm_provider"] = selections["llm_provider"]
 
+
     graph = TradingAgentsGraph(
         [analyst.value for analyst in selections["analysts"]],
         config=config,

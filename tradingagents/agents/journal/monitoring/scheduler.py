@@ -1,4 +1,4 @@
-"""
+﻿"""
 Journal Scheduler — the daemon that wakes the PositionMonitor periodically.
 
 Uses APScheduler (lightweight, no external broker). Runs as:
@@ -26,13 +26,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from tradingagents.agents.journal.store import JournalStore
-from tradingagents.agents.journal.monitor import PositionMonitor
-from tradingagents.agents.journal.outcome import OutcomeRecorder
-from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
-from tradingagents.agents.journal.models import TradeThesis, TradeOutcome
-from tradingagents.agents.journal.execution_advisor import JournalExecutionAdvisor
-from tradingagents.agents.journal.execution_policy import JournalExecutionPolicy
+from tradingagents.agents.journal.core.store import JournalStore
+from tradingagents.agents.journal.monitoring.monitor import PositionMonitor
+from tradingagents.agents.journal.monitoring.outcome import OutcomeRecorder
+from tradingagents.agents.journal.portfolio.portfolio_sync import sync_missing_positions
+from tradingagents.agents.journal.core.models import TradeThesis, TradeOutcome
+from tradingagents.agents.journal.execution.execution_advisor import JournalExecutionAdvisor
+from tradingagents.agents.journal.execution.execution_policy import JournalExecutionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,9 @@ class JournalScheduler:
         on_tick_complete: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_alert: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_outcome_recorded: Optional[Callable[["TradeThesis", "TradeOutcome"], None]] = None,
+        llm_client: Any = None,
+        llm_config: Optional[Dict[str, Any]] = None,
+        state_db_path: Optional[str] = None,
     ):
         """
         Args:
@@ -81,14 +84,34 @@ class JournalScheduler:
             on_tick_complete: Callback fired after each tick with summary dict
             on_alert: Callback fired for each new alert
             on_outcome_recorded: Callback fired for each newly recorded outcome (thesis, outcome)
+            llm_client: Pre-built LLM client (takes precedence over llm_config)
+            llm_config: App config dict (llm_provider, quick_think_llm, backend_url, …) used
+                        to auto-build a ConfiguredLLMClient for Tier 2 evaluation.
+                        Ignored when llm_client is supplied directly.
+            state_db_path: Path for SmartPlanEvaluator's condition state DB
         """
         self.store = store
+        # Resolve the LLM client: explicit client wins, then config-derived, then None (Tier 1 only).
+        resolved_llm_client = llm_client
+        if resolved_llm_client is None and llm_config:
+            from tradingagents.agents.journal.evaluation.llm_evaluator import build_llm_client_from_config
+            resolved_llm_client = build_llm_client_from_config(llm_config)
+            if resolved_llm_client:
+                logger.info(
+                    "Journal SmartEvaluator using %s (quick_think_llm=%s)",
+                    llm_config.get("llm_provider", "?"),
+                    llm_config.get("quick_think_llm", "?"),
+                )
+        from tradingagents.agents.journal.evaluation.smart_evaluator import SmartPlanEvaluator
+        _db = state_db_path or str(Path(store.db_path).parent / "condition_state.db")
+        _smart = SmartPlanEvaluator(state_db_path=_db, llm_client=resolved_llm_client)
         self.monitor = PositionMonitor(
             store=store,
             executor=executor,
             lesson_memory=lesson_memory,
             execution_advisor=execution_advisor,
             execution_policy=execution_policy,
+            smart_evaluator=_smart,
         )
         self.outcome_recorder = OutcomeRecorder(store=store)
 
@@ -399,6 +422,17 @@ def main():
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level",
     )
+    parser.add_argument(
+        "--enable-llm",
+        action="store_true",
+        default=False,
+        help="Enable Tier 2 LLM evaluation (requires Anthropic API key)",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default="claude-sonnet-4-20250514",
+        help="Anthropic model to use for Tier 2 LLM evaluation",
+    )
     args = parser.parse_args()
 
     # Setup logging
@@ -434,9 +468,18 @@ def main():
         if alerts > 0:
             logger.info(f"🚨 {alerts} new alert(s) fired!")
 
+    llm_config = None
+    if args.enable_llm:
+        # Build a minimal config dict so ConfiguredLLMClient can construct the right backend.
+        # Defaults to the openai provider; users can override via env or by editing this block.
+        from tradingagents.default_config import DEFAULT_CONFIG
+        llm_config = dict(DEFAULT_CONFIG)
+        llm_config["quick_think_llm"] = args.llm_model
+
     scheduler = JournalScheduler(
         store=store,
         executor=executor,
+        llm_config=llm_config,
         market_interval_minutes=args.interval,
         on_tick_complete=on_tick,
     )

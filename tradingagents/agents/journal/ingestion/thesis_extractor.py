@@ -1,4 +1,4 @@
-"""
+﻿"""
 Thesis Extractor — pulls structured thesis parameters from the multi-agent
 analysis state and execution results.
 
@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-from tradingagents.agents.journal.models import TradeThesis, ThesisStatus
+from tradingagents.agents.journal.core.models import TradeThesis, ThesisStatus
 
 logger = logging.getLogger(__name__)
 

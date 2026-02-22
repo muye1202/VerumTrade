@@ -1,4 +1,4 @@
-"""
+﻿"""
 Lesson Memory — ChromaDB-backed vector storage for trade lessons.
 
 Stores lessons with embeddings for semantic retrieval during future trading
@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tradingagents.agents.journal.models import TradeLesson
+from tradingagents.agents.journal.core.models import TradeLesson
 
 logger = logging.getLogger(__name__)
 

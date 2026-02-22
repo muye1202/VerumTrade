@@ -1,4 +1,4 @@
-"""
+﻿"""
 Position Monitor — the scheduler's workhorse.
 
 On each tick, the monitor:
@@ -21,7 +21,7 @@ from datetime import datetime, date, time, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 from zoneinfo import ZoneInfo
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     TradeThesis,
     PositionSnapshot,
     JournalAlert,
@@ -32,19 +32,19 @@ from tradingagents.agents.journal.models import (
     JournalActionDecision,
     JournalActionExecution,
 )
-from tradingagents.agents.journal.store import JournalStore
-from tradingagents.agents.journal.execution_advisor import (
+from tradingagents.agents.journal.core.store import JournalStore
+from tradingagents.agents.journal.execution.execution_advisor import (
     ActionContext,
     JournalExecutionAdvisor,
 )
-from tradingagents.agents.journal.execution_policy import (
+from tradingagents.agents.journal.execution.execution_policy import (
     JournalExecutionPolicy,
     PolicyResult,
 )
-from tradingagents.agents.journal.decision_plan_evaluator import (
+from tradingagents.agents.journal.evaluation.decision_plan_evaluator import (
     evaluate_decision_plan,
 )
-from tradingagents.agents.journal.news_event_inference import (
+from tradingagents.agents.journal.evaluation.news_event_inference import (
     infer_event_flags,
     event_inference_enabled,
 )
@@ -79,6 +79,7 @@ class PositionMonitor:
         execution_policy: Optional[JournalExecutionPolicy] = None,
         alert_dedup_hours: float = 4.0,
         spy_ticker: str = "SPY",
+        smart_evaluator: Any = None,  # Optional[SmartPlanEvaluator]
     ):
         self.store = store
         self.executor = executor
@@ -87,6 +88,7 @@ class PositionMonitor:
         self.execution_policy = execution_policy or JournalExecutionPolicy.from_env()
         self.alert_dedup_hours = alert_dedup_hours
         self.spy_ticker = spy_ticker
+        self._smart_evaluator = smart_evaluator
         self.semantic_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_SEMANTIC_LESSON_LIMIT", "3") or 3)
         self.ticker_lesson_limit = int(os.getenv("JOURNAL_EXECUTION_TICKER_LESSON_LIMIT", "5") or 5)
         max_rel_spread = _safe_float(os.getenv("JOURNAL_QUOTE_MAX_REL_SPREAD"))
@@ -800,12 +802,12 @@ class PositionMonitor:
         merged_confirmations = dict(inferred_flags)
         merged_confirmations.update(manual_flags)
 
-        matched = evaluate_decision_plan(
-            thesis=thesis,
-            snapshot=snapshot,
-            market_session=market_session,
-            event_confirmations=merged_confirmations,
+        matched = self._eval_plan(
+            thesis,
+            snapshot,
+            market_session,
             volume_ratio=None,
+            event_confirmations=merged_confirmations,
         )
         if not matched:
             return None
@@ -844,6 +846,40 @@ class PositionMonitor:
             context_summary=json.dumps(context_summary),
             linked_alert_ids=json.dumps([]),
             created_at=datetime.utcnow().isoformat(),
+        )
+
+    def _eval_plan(
+        self,
+        thesis,
+        snapshot,
+        market_session,
+        volume_ratio=None,
+        event_confirmations=None,
+    ):
+        """Dispatch to SmartPlanEvaluator if available, else fall back to evaluate_decision_plan."""
+        if self._smart_evaluator:
+            has_pos = False
+            if self.executor:
+                try:
+                    has_pos = any(
+                        p.symbol == thesis.ticker
+                        for p in self.executor.get_positions()
+                    )
+                except Exception:
+                    pass
+            return self._smart_evaluator.evaluate(
+                thesis=thesis,
+                snapshot=snapshot,
+                market_session=market_session,
+                volume_ratio=volume_ratio,
+                has_position=has_pos,
+            )
+        return evaluate_decision_plan(
+            thesis=thesis,
+            snapshot=snapshot,
+            market_session=market_session,
+            volume_ratio=volume_ratio,
+            event_confirmations=event_confirmations,
         )
 
     def _collect_required_event_keys(self, thesis: TradeThesis) -> List[str]:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trade Journal Agent — closes the feedback loop between execution and learning.
 
 The journal tracks every trade from thesis → execution → outcome, monitors
@@ -15,7 +15,7 @@ Core components:
     LessonMemory        ChromaDB-backed vector storage for semantic lesson retrieval
 """
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     TradeThesis,
     PositionSnapshot,
     JournalAlert,
@@ -28,25 +28,25 @@ from tradingagents.agents.journal.models import (
     JournalActionDecision,
     JournalActionExecution,
 )
-from tradingagents.agents.journal.store import JournalStore
-from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
-from tradingagents.agents.journal.report_import import import_scheduled_reports
-from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
-from tradingagents.agents.journal.monitor import PositionMonitor
-from tradingagents.agents.journal.outcome import OutcomeRecorder
-from tradingagents.agents.journal.news_event_inference import (
+from tradingagents.agents.journal.core.store import JournalStore
+from tradingagents.agents.journal.portfolio.portfolio_sync import sync_missing_positions
+from tradingagents.agents.journal.ingestion.report_import import import_scheduled_reports
+from tradingagents.agents.journal.ingestion.thesis_extractor import ThesisExtractor
+from tradingagents.agents.journal.monitoring.monitor import PositionMonitor
+from tradingagents.agents.journal.monitoring.outcome import OutcomeRecorder
+from tradingagents.agents.journal.evaluation.news_event_inference import (
     infer_event_flags,
     event_inference_enabled,
 )
 
 # Optional components may require extra runtime dependencies (e.g., tzdata/chromadb).
 try:  # pragma: no cover
-    from tradingagents.agents.journal.scheduler import JournalScheduler
+    from tradingagents.agents.journal.monitoring.scheduler import JournalScheduler
 except Exception:  # pragma: no cover
     JournalScheduler = None  # type: ignore[assignment]
 
 try:  # pragma: no cover
-    from tradingagents.agents.journal.reflection_agent import (
+    from tradingagents.agents.journal.learning.reflection_agent import (
         ReflectionAgent,
         create_reflection_callback,
     )
@@ -55,12 +55,12 @@ except Exception:  # pragma: no cover
     create_reflection_callback = None  # type: ignore[assignment]
 
 try:  # pragma: no cover
-    from tradingagents.agents.journal.lesson_memory import LessonMemory
+    from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
 except Exception:  # pragma: no cover
     LessonMemory = None  # type: ignore[assignment]
 
 try:  # pragma: no cover
-    from tradingagents.agents.journal.execution_advisor import (
+    from tradingagents.agents.journal.execution.execution_advisor import (
         JournalExecutionAdvisor,
         ActionContext,
     )
@@ -69,7 +69,7 @@ except Exception:  # pragma: no cover
     ActionContext = None  # type: ignore[assignment]
 
 try:  # pragma: no cover
-    from tradingagents.agents.journal.execution_policy import (
+    from tradingagents.agents.journal.execution.execution_policy import (
         JournalExecutionPolicy,
         PolicyResult,
     )

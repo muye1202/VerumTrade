@@ -1,4 +1,4 @@
-"""
+﻿"""
 Execution Hook — auto-registers trades in the journal.
 
 Call `hook_into_execution()` after a trade executes to capture the thesis.
@@ -6,7 +6,7 @@ This is the glue between the existing execution flow and the new journal system.
 
 Usage in the existing pipeline (analysis_utils.py or portfolio_analysis_utils.py):
 
-    from tradingagents.agents.journal.hooks import capture_trade_thesis
+    from tradingagents.agents.journal.ingestion.hooks import capture_trade_thesis
 
     # After propagate_and_execute or manual execute_signal:
     capture_trade_thesis(
@@ -24,9 +24,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from tradingagents.agents.journal.models import TradeThesis, ThesisStatus
-from tradingagents.agents.journal.store import JournalStore
-from tradingagents.agents.journal.thesis_extractor import ThesisExtractor
+from tradingagents.agents.journal.core.models import TradeThesis, ThesisStatus
+from tradingagents.agents.journal.core.store import JournalStore
+from tradingagents.agents.journal.ingestion.thesis_extractor import ThesisExtractor
 
 logger = logging.getLogger(__name__)
 

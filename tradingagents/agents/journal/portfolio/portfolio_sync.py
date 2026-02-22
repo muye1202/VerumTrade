@@ -1,4 +1,4 @@
-"""Utilities for syncing live brokerage positions into journal theses."""
+﻿"""Utilities for syncing live brokerage positions into journal theses."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from tradingagents.agents.journal.models import ThesisStatus, TradeThesis
-from tradingagents.agents.journal.store import JournalStore
+from tradingagents.agents.journal.core.models import ThesisStatus, TradeThesis
+from tradingagents.agents.journal.core.store import JournalStore
 
 logger = logging.getLogger(__name__)
 

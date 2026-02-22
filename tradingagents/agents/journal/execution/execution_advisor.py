@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     ActionDecisionType,
     ActionReasonCode,
     JournalActionDecision,

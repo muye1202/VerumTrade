@@ -1,4 +1,4 @@
-"""
+﻿"""
 Outcome Recorder — computes structured trade outcomes when positions close.
 
 Called by the monitor when it detects a closed position, or manually via CLI.
@@ -12,12 +12,12 @@ from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     TradeThesis,
     TradeOutcome,
     ThesisStatus,
 )
-from tradingagents.agents.journal.store import JournalStore
+from tradingagents.agents.journal.core.store import JournalStore
 
 logger = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 SQLite-backed persistence for the Trade Journal.
 
 Single-file database, no external dependencies. Schema auto-migrates on init.
@@ -16,7 +16,7 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tradingagents.agents.journal.models import (
+from tradingagents.agents.journal.core.models import (
     TradeThesis,
     PositionSnapshot,
     JournalAlert,

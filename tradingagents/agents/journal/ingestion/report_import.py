@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import logging
@@ -6,8 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tradingagents.agents.journal.models import ThesisStatus, TradeThesis
-from tradingagents.agents.journal.store import JournalStore
+# Any is used for the smart_evaluator param (avoids a hard import of SmartPlanEvaluator)
+
+from tradingagents.agents.journal.core.models import ThesisStatus, TradeThesis
+from tradingagents.agents.journal.core.store import JournalStore
 from tradingagents.graph.decision_schema import (
     extract_decision_json_block,
     validate_structured_decision,
@@ -20,6 +22,7 @@ def import_scheduled_reports(
     store: JournalStore,
     date: str,
     results_root: str | Path = "./results/stocks",
+    smart_evaluator: Any = None,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -89,6 +92,7 @@ def import_scheduled_reports(
                 )
                 continue
 
+            parsed_preview = _build_parsed_preview(structured)
             outcome = _upsert_scheduled_thesis(
                 store=store,
                 trade_date=str(date),
@@ -99,18 +103,25 @@ def import_scheduled_reports(
             )
 
             summary["imported"] += 1
-            if outcome == "created":
+            if outcome.get("status") == "created":
                 summary["created"] += 1
             else:
                 summary["updated"] += 1
             summary["items"].append(
                 {
                     "ticker": ticker,
-                    "status": outcome,
+                    "status": outcome.get("status"),
                     "reason": "ok",
                     "path": str(report_path),
+                    "parsed": parsed_preview,
+                    "import_applied": outcome.get("import_applied"),
+                    "preserved_fields": outcome.get("preserved_fields"),
                 }
             )
+            if smart_evaluator and not dry_run:
+                thesis_obj = store.get_active_thesis_by_ticker(ticker)
+                if thesis_obj:
+                    smart_evaluator.compile_on_import(thesis_obj)
         except Exception as e:
             err = f"{ticker}:{type(e).__name__}:{e}"
             logger.warning("Scheduled report import failed for %s: %s", ticker, e, exc_info=True)
@@ -155,10 +166,12 @@ def _upsert_scheduled_thesis(
     final_decision_text: str,
     structured_decision: Dict[str, Any],
     dry_run: bool,
-) -> str:
+) -> Dict[str, Any]:
     existing = store.get_active_thesis_by_ticker(ticker)
     reference_template = _resolve_v2_reference_template(structured_decision) or {}
     imported_qty = _safe_int(reference_template.get("quantity"))
+    import_applied = _build_import_applied_snapshot(structured_decision, reference_template)
+    import_applied["quantity"] = imported_qty
 
     if existing is None:
         thesis = TradeThesis(
@@ -177,7 +190,11 @@ def _upsert_scheduled_thesis(
             thesis.quantity = imported_qty
         if not dry_run:
             store.save_thesis(thesis)
-        return "created"
+        return {
+            "status": "created",
+            "import_applied": import_applied,
+            "preserved_fields": [],
+        }
 
     # Update existing active thesis in place while preserving execution-origin fields.
     existing.trade_date = trade_date
@@ -191,12 +208,27 @@ def _upsert_scheduled_thesis(
         final_decision_text=final_decision_text,
     )
 
+    preserved_fields: List[str] = []
+    if existing.entry_price is not None:
+        preserved_fields.append("entry_price")
+    if existing.entry_price_source:
+        preserved_fields.append("entry_price_source")
+    if existing.entry_price_pending:
+        preserved_fields.append("entry_price_pending")
+    if existing.order_id:
+        preserved_fields.append("order_id")
     if existing.quantity is None and imported_qty is not None:
         existing.quantity = imported_qty
+    elif existing.quantity is not None and imported_qty is not None:
+        preserved_fields.append("quantity")
 
     if not dry_run:
         store.save_thesis(existing)
-    return "updated"
+    return {
+        "status": "updated",
+        "import_applied": import_applied,
+        "preserved_fields": preserved_fields,
+    }
 
 
 def _apply_common_import_fields(
@@ -252,6 +284,55 @@ def _resolve_v2_reference_template(structured_decision: Dict[str, Any]) -> Optio
     if isinstance(first_tmpl, dict):
         return first_tmpl
     return None
+
+
+def _build_parsed_preview(structured_decision: Dict[str, Any]) -> Dict[str, Any]:
+    execution_plan = structured_decision.get("execution_plan") or []
+    branches = execution_plan if isinstance(execution_plan, list) else []
+    reference = _resolve_v2_reference_template(structured_decision) or {}
+    default_action = structured_decision.get("default_action")
+    default_action_kind = "none"
+    if isinstance(default_action, str):
+        default_action_kind = "branch_id"
+    elif isinstance(default_action, dict):
+        default_action_kind = "template"
+
+    return {
+        "decision_version": str(structured_decision.get("decision_version") or ""),
+        "ticker": str(structured_decision.get("ticker") or ""),
+        "plan_mode": str(structured_decision.get("plan_mode") or ""),
+        "execution_intent": str(structured_decision.get("execution_intent") or ""),
+        "action": str(structured_decision.get("action") or ""),
+        "time_horizon": structured_decision.get("time_horizon"),
+        "confidence": structured_decision.get("confidence"),
+        "immediate_branch_id": structured_decision.get("immediate_branch_id"),
+        "default_action_kind": default_action_kind,
+        "branch_count": len(branches),
+        "branch_ids": [
+            str(b.get("branch_id") or "")
+            for b in branches
+            if isinstance(b, dict)
+        ],
+        "reference_template": _build_import_applied_snapshot(structured_decision, reference),
+    }
+
+
+def _build_import_applied_snapshot(
+    structured_decision: Dict[str, Any],
+    reference_template: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "action": str(structured_decision.get("action") or "HOLD").upper(),
+        "stop_loss": _safe_float(reference_template.get("stop_loss")),
+        "target_1": _safe_float(reference_template.get("take_profit")),
+        "order_type": _safe_str(reference_template.get("order_type")),
+        "position_size_pct": _safe_float(reference_template.get("position_size_pct")),
+        "trailing_stop_pct": _safe_float(reference_template.get("trail_percent")),
+        "time_horizon_label": _safe_str(
+            structured_decision.get("time_horizon") or reference_template.get("time_horizon")
+        ),
+        "conviction": _confidence_to_score(structured_decision.get("confidence")),
+    }
 
 
 def _confidence_to_score(value: Any) -> Optional[float]:

@@ -5,6 +5,23 @@ import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils
 
+
+def _raise_vendor_error(action: str, ticker: str, err: Exception) -> None:
+    """Raise normalized errors so interface-level vendor fallback can continue."""
+    msg = str(err)
+    if (
+        "HTTP Error 401" in msg
+        or "User is unable to access this feature" in msg
+        or "bit.ly/yahoo-finance-api-feedback" in msg
+    ):
+        raise RuntimeError(
+            f"Yahoo Finance unauthorized for {action} on {ticker}: {msg}"
+        ) from err
+    raise RuntimeError(
+        f"Failed to retrieve {action} for {ticker} from yfinance: {msg}"
+    ) from err
+
+
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
@@ -360,7 +377,7 @@ def get_balance_sheet(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving balance sheet for {ticker}: {str(e)}"
+        _raise_vendor_error("balance sheet", ticker, e)
 
 
 def get_cashflow(
@@ -390,7 +407,7 @@ def get_cashflow(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving cash flow for {ticker}: {str(e)}"
+        _raise_vendor_error("cash flow", ticker, e)
 
 
 def get_income_statement(
@@ -420,7 +437,7 @@ def get_income_statement(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving income statement for {ticker}: {str(e)}"
+        _raise_vendor_error("income statement", ticker, e)
 
 
 def get_insider_transactions(
@@ -444,4 +461,4 @@ def get_insider_transactions(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving insider transactions for {ticker}: {str(e)}"
+        _raise_vendor_error("insider transactions", ticker, e)

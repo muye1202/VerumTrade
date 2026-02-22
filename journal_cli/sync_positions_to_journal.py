@@ -1,4 +1,4 @@
-"""
+﻿"""
 Sync existing Alpaca positions into the journal database.
 
 This script captures theses for positions that were opened before the journal
@@ -44,7 +44,7 @@ if not os.getenv("APCA_API_KEY_ID") and not os.getenv("ALPACA_API_KEY"):
 
 from tradingagents.execution import AlpacaExecutor
 from tradingagents.agents.journal import JournalStore
-from tradingagents.agents.journal.portfolio_sync import sync_missing_positions
+from tradingagents.agents.journal.portfolio.portfolio_sync import sync_missing_positions
 
 
 def sync_positions() -> None:
