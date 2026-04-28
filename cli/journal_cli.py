@@ -356,6 +356,14 @@ def import_scheduled(
         console.print(Panel(err_table, title="[bold red]Import Errors[/bold red]", border_style="red"))
 
     if verbose:
+        def _fmt_num(value, digits: int = 4) -> str:
+            if value is None:
+                return "—"
+            try:
+                return f"{float(value):.{digits}f}"
+            except (TypeError, ValueError):
+                return str(value)
+
         item_table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, expand=True)
         item_table.add_column("Ticker", width=8, style="cyan")
         item_table.add_column("Status", width=10)
@@ -369,6 +377,47 @@ def import_scheduled(
                 str(item.get("path") or ""),
             )
         console.print(Panel(item_table, title="[bold]Per-Ticker Import Results[/bold]", border_style="blue"))
+
+        mapping_table = Table(show_header=True, header_style="bold green", box=box.SIMPLE_HEAD, expand=True)
+        mapping_table.add_column("Ticker", width=8, style="cyan")
+        mapping_table.add_column("DB Status", width=10)
+        mapping_table.add_column("Action", width=8)
+        mapping_table.add_column("Qty", justify="right", width=8)
+        mapping_table.add_column("Stop", justify="right", width=10)
+        mapping_table.add_column("Target", justify="right", width=10)
+        mapping_table.add_column("Order Type", width=12)
+        mapping_table.add_column("Size %", justify="right", width=8)
+        mapping_table.add_column("Trail %", justify="right", width=8)
+        mapping_table.add_column("Horizon", width=12)
+        mapping_table.add_column("Conv.", justify="right", width=7)
+        mapping_table.add_column("Preserved Fields", no_wrap=False)
+
+        for item in summary.get("items") or []:
+            applied = item.get("import_applied") or {}
+            preserved = item.get("preserved_fields") or []
+            quantity = applied.get("quantity")
+            mapping_table.add_row(
+                str(item.get("ticker") or ""),
+                str(item.get("status") or ""),
+                str(applied.get("action") or "—"),
+                str(quantity) if quantity is not None else "—",
+                _fmt_num(applied.get("stop_loss"), 4),
+                _fmt_num(applied.get("target_1"), 4),
+                str(applied.get("order_type") or "—"),
+                _fmt_num(applied.get("position_size_pct"), 4),
+                _fmt_num(applied.get("trailing_stop_pct"), 4),
+                str(applied.get("time_horizon_label") or "—"),
+                _fmt_num(applied.get("conviction"), 1),
+                ", ".join(str(x) for x in preserved) if preserved else "—",
+            )
+
+        console.print(
+            Panel(
+                mapping_table,
+                title="[bold]Decision JSON → DB Import Mapping[/bold]",
+                border_style="green",
+            )
+        )
 
 
 @journal_app.command()

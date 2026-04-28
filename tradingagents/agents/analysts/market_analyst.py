@@ -27,6 +27,11 @@ from tradingagents.agents.analysts.tooling import build_tooling_state_update
 def create_market_analyst(llm):
 
     def market_analyst_node(state):
+        if state.get("market_report"):
+            return {
+                "market_report": state["market_report"],
+            }
+
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")

@@ -612,3 +612,43 @@ def filter_by_upcoming_earnings(
         if policy == "raise":
             raise RuntimeError(f"Earnings catalyst prefilter failed: {e}") from e
         raise RuntimeError(f"Unsupported catalyst prefilter failure_policy: {failure_policy}") from e
+
+
+def filter_by_recent_8k(
+    symbols: Iterable[str],
+    max_workers: int = 4,
+    failure_policy: str = "fail_open",
+) -> List[str]:
+    from tradingagents.dataflows.interface import route_to_vendor
+    universe = _normalize_universe_symbols(symbols)
+    if not universe:
+        return []
+
+    filtered: List[str] = []
+
+    def _has_recent_8k(symbol: str) -> bool:
+        try:
+            raw_filings = route_to_vendor("get_recent_sec_filings", symbol)
+            # If the tool successfully returned filing metadata, and it contains 8-K 
+            # (or we simply treat any recent material filing returned as a match)
+            if raw_filings and "8-K" in raw_filings:
+                return True
+        except Exception:
+            pass
+        return False
+
+    with ThreadPoolExecutor(max_workers=max(1, int(max_workers))) as pool:
+        futures = {pool.submit(_has_recent_8k, s): s for s in universe}
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                if future.result():
+                    filtered.append(symbol)
+            except Exception as e:
+                policy = str(failure_policy or "fail_open").strip().lower()
+                if policy == "fail_open":
+                    filtered.append(symbol)
+    
+    # Add fail_open fallback completely if empty maybe? Let's just return what passed.
+    # If a ticker fails, fail_open already adds it above.
+    return sorted(set(filtered))

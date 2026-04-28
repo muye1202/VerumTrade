@@ -22,6 +22,8 @@ from tradingagents.agents.utils.market_data.news_data_tools import (
     get_insider_transactions,
     get_global_news,
     get_company_news_window,
+    get_news_sentiment,
+    get_recent_sec_filings,
 )
 
 def create_msg_delete():

@@ -12,6 +12,11 @@ from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 def create_fundamentals_analyst(llm):
     def fundamentals_analyst_node(state):
+        if state.get("fundamentals_report"):
+            return {
+                "fundamentals_report": state["fundamentals_report"],
+            }
+
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]

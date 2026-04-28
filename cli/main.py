@@ -763,9 +763,38 @@ def get_user_selections():
         )
         analysis_date = get_analysis_date()
 
+        console.print(
+            create_question_box(
+                "Step 4: Skip Completed Analysts",
+                "Automatically skip analyst steps (Market, Social, News, Fundamentals) if their reports already exist "
+                "for the selected date and ticker.",
+                "Yes",
+            )
+        )
+        skip_completed = questionary.select(
+            "Skip Completed Analysts?",
+            choices=[
+                questionary.Choice("Yes — Skip analysts with existing reports", value=True),
+                questionary.Choice("No  — Rerun all analysts", value=False),
+            ],
+            instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+            style=questionary.Style(
+                [
+                    ("selected", "fg:yellow noinherit"),
+                    ("highlighted", "fg:yellow noinherit"),
+                    ("pointer", "fg:yellow noinherit"),
+                ]
+            ),
+        ).ask()
+        if skip_completed is None:
+            console.print("\n[red]No skip selection. Exiting...[/red]")
+            raise typer.Exit(code=1)
+        skip_completed_analysts = skip_completed
+    else:
+        skip_completed_analysts = False
 
     # Holding period (single + portfolio)
-    horizon_step = 4 if analysis_mode == "single" else 2
+    horizon_step = 5 if analysis_mode == "single" else 2
     console.print(
         create_question_box(
             f"Step {horizon_step}: Holding Period",
@@ -866,6 +895,7 @@ def get_user_selections():
         "deep_thinker": selected_deep_thinker,
         "execution": execution_settings,
         "n_stocks": n_stocks,
+        "skip_completed_analysts": skip_completed_analysts,
     }
 
 

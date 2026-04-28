@@ -78,8 +78,133 @@ from tradingagents.agents.utils.llm.llm_metrics import (
     diff_llm_api_calls,
 )
 
+
+def _sanitize_outbound_openai_messages_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Best-effort repair for malformed tool-call message sequences before API submission.
+
+    Some provider/parser combinations can yield assistant messages with malformed `tool_calls`
+    or tool messages missing `tool_call_id`, which OpenAI-compatible endpoints reject with
+    strict sequence validation.
+    """
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return payload
+
+    pending_ids: List[str] = []
+    consumed_ids: set[str] = set()
+    pending_assistant_idx: Optional[int] = None
+
+    def _clear_pending():
+        nonlocal pending_ids, consumed_ids, pending_assistant_idx
+        pending_ids = []
+        consumed_ids = set()
+        pending_assistant_idx = None
+
+    def _drop_pending_tool_calls_if_unresolved():
+        if not pending_ids or pending_assistant_idx is None:
+            _clear_pending()
+            return
+        unresolved = [tcid for tcid in pending_ids if tcid not in consumed_ids]
+        if unresolved:
+            assistant_msg = messages[pending_assistant_idx]
+            if isinstance(assistant_msg, dict):
+                assistant_msg.pop("tool_calls", None)
+        _clear_pending()
+
+    def _normalize_tool_calls(raw_tool_calls: Any, msg_idx: int) -> List[Dict[str, Any]]:
+        if not isinstance(raw_tool_calls, list):
+            return []
+        cleaned: List[Dict[str, Any]] = []
+        for tc_idx, tc in enumerate(raw_tool_calls):
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function")
+            if not isinstance(fn, dict):
+                # Accept flattened legacy shapes if present.
+                fn = {
+                    "name": tc.get("name"),
+                    "arguments": tc.get("arguments", ""),
+                }
+            name = fn.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            arguments = fn.get("arguments", "")
+            if isinstance(arguments, (dict, list)):
+                try:
+                    arguments = json.dumps(arguments, ensure_ascii=False)
+                except Exception:
+                    arguments = str(arguments)
+            elif arguments is None:
+                arguments = ""
+            elif not isinstance(arguments, str):
+                arguments = str(arguments)
+
+            tc_id = tc.get("id")
+            if not isinstance(tc_id, str) or not tc_id.strip():
+                tc_id = f"call_{msg_idx}_{tc_idx}"
+
+            cleaned.append(
+                {
+                    "id": tc_id,
+                    "type": "function",
+                    "function": {"name": name.strip(), "arguments": arguments},
+                }
+            )
+        return cleaned
+
+    for msg_idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            _drop_pending_tool_calls_if_unresolved()
+            continue
+
+        role = msg.get("role")
+        if role == "assistant":
+            _drop_pending_tool_calls_if_unresolved()
+            cleaned_tool_calls = _normalize_tool_calls(msg.get("tool_calls"), msg_idx)
+            if cleaned_tool_calls:
+                msg["tool_calls"] = cleaned_tool_calls
+                pending_ids = [tc["id"] for tc in cleaned_tool_calls]
+                consumed_ids = set()
+                pending_assistant_idx = msg_idx
+            else:
+                msg.pop("tool_calls", None)
+            continue
+
+        if role == "tool":
+            if not isinstance(msg.get("content"), str):
+                msg["content"] = str(msg.get("content", ""))
+
+            if not pending_ids:
+                # Orphan tool message is invalid for OpenAI chat payloads; coerce to assistant text.
+                msg["role"] = "assistant"
+                msg.pop("tool_call_id", None)
+                continue
+
+            unresolved = [tcid for tcid in pending_ids if tcid not in consumed_ids]
+            tcid = msg.get("tool_call_id")
+            if not isinstance(tcid, str) or not tcid.strip() or tcid not in pending_ids:
+                if unresolved:
+                    tcid = unresolved[0]
+                    msg["tool_call_id"] = tcid
+            if isinstance(tcid, str) and tcid in pending_ids:
+                consumed_ids.add(tcid)
+                if len(consumed_ids) >= len(set(pending_ids)):
+                    _clear_pending()
+            continue
+
+        _drop_pending_tool_calls_if_unresolved()
+
+    _drop_pending_tool_calls_if_unresolved()
+    return payload
+
 class StreamCompatibleChatOpenAI(ChatOpenAI):
     """Handle OpenAI SDK Stream responses by aggregating them into a single ChatCompletion-like dict."""
+
+    def _get_request_payload(self, *args, **kwargs):
+        payload = super()._get_request_payload(*args, **kwargs)
+        if isinstance(payload, dict):
+            _sanitize_outbound_openai_messages_payload(payload)
+        return payload
 
     def _create_chat_result(self, response, generation_info=None):
         # Convert to a plain dict so we can safely normalize provider quirks before LangChain parses it.
@@ -149,6 +274,12 @@ class StreamCompatibleChatOpenAI(ChatOpenAI):
 class DeepSeekCompatibleChatOpenAI(ChatOpenAI):
     """Sanitize DeepSeek-specific fields (e.g., reasoning_content) for older langchain_openai parsers."""
 
+    def _get_request_payload(self, *args, **kwargs):
+        payload = super()._get_request_payload(*args, **kwargs)
+        if isinstance(payload, dict):
+            _sanitize_outbound_openai_messages_payload(payload)
+        return payload
+
     def _create_chat_result(self, response, generation_info=None):
         # Convert to a plain dict so we can safely mutate before LangChain parses it.
         response_dict = None
@@ -169,6 +300,12 @@ class DeepSeekCompatibleChatOpenAI(ChatOpenAI):
 class OpenRouterCompatibleChatOpenAI(ChatOpenAI):
     """Sanitize OpenRouter OpenAI-compatible responses for LangChain parsing."""
 
+    def _get_request_payload(self, *args, **kwargs):
+        payload = super()._get_request_payload(*args, **kwargs)
+        if isinstance(payload, dict):
+            _sanitize_outbound_openai_messages_payload(payload)
+        return payload
+
     def _create_chat_result(self, response, generation_info=None):
         response_dict = None
         if isinstance(response, dict):
@@ -187,6 +324,12 @@ class OpenRouterCompatibleChatOpenAI(ChatOpenAI):
 
 class GLMCompatibleChatOpenAI(ChatOpenAI):
     """Sanitize GLM (ZhipuAI) OpenAI-compatible responses for LangChain parsing."""
+
+    def _get_request_payload(self, *args, **kwargs):
+        payload = super()._get_request_payload(*args, **kwargs)
+        if isinstance(payload, dict):
+            _sanitize_outbound_openai_messages_payload(payload)
+        return payload
 
     def _create_chat_result(self, response, generation_info=None):
         response_dict = None

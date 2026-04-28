@@ -1,12 +1,14 @@
 from typing import Annotated
 import json
 import logging
+import inspect
 
 # Import from vendor-specific modules
 from .vendors.local.local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
 from .vendors.yfinance.y_finance import get_YFin_data_online, get_stock_stats_indicators_window, get_balance_sheet as get_yfinance_balance_sheet, get_cashflow as get_yfinance_cashflow, get_income_statement as get_yfinance_income_statement, get_insider_transactions as get_yfinance_insider_transactions
 from .vendors.alpaca.alpaca import get_stock_data_alpaca, AlpacaConnectionError
-from .vendors.google.google import get_google_news, get_google_global_news
+from .vendors.finnhub.finnhub_vendor import get_company_news_finnhub, get_global_news_finnhub, get_news_sentiment_finnhub, get_earnings_calendar_finnhub
+from .vendors.sec_edgar.sec_edgar_vendor import fetch_recent_filings, fetch_company_filings
 from .vendors.openai.openai import get_stock_news_openai, get_global_news_openai
 from .vendors.alpha_vantage.alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
@@ -59,6 +61,8 @@ TOOLS_CATEGORIES = {
             "get_global_news",
             "get_insider_sentiment",
             "get_insider_transactions",
+            "get_news_sentiment",
+            "get_recent_sec_filings",
         ]
     }
 }
@@ -69,7 +73,8 @@ VENDOR_LIST = [
     "yfinance",
     "twelve_data",
     "openai",
-    "google"
+    "finnhub",
+    "sec_edgar"
 ]
 
 
@@ -133,6 +138,41 @@ def _missing_value_summary(value) -> str | None:
 
     return None
 
+
+def _call_vendor_impl(impl_func, *args, **kwargs):
+    """Call a vendor function while trimming unsupported args/kwargs.
+
+    Some vendor implementations share a logical method name but expose different
+    signatures (e.g. one accepts `ticker`, another accepts `ticker, curr_date`).
+    """
+    sig = inspect.signature(impl_func)
+    params = list(sig.parameters.values())
+
+    accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+    accepts_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+
+    if accepts_varargs:
+        call_args = args
+    else:
+        positional_slots = sum(
+            1
+            for p in params
+            if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        )
+        call_args = args[:positional_slots]
+
+    if accepts_varkw:
+        call_kwargs = kwargs
+    else:
+        valid_kw = {
+            p.name
+            for p in params
+            if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+        call_kwargs = {k: v for k, v in kwargs.items() if k in valid_kw}
+
+    return impl_func(*call_args, **call_kwargs)
+
 # Mapping of methods to their vendor-specific implementations
 VENDOR_METHODS = {
     # core_stock_apis
@@ -172,13 +212,12 @@ VENDOR_METHODS = {
     # news_data
     "get_news": {
         "alpha_vantage": get_alpha_vantage_news,
-        "google": get_google_news,
+        "finnhub": get_company_news_finnhub,
         "openai": get_stock_news_openai,
-        "local": [get_finnhub_news, get_reddit_company_news, get_google_news],
+        "local": [get_finnhub_news, get_reddit_company_news],
     },
     "get_global_news": {
-        # Prefer Google scraping fallback over OpenAI web_search tools which are provider-specific.
-        "google": get_google_global_news,
+        "finnhub": get_global_news_finnhub,
         "openai": get_global_news_openai,
         "local": get_reddit_global_news,
     },
@@ -190,6 +229,12 @@ VENDOR_METHODS = {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
         "local": get_finnhub_company_insider_transactions,
+    },
+    "get_news_sentiment": {
+        "finnhub": get_news_sentiment_finnhub,
+    },
+    "get_recent_sec_filings": {
+        "sec_edgar": fetch_recent_filings,
     },
 }
 
@@ -296,7 +341,7 @@ def route_to_vendor(method: str, *args, **kwargs):
         for impl_func, vendor_name in vendor_methods:
             try:
                 logger.debug("Calling %s from vendor '%s'", impl_func.__name__, vendor_name)
-                result = impl_func(*args, **kwargs)
+                result = _call_vendor_impl(impl_func, *args, **kwargs)
                 vendor_results.append(result)
                 logger.debug("%s from vendor '%s' completed successfully", impl_func.__name__, vendor_name)
                     

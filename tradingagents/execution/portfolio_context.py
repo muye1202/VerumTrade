@@ -54,10 +54,24 @@ def fetch_portfolio_context(
     If Alpaca is unavailable, returns a minimal fallback string so the pipeline
     never crashes - it just operates without portfolio awareness.
     """
+    quote_price = None
     try:
-        return _fetch_from_alpaca(ticker, api_key, secret_key, paper)
+        import yfinance as yf
+        t_obj = yf.Ticker(ticker.upper())
+        info = getattr(t_obj, "fast_info", None)
+        if info:
+            quote_price = getattr(info, "last_price", getattr(info, "regular_market_price", None))
+        if quote_price is None or quote_price == 0:
+            hist = t_obj.history(period="1d")
+            if not hist.empty:
+                quote_price = float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+
+    try:
+        return _fetch_from_alpaca(ticker, api_key, secret_key, paper, quote_price)
     except Exception as e:
-        return _fallback_context(ticker, str(e))
+        return _fallback_context(ticker, str(e), quote_price)
 
 
 def fetch_portfolio_symbols(
@@ -146,6 +160,7 @@ def _fetch_from_alpaca(
     api_key: Optional[str],
     secret_key: Optional[str],
     paper: bool,
+    quote_price: Optional[float] = None,
 ) -> str:
     client = _build_trading_client(api_key, secret_key, paper)
 
@@ -153,13 +168,14 @@ def _fetch_from_alpaca(
     positions = client.get_all_positions()
     capital = _normalize_portfolio_capital(account, positions_count=len(positions))
 
-    return _format_portfolio_string(ticker, positions, capital)
+    return _format_portfolio_string(ticker, positions, capital, quote_price=quote_price)
 
 
 def _format_portfolio_string(
     ticker: str,
     positions,
     capital: Dict[str, Any],
+    quote_price: Optional[float] = None,
 ) -> str:
     ticker_upper = ticker.upper()
 
@@ -225,6 +241,8 @@ def _format_portfolio_string(
         lines.append(f"- **Currently Holding: {qty:,.0f} shares**")
         lines.append(f"- Average Entry Price: ${avg_cost:,.2f}")
         lines.append(f"- Current Price (approx): ${current_price:,.2f}")
+        if quote_price is not None and quote_price > 0:
+            lines.append(f"- Current Market Reference Price: ${quote_price:,.2f}")
         lines.append(f"- Market Value: ${mkt_val:,.2f}")
         lines.append(
             f"- Unrealized P&L: {'+'if upl >= 0 else ''}${upl:,.2f} "
@@ -240,6 +258,8 @@ def _format_portfolio_string(
         lines.append(f"- HOLD -> Maintain current {qty:,.0f}-share position")
     else:
         lines.append(f"- **You have ZERO shares of {ticker_upper}.**")
+        if quote_price is not None and quote_price > 0:
+            lines.append(f"- Current Market Reference Price: ${quote_price:,.2f}")
         lines.append("- No existing position to sell or hold.")
         lines.append("")
         lines.append("**ACTIONABILITY:**")
@@ -261,13 +281,16 @@ def _format_portfolio_string(
     return "\n".join(lines)
 
 
-def _fallback_context(ticker: str, error_reason: str) -> str:
-    return (
+def _fallback_context(ticker: str, error_reason: str, quote_price: Optional[float] = None) -> str:
+    base = (
         f"## Portfolio Context\n"
         f"Portfolio data unavailable ({error_reason}).\n"
         f"Assume NO existing position in {ticker.upper()} unless evidence suggests otherwise.\n"
         f"Do NOT recommend SELL if there is no confirmed existing position.\n"
     )
+    if quote_price is not None and quote_price > 0:
+        base += f"\n- **Current Market Reference Price:** ${quote_price:,.2f} (use this to anchor your entries/stops)\n"
+    return base
 
 
 def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:

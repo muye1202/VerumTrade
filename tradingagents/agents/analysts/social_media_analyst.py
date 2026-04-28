@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window
+from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window, get_news_sentiment
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.utils.market_data.bundle_tools import get_sentiment_data_bundle
 from tradingagents.dataflows.config import get_config
@@ -11,6 +11,11 @@ from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 def create_social_media_analyst(llm):
     def social_media_analyst_node(state):
+        if state.get("sentiment_report"):
+            return {
+                "sentiment_report": state["sentiment_report"],
+            }
+
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]
@@ -28,6 +33,7 @@ def create_social_media_analyst(llm):
         tools = [
             get_news,
             get_company_news_window,
+            get_news_sentiment,
         ]
         if enable_bundle_tools:
             tools = [get_sentiment_data_bundle, *tools]
@@ -36,11 +42,12 @@ def create_social_media_analyst(llm):
             f"You are a sentiment/attention analyst supporting a {holding_text} swing trade. Use the available data sources (news + any sentiment fields returned by the vendor) as a proxy for crowd attention and narrative momentum."
             "\n\nImportant: Depending on the configured vendor, you may not have direct social-media posts. If you only have news sentiment, be explicit about that limitation and avoid claiming you analyzed social posts when you did not."
             "\n\nWorkflow (tool-first, then write):"
-            f"\n1) Pull the last ~{spec.sentiment_lookback_days} days of company news/sentiment using `get_company_news_window(ticker=<ticker>, curr_date=<current_date>, look_back_days={spec.sentiment_lookback_days})` (fallback: `get_news`)."
-            "\n2) Extract: dominant narrative themes, sentiment trajectory, disagreement/polarization, and any abrupt sentiment shifts."
-            "\n3) Write the final report **without** further tool calls."
-            "\n4) Prefer one batched tool-call response. If `get_sentiment_data_bundle` is available, use it first."
-            "\n5) Allow at most one fallback tool round if data is missing/invalid."
+            f"\n1) Pull the last ~{spec.sentiment_lookback_days} days of company news using `get_company_news_window(ticker=<ticker>, curr_date=<current_date>, look_back_days={spec.sentiment_lookback_days})` (fallback: `get_news`)."
+            "\n2) Pull structured sentiment metrics using `get_news_sentiment(ticker=<ticker>)`."
+            "\n3) Extract: dominant narrative themes, sentiment trajectory, disagreement/polarization, and any abrupt sentiment shifts using Finnhub numerical sentiment and buzz metrics when available."
+            "\n4) Write the final report **without** further tool calls."
+            "\n5) Prefer one batched tool-call response. If `get_sentiment_data_bundle` is available, use it first."
+            "\n6) Allow at most one fallback tool round if data is missing/invalid."
             "\n\nReport requirements (trade-relevant and specific):"
             "\n- Narrative map: top 3 themes (what/why/so-what)."
             "\n- Sentiment: direction over time; identify any inflection points and what triggered them."

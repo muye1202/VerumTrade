@@ -16,6 +16,7 @@ from .pipeline_models import TechnicalSignal
 from .universe_prefilters import (
     filter_by_avg_daily_dollar_volume,
     filter_by_upcoming_earnings,
+    filter_by_recent_8k,
 )
 from .pipeline_cache import (
     load_cache_value,
@@ -318,6 +319,8 @@ class TechnicalMomentumScanner:
             return filtered
 
         mode = str(cfg.get("mode", "daily_calendar")).strip().lower()
+        enable_8k = bool(cfg.get("enable_8k_filter", True))
+        
         if mode == "daily_calendar":
             t_earnings = time.time()
             catalyst_filtered = filter_by_upcoming_earnings(
@@ -333,6 +336,16 @@ class TechnicalMomentumScanner:
                 metrics=stage0_metrics,
             )
             stage0_metrics["earnings_filter_s"] = round(time.time() - t_earnings, 2)
+            
+            if enable_8k:
+                t_8k = time.time()
+                sec_filtered = filter_by_recent_8k(
+                    symbols=base,
+                    max_workers=int(cfg.get("max_workers", 4)),
+                    failure_policy=str(cfg.get("failure_policy", "fail_closed"))
+                )
+                stage0_metrics["8k_filter_s"] = round(time.time() - t_8k, 2)
+                catalyst_filtered = sorted(set(catalyst_filtered + sec_filtered))
 
             t_adv = time.time()
             filtered = filter_by_avg_daily_dollar_volume(
@@ -359,7 +372,7 @@ class TechnicalMomentumScanner:
             stage0_metrics["adv_filter_s"] = round(time.time() - t_adv, 2)
 
             t_earnings = time.time()
-            filtered = filter_by_upcoming_earnings(
+            catalyst_filtered = filter_by_upcoming_earnings(
                 symbols=liquidity_filtered,
                 analysis_date=trade_date,
                 mode=mode,
@@ -372,6 +385,18 @@ class TechnicalMomentumScanner:
                 metrics=stage0_metrics,
             )
             stage0_metrics["earnings_filter_s"] = round(time.time() - t_earnings, 2)
+            
+            if enable_8k:
+                t_8k = time.time()
+                sec_filtered = filter_by_recent_8k(
+                    symbols=liquidity_filtered,
+                    max_workers=int(cfg.get("max_workers", 4)),
+                    failure_policy=str(cfg.get("failure_policy", "fail_closed"))
+                )
+                stage0_metrics["8k_filter_s"] = round(time.time() - t_8k, 2)
+                filtered = sorted(set(catalyst_filtered + sec_filtered))
+            else:
+                filtered = catalyst_filtered
 
         if excluded:
             excluded_set = set(excluded)

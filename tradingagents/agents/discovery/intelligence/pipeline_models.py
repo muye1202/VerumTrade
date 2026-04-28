@@ -94,6 +94,7 @@ class Stage1EnrichmentScorecard:
     days_to_cover: float = 0.0
     finra_short_volume_ratio_latest: float = 0.0
     insider_signal: str = "neutral"
+    finnhub_sentiment_score: float = 0.0
     
     # NEW: Estimate revision tracking
     eps_revision_breadth_30d: float = 0.0      # % of analysts revising up (0-100)

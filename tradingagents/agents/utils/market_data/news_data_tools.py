@@ -157,3 +157,23 @@ async def get_insider_transactions(
             f"No insider transactions data available for {ticker} as of {effective_date}{note}. "
             f"Reason: {type(e).__name__}: {e}"
         )
+
+@tool
+async def get_news_sentiment(
+    ticker: Annotated[str, "Ticker symbol"],
+) -> str:
+    """
+    Get pre-computed Finnhub sentiment data for a ticker.
+    Returns structured numerical sentiment containing bullish/bearish percentage and buzz score.
+    """
+    return await asyncio.to_thread(route_to_vendor, "get_news_sentiment", ticker)
+
+@tool
+async def get_recent_sec_filings(
+    ticker: Annotated[str, "Ticker symbol"] = "",
+) -> str:
+    """
+    Retrieve recent SEC filings (e.g. 8-K, Form 4) for a specific ticker (or globally if ticker is empty).
+    Provides primary source structural records of material events, earnings, Insider trades, etc.
+    """
+    return await asyncio.to_thread(route_to_vendor, "get_recent_sec_filings", ticker)

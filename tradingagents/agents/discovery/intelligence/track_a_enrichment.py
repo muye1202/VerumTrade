@@ -208,6 +208,19 @@ class Stage1BatchEnricher:
             flags.append(f"revision_block_error:{type(e).__name__}")
             revisions = {}
 
+        try:
+            from tradingagents.dataflows.interface import route_to_vendor
+            sentiment_data = route_to_vendor("get_news_sentiment", ticker)
+            if isinstance(sentiment_data, dict):
+                finnhub_sentiment_score = float(sentiment_data.get("company_news_score", 0.0))
+            else:
+                finnhub_sentiment_score = 0.0
+        except Exception as e:
+            if not fail_open:
+                raise
+            flags.append(f"sentiment_block_error:{type(e).__name__}")
+            finnhub_sentiment_score = 0.0
+
         scorecard = Stage1EnrichmentScorecard(
             ticker=ticker,
             catalyst_window=f"{trade_date} to {(datetime.strptime(trade_date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')}",
@@ -248,6 +261,7 @@ class Stage1BatchEnricher:
             eps_revision_breadth_30d=float(revisions.get("eps_revision_breadth_30d", 0.0)),
             eps_revision_magnitude_30d=float(revisions.get("eps_revision_magnitude_30d", 0.0)),
             revenue_revision_direction=float(revisions.get("revenue_revision_direction", 0.0)),
+            finnhub_sentiment_score=finnhub_sentiment_score,
             data_quality_flags=flags,
         )
         return scorecard

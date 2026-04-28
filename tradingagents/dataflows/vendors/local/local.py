@@ -214,8 +214,11 @@ def get_data_in_range(ticker, start_date, end_date, data_type, data_dir, period=
             data_dir, "finnhub_data", data_type, f"{ticker}_data_formatted.json"
         )
 
-    data = open(data_path, "r")
-    data = json.load(data)
+    if not os.path.exists(data_path):
+        return {}
+
+    with open(data_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
     # filter keys (date, str in format YYYY-MM-DD) by the date range (str, str in format YYYY-MM-DD)
     filtered_data = {}

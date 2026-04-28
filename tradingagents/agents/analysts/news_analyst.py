@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window, get_global_news
+from tradingagents.agents.utils.agent_runtime.agent_utils import get_news, get_company_news_window, get_global_news, get_news_sentiment, get_recent_sec_filings
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.utils.market_data.bundle_tools import get_news_data_bundle
 from tradingagents.dataflows.config import get_config
@@ -11,6 +11,11 @@ from tradingagents.agents.analysts.tooling import build_tooling_state_update
 
 def create_news_analyst(llm):
     def news_analyst_node(state):
+        if state.get("news_report"):
+            return {
+                "news_report": state["news_report"],
+            }
+
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
@@ -28,6 +33,8 @@ def create_news_analyst(llm):
             get_news,
             get_company_news_window,
             get_global_news,
+            get_news_sentiment,
+            get_recent_sec_filings,
         ]
         if enable_bundle_tools:
             tools = [get_news_data_bundle, *tools]

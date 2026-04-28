@@ -428,6 +428,22 @@ class PreStage0IntelligenceBuilder:
             "quarter_end_flag": self._month_end_flag(trade_date) and dt.month in {3, 6, 9, 12},
         }
 
+    def _global_news_block(self) -> Dict[str, Any]:
+        route_fn = self.config.get("_route_to_vendor")
+        if route_fn is None:
+            from tradingagents.dataflows.interface import route_to_vendor
+            route_fn = route_to_vendor
+
+        try:
+            raw_news = route_fn("get_global_news", limit=15)
+            self._metrics["vendor_calls_estimate"] = int(self._metrics.get("vendor_calls_estimate", 0)) + 1
+        except Exception:
+            raw_news = ""
+
+        return {
+            "headlines_markdown": str(raw_news)
+        }
+
     @staticmethod
     def _build_indicator_availability() -> Dict[str, Any]:
         computed = [
@@ -441,6 +457,7 @@ class PreStage0IntelligenceBuilder:
             "sector_heatmap_and_rs_vs_spy",
             "factor_spreads_growth_value_small_large_mtum_splv",
             "calendar_earnings_intensity_opex_month_end_quarter_end",
+            "global_macro_news",
         ]
         skipped = [
             "true_premarket_prints",
@@ -494,6 +511,7 @@ class PreStage0IntelligenceBuilder:
             "cross_asset": {},
             "sector_factor": {},
             "calendar": {},
+            "global_news": {},
             "indicator_availability": availability,
             "cache_metrics": {},
         }
@@ -510,6 +528,7 @@ class PreStage0IntelligenceBuilder:
             snapshot["cross_asset"] = self._cross_asset_block(trade_date)
             snapshot["sector_factor"] = self._sector_factor_block(trade_date)
             snapshot["calendar"] = self._calendar_block(trade_date)
+            snapshot["global_news"] = self._global_news_block()
         except Exception as e:
             availability["failed_runtime"].append(f"snapshot_build_failed:{type(e).__name__}")
 

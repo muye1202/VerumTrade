@@ -583,6 +583,38 @@ def run_single_ticker_analysis(
                 "System", f"Portfolio context loaded for {selections['ticker']}"
             )
 
+        # Load existing reports if skipping is enabled
+        existing_reports = {}
+        if selections.get("skip_completed_analysts"):
+            report_mapping = {
+                "market_report": "market_report.md",
+                "sentiment_report": "sentiment_report.md",
+                "news_report": "news_report.md",
+                "fundamentals_report": "fundamentals_report.md",
+            }
+            for state_key, filename in report_mapping.items():
+                report_path = report_dir / filename
+                if report_path.exists():
+                    try:
+                        with open(report_path, "r", encoding="utf-8") as f:
+                            content = f.read().strip()
+                            if content:
+                                existing_reports[state_key] = content
+                                message_buffer.add_message(
+                                    "System", f"Loaded existing {filename} to skip re-analysis"
+                                )
+                                # Update dashboard immediately
+                                message_buffer.update_report_section(state_key, content)
+                                m_name = state_key.replace("_report", " Analyst").replace("sentiment", "Social").title()
+                                if m_name == "Fundamentals Analyst":
+                                    m_name = "Fundamentals Analyst"
+                                message_buffer.update_agent_status(m_name, "completed")
+                    except Exception as e:
+                        message_buffer.add_message("System", f"Failed to load existing {filename}: {e}")
+            if existing_reports:
+                update_display(layout)
+
+
         # Initialize state and get graph args
         init_agent_state = graph.propagator.create_initial_state(
             selections["ticker"],
@@ -590,6 +622,10 @@ def run_single_ticker_analysis(
             portfolio_context=portfolio_ctx,
             time_horizon=selections.get("time_horizon"),
         )
+        # Inject existing reports into the initial state
+        for k, v in existing_reports.items():
+            init_agent_state[k] = v
+
         args = graph.propagator.get_graph_args()
 
         # Stream the analysis
