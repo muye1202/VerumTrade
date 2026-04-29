@@ -40,6 +40,164 @@ const formatDateTime = (value) => {
   }).format(new Date(value));
 };
 
+const CustomSelect = ({ value, onChange, options, disabled, icon }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+
+  return (
+    <div className={`gemini-custom-select ${disabled ? 'disabled' : ''}`} ref={containerRef}>
+      <button 
+        className={`gemini-select-trigger ${isOpen ? 'active' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        type="button"
+      >
+        {icon && <span className="select-icon">{icon}</span>}
+        <span className="select-label">{selectedOption.label}</span>
+        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="chevron">
+          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {isOpen && !disabled && (
+        <div className="gemini-dropdown-menu">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              className={`gemini-dropdown-item ${value === opt.value ? 'selected' : ''}`}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              type="button"
+            >
+              <div className="item-content">
+                <span className="item-label">{opt.label}</span>
+                {opt.detail && <span className="item-detail">{opt.detail}</span>}
+              </div>
+              {value === opt.value && (
+                <svg className="check-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CustomDatePicker = ({ value, onChange, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+  const [viewDate, setViewDate] = useState(() => new Date(value + 'T00:00:00'));
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (value) setViewDate(new Date(value + 'T00:00:00'));
+  }, [value]);
+
+  const dateObj = new Date(value + 'T00:00:00');
+  const displayDate = new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).format(dateObj);
+
+  const changeMonth = (offset) => {
+    const newView = new Date(viewDate);
+    newView.setMonth(newView.getMonth() + offset);
+    setViewDate(newView);
+  };
+
+  const renderCalendar = () => {
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} className="cal-empty" />);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isSelected = value === dateStr;
+      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+      
+      days.push(
+        <button
+          key={d}
+          type="button"
+          className={`cal-day ${isSelected ? 'selected' : ''} ${isToday && !isSelected ? 'today' : ''}`}
+          onClick={() => { onChange(dateStr); setIsOpen(false); }}
+        >
+          {d}
+        </button>
+      );
+    }
+    return (
+      <div className="cal-grid">
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="cal-header-day">{d}</div>)}
+        {days}
+      </div>
+    );
+  };
+
+  return (
+    <div className={`gemini-custom-select ${disabled ? 'disabled' : ''}`} ref={containerRef}>
+      <button 
+        className={`gemini-select-trigger ${isOpen ? 'active' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)} 
+        type="button"
+      >
+        <span className="select-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{marginRight: 6}}>
+            <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/>
+          </svg>
+        </span>
+        <span className="select-label">{displayDate}</span>
+      </button>
+      {isOpen && !disabled && (
+        <div className="gemini-dropdown-menu calendar-menu">
+          <div className="cal-header">
+            <button type="button" className="cal-nav" onClick={() => changeMonth(-1)}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+            </button>
+            <strong>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(viewDate)}</strong>
+            <button type="button" className="cal-nav" onClick={() => changeMonth(1)}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+            </button>
+          </div>
+          {renderCalendar()}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LogoIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [ticker, setTicker] = useState('');
@@ -272,23 +430,17 @@ function App() {
           </button>
         </div>
         <div className="toolbar-right">
-          <input
-            type="date"
-            className="gemini-date"
+          <CustomDatePicker
             value={analysisDate}
-            onChange={(event) => setAnalysisDate(event.target.value)}
+            onChange={(val) => setAnalysisDate(val)}
             disabled={isRunning}
           />
-          <select
-            className="gemini-select"
+          <CustomSelect
             value={timeHorizon}
-            onChange={(event) => setTimeHorizon(event.target.value)}
+            onChange={(val) => setTimeHorizon(val)}
+            options={HORIZONS}
             disabled={isRunning}
-          >
-            {HORIZONS.map((horizon) => (
-              <option key={horizon.value} value={horizon.value}>{horizon.label}</option>
-            ))}
-          </select>
+          />
           <button className="icon-btn" title="Microphone">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </button>
@@ -310,7 +462,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={newChat}>
-          <span className="brand-mark">BT</span>
+          <span className="brand-mark"><LogoIcon /></span>
           <span>
             <strong>Boolean Trader</strong>
             <small>Agentic stock analysis</small>

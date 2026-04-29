@@ -527,7 +527,18 @@ h1 {
   margin-top: -8px;
 }
 
-.gemini-date, .gemini-select {
+/* Custom Select & Calendar Dropdowns */
+.gemini-custom-select {
+  position: relative;
+  display: inline-block;
+}
+
+.gemini-custom-select.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gemini-select-trigger {
   background: transparent;
   border: none;
   color: var(--text);
@@ -538,29 +549,192 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
 }
 
-.gemini-date:hover, .gemini-select:hover {
+.gemini-select-trigger:hover, .gemini-select-trigger.active {
   background: var(--surface-muted);
 }
 
-[data-theme="light"] .gemini-date:hover, [data-theme="light"] .gemini-select:hover {
+[data-theme="light"] .gemini-select-trigger:hover, [data-theme="light"] .gemini-select-trigger.active {
   background: #f0f4f9;
 }
 
-.gemini-select {
-  appearance: none;
-  padding-right: 28px;
-  background-image: url('data:image/svg+xml;utf8,<svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L5 5L9 1" stroke="%23A4A197" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-  background-repeat: no-repeat;
-  background-position: right 10px center;
+.gemini-select-trigger .chevron {
+  transition: transform 0.2s;
+  margin-left: 4px;
 }
 
-.gemini-date {
-  color-scheme: dark;
+.gemini-select-trigger.active .chevron {
+  transform: rotate(180deg);
 }
-[data-theme="light"] .gemini-date {
-  color-scheme: light;
+
+.select-icon {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.gemini-dropdown-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: var(--surface-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+  min-width: 220px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+[data-theme="light"] .gemini-dropdown-menu {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+}
+
+.gemini-dropdown-item {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.gemini-dropdown-item:hover {
+  background: var(--surface-muted);
+}
+
+[data-theme="light"] .gemini-dropdown-item:hover {
+  background: #f0f4f9;
+}
+
+.gemini-dropdown-item.selected {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+[data-theme="light"] .gemini-dropdown-item.selected {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+.item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-detail {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Calendar specifics */
+.calendar-menu {
+  min-width: 280px;
+  padding: 16px;
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cal-nav {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.cal-nav:hover {
+  background: var(--surface-muted);
+}
+
+[data-theme="light"] .cal-nav:hover {
+  background: #f0f4f9;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
+}
+
+.cal-header-day {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.cal-day {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  height: 32px;
+  width: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  margin: 0 auto;
+}
+
+.cal-day:hover {
+  background: var(--surface-muted);
+}
+
+[data-theme="light"] .cal-day:hover {
+  background: #f0f4f9;
+}
+
+.cal-day.today {
+  font-weight: 800;
+  color: var(--accent);
+}
+
+[data-theme="light"] .cal-day.today {
+  color: #1a73e8;
+}
+
+.cal-day.selected {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+[data-theme="light"] .cal-day.selected {
+  background: #1a73e8;
+  color: white;
 }
 
 .submit-circle {
