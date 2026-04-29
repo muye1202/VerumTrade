@@ -248,6 +248,64 @@ function App() {
     return JSON.stringify(value, null, 2);
   };
 
+  const renderComposer = (isWelcome = false) => (
+    <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
+      <div className="gemini-input-row">
+        <input
+          className="gemini-input"
+          value={ticker}
+          onChange={(event) => setTicker(event.target.value.toUpperCase())}
+          onKeyDown={(event) => event.key === 'Enter' && startAnalysis()}
+          placeholder="Ask about a ticker (e.g. AAPL, NVDA)..."
+          disabled={isRunning}
+        />
+      </div>
+      <div className="gemini-toolbar">
+        <div className="toolbar-left">
+          <button className="icon-btn" title="Add file">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+          <button className="text-btn">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
+            Tools
+            <span className="dot"></span>
+          </button>
+        </div>
+        <div className="toolbar-right">
+          <input
+            type="date"
+            className="gemini-date"
+            value={analysisDate}
+            onChange={(event) => setAnalysisDate(event.target.value)}
+            disabled={isRunning}
+          />
+          <select
+            className="gemini-select"
+            value={timeHorizon}
+            onChange={(event) => setTimeHorizon(event.target.value)}
+            disabled={isRunning}
+          >
+            {HORIZONS.map((horizon) => (
+              <option key={horizon.value} value={horizon.value}>{horizon.label}</option>
+            ))}
+          </select>
+          <button className="icon-btn" title="Microphone">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </button>
+          {isRunning ? (
+            <button className="submit-circle danger" onClick={handleStop}>
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+            </button>
+          ) : (
+            <button className="submit-circle primary" onClick={() => startAnalysis()} disabled={!ticker.trim()}>
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -264,18 +322,20 @@ function App() {
           New analysis
         </button>
 
-        <nav className="mode-list" aria-label="Functionality">
-          {MODES.map((mode) => (
-            <button
-              key={mode.id}
-              className={activeMode === mode.id ? 'mode-item active' : 'mode-item'}
-              onClick={() => setActiveMode(mode.id)}
-            >
-              <span>{mode.label}</span>
-              <small>{mode.description}</small>
-            </button>
-          ))}
-        </nav>
+        {hasConversation && (
+          <nav className="mode-list" aria-label="Functionality">
+            {MODES.map((mode) => (
+              <button
+                key={mode.id}
+                className={activeMode === mode.id ? 'mode-item active' : 'mode-item'}
+                onClick={() => setActiveMode(mode.id)}
+              >
+                <span>{mode.label}</span>
+                <small>{mode.description}</small>
+              </button>
+            ))}
+          </nav>
+        )}
 
         <section className="history-block">
           <div className="sidebar-heading">
@@ -306,74 +366,26 @@ function App() {
       </aside>
 
       <main className="workspace">
-        <header className="workspace-header">
-          <div>
-            <p className="eyebrow">TradingAgents workspace</p>
-            <h1>{hasConversation ? `${ticker || 'Session'} analysis` : 'Start a stock analysis session'}</h1>
-          </div>
-          <div className={isRunning ? 'run-status active' : 'run-status'}>
-            <span />
-            {isRunning ? 'Agents running' : isPending ? 'Loading session' : 'Idle'}
-          </div>
-        </header>
+        {hasConversation ? (
+          <>
+            <header className="workspace-header">
+              <div>
+                <p className="eyebrow">TradingAgents workspace</p>
+                <h1>{ticker || 'Session'} analysis</h1>
+              </div>
+              <div className={isRunning ? 'run-status active' : 'run-status'}>
+                <span />
+                {isRunning ? 'Agents running' : isPending ? 'Loading session' : 'Idle'}
+              </div>
+            </header>
 
-        {errorMessage && <div className="error-banner">{errorMessage}</div>}
+            {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
-        <section className="composer-card">
-          <div className="composer-grid">
-            <label>
-              <span>Ticker</span>
-              <input
-                value={ticker}
-                onChange={(event) => setTicker(event.target.value.toUpperCase())}
-                onKeyDown={(event) => event.key === 'Enter' && startAnalysis()}
-                placeholder="AAPL"
-                disabled={isRunning}
-              />
-            </label>
-            <label>
-              <span>Analysis date</span>
-              <input
-                type="date"
-                value={analysisDate}
-                onChange={(event) => setAnalysisDate(event.target.value)}
-                disabled={isRunning}
-              />
-            </label>
-            <label>
-              <span>Time horizon</span>
-              <select
-                value={timeHorizon}
-                onChange={(event) => setTimeHorizon(event.target.value)}
-                disabled={isRunning}
-              >
-                {HORIZONS.map((horizon) => (
-                  <option key={horizon.value} value={horizon.value}>{horizon.label}</option>
-                ))}
-              </select>
-            </label>
-            {isRunning ? (
-              <button className="danger-action" onClick={handleStop}>Stop</button>
-            ) : (
-              <button className="primary-action" onClick={() => startAnalysis()} disabled={!ticker.trim()}>
-                Run analysis
-              </button>
-            )}
-          </div>
-          <div className="quick-actions">
-            {[
-              ['NVDA', 'short_term'],
-              ['TSLA', 'swing'],
-              ['SPY', 'long_term'],
-            ].map(([symbol, horizon]) => (
-              <button key={`${symbol}-${horizon}`} onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
-                {symbol} · {HORIZONS.find((item) => item.value === horizon)?.label}
-              </button>
-            ))}
-          </div>
-        </section>
+            <section className="composer-wrapper compact">
+              {renderComposer(false)}
+            </section>
 
-        <div className="content-grid">
+            <div className="content-grid">
           <section className="conversation-panel">
             <div className="panel-header">
               <div>
@@ -465,6 +477,32 @@ function App() {
             )}
           </section>
         </div>
+          </>
+        ) : (
+          <div className="welcome-container">
+            <div className="welcome-hero">
+              <h2><span className="greeting-gradient">Hi Trader</span></h2>
+              <h1>Where should we start?</h1>
+            </div>
+
+            <section className="composer-wrapper large">
+              {renderComposer(true)}
+
+              <div className="gemini-suggestions">
+                {[
+                  ['Analyze NVDA', 'NVDA', 'short_term', '📈', '#4285f4'],
+                  ['Swing trade TSLA', 'TSLA', 'swing', '🚗', '#d96570'],
+                  ['Long term SPY', 'SPY', 'long_term', '🏦', '#f4b400'],
+                  ['Research AAPL', 'AAPL', 'short_term', '🍎', '#9b72cb'],
+                ].map(([label, symbol, horizon, icon, color]) => (
+                  <button key={`${symbol}-${horizon}`} className="suggestion-pill" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
+                    <span className="suggestion-icon" style={{ color }}>{icon}</span> {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
       </main>
     </div>
   );
