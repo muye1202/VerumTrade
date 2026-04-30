@@ -15,6 +15,32 @@ const MODES = [
   { id: 'execution', label: 'Execution', description: 'Paper-trade controls' },
 ];
 
+const SHALLOW_MODELS = [
+  { value: 'openai|gpt-4o-mini', label: 'GPT-4o Mini', detail: 'OpenAI default' },
+  { value: 'qwen3-cn|qwen3.6-flash', label: 'Qwen3.6-Flash', detail: 'Fast, cost-effective' },
+  { value: 'anthropic|claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', detail: 'Balanced performance' },
+  { value: 'anthropic|claude-haiku-4-5-20251001', label: 'Claude 4.5 Haiku', detail: 'Fast anthropic' },
+];
+
+const DEEP_MODELS = [
+  { value: 'openai|gpt-4o-mini', label: 'GPT-4o Mini', detail: 'OpenAI default' },
+  { value: 'glm|glm-4.7-flash', label: 'GLM-4.7-Flash', detail: 'Fast, cost-effective' },
+  { value: 'qwen3-cn|qwen3.5-plus', label: 'Qwen3.5-Plus', detail: 'Strong reasoning' },
+  { value: 'qwen3-cn|qwen3.6-plus', label: 'Qwen3.6-Plus', detail: 'Strong reasoning v3.6' },
+  { value: 'deepseek|deepseek-reasoner', label: 'DeepSeek Reasoner', detail: 'Deep thinking' },
+  { value: 'anthropic|claude-opus-4-6', label: 'Claude 4.6 Opus', detail: 'Maximum capability' },
+  { value: 'anthropic|claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', detail: 'Balanced performance' },
+];
+
+const BACKEND_URLS = {
+  'openai': 'http://192.168.123.81:8045/v1',
+  'qwen3-cn': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'deepseek': 'https://api.deepseek.com/v1',
+  'glm': 'https://open.bigmodel.cn/api/paas/v4',
+  'anthropic': 'http://ai.tachira.cn/api',
+  'openrouter': 'https://openrouter.ai/api/v1',
+};
+
 const REPORT_SECTIONS = [
   ['market_report', 'Market'],
   ['sentiment_report', 'Sentiment'],
@@ -40,7 +66,7 @@ const formatDateTime = (value) => {
   }).format(new Date(value));
 };
 
-const CustomSelect = ({ value, onChange, options, disabled, icon }) => {
+const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -64,7 +90,7 @@ const CustomSelect = ({ value, onChange, options, disabled, icon }) => {
         type="button"
       >
         {icon && <span className="select-icon">{icon}</span>}
-        <span className="select-label">{selectedOption.label}</span>
+        <span className="select-label">{title || selectedOption.label}</span>
         <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="chevron">
           <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
@@ -203,7 +229,56 @@ function App() {
   const [ticker, setTicker] = useState('');
   const [analysisDate, setAnalysisDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeHorizon, setTimeHorizon] = useState('short_term');
+  const [shallowThinker, setShallowThinker] = useState('openai|gpt-4o-mini');
+  const [deepThinker, setDeepThinker] = useState('openai|gpt-4o-mini');
   const [activeMode, setActiveMode] = useState('analysis');
+
+  const [apiKeys, setApiKeys] = useState(() => {
+    const saved = localStorage.getItem('apiKeys');
+    return saved ? JSON.parse(saved) : { openai: '', anthropic: '', 'qwen3-cn': '', deepseek: '', glm: '' };
+  });
+  
+  const [activeProviders, setActiveProviders] = useState(() => {
+    const saved = localStorage.getItem('activeProviders');
+    return saved ? JSON.parse(saved) : { openai: true, anthropic: true, 'qwen3-cn': true, deepseek: true, glm: true };
+  });
+
+  const [customModels, setCustomModels] = useState(() => {
+    const saved = localStorage.getItem('customModels');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [newModelInputs, setNewModelInputs] = useState({});
+
+  useEffect(() => {
+    localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
+  }, [apiKeys]);
+
+  useEffect(() => {
+    localStorage.setItem('activeProviders', JSON.stringify(activeProviders));
+  }, [activeProviders]);
+
+  useEffect(() => {
+    localStorage.setItem('customModels', JSON.stringify(customModels));
+  }, [customModels]);
+
+  const allShallowModels = [...SHALLOW_MODELS];
+  const allDeepModels = [...DEEP_MODELS];
+  
+  Object.entries(customModels).forEach(([providerId, models]) => {
+    if (!Array.isArray(models)) return;
+    models.forEach(entry => {
+      // Support legacy plain-string entries and new {name, scope} objects
+      const modelName = typeof entry === 'string' ? entry : entry.name;
+      const scope     = typeof entry === 'string' ? 'both' : (entry.scope || 'both');
+      const item = { value: `${providerId}|${modelName}`, label: modelName, detail: 'Custom' };
+      if (scope !== 'deep'    && !allShallowModels.some(m => m.value === item.value)) allShallowModels.push(item);
+      if (scope !== 'shallow' && !allDeepModels.some(m => m.value === item.value))    allDeepModels.push(item);
+    });
+  });
+
+  const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
+  const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
   const [activeReport, setActiveReport] = useState('market_report');
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -242,6 +317,24 @@ function App() {
     }
   };
 
+  const deleteHistoryItem = async (e, id) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/api/history/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (activeSessionId === id) {
+          setActiveSessionId(null);
+          setLogs([]);
+          setReports({});
+          setActiveMode('analysis');
+        }
+        fetchHistory();
+      }
+    } catch (error) {
+      console.error('Failed to delete history item', error);
+    }
+  };
+
   useEffect(() => {
     // Initial server sync; subsequent refreshes are user or socket driven.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -255,24 +348,33 @@ function App() {
     }
   };
 
-  const createPayload = (overrides = {}) => ({
-    ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
-    analysis_date: overrides.analysisDate ?? analysisDate,
-    analysts: ['market', 'social', 'news', 'fundamentals'],
-    research_depth: 1,
-    llm_provider: 'openai',
-    shallow_thinker: 'gpt-4o-mini',
-    deep_thinker: 'gpt-4o-mini',
-    time_horizon: overrides.timeHorizon ?? timeHorizon,
-    skip_completed_analysts: false,
-    mock: true,
-    execution: {
-      enabled: false,
-      provider: 'alpaca',
-      paper: true,
-      position_size_pct: 0.1,
-    },
-  });
+  const createPayload = (overrides = {}) => {
+    const deepVal = overrides.deepThinker ?? deepThinker;
+    const shallowVal = overrides.shallowThinker ?? shallowThinker;
+    
+    const [deepProvider, deepModel] = deepVal.split('|');
+    const [shallowProvider, shallowModel] = shallowVal.split('|');
+
+    return {
+      ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
+      analysis_date: overrides.analysisDate ?? analysisDate,
+      analysts: ['market', 'social', 'news', 'fundamentals'],
+      research_depth: 1,
+      llm_provider: deepProvider,
+      backend_url: BACKEND_URLS[deepProvider] || null,
+      shallow_thinker: shallowModel,
+      deep_thinker: deepModel,
+      time_horizon: overrides.timeHorizon ?? timeHorizon,
+      skip_completed_analysts: false,
+      mock: true,
+      execution: {
+        enabled: false,
+        provider: 'alpaca',
+        paper: true,
+        position_size_pct: 0.1,
+      },
+    };
+  };
 
   const startAnalysis = (overrides = {}) => {
     const payload = createPayload(overrides);
@@ -417,30 +519,7 @@ function App() {
           placeholder="Ask about a ticker (e.g. AAPL, NVDA)..."
           disabled={isRunning}
         />
-      </div>
-      <div className="gemini-toolbar">
-        <div className="toolbar-left">
-          <button className="icon-btn" title="Add file">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          </button>
-          <button className="text-btn">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
-            Tools
-            <span className="dot"></span>
-          </button>
-        </div>
-        <div className="toolbar-right">
-          <CustomDatePicker
-            value={analysisDate}
-            onChange={(val) => setAnalysisDate(val)}
-            disabled={isRunning}
-          />
-          <CustomSelect
-            value={timeHorizon}
-            onChange={(val) => setTimeHorizon(val)}
-            options={HORIZONS}
-            disabled={isRunning}
-          />
+        <div className="input-actions">
           <button className="icon-btn" title="Microphone">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </button>
@@ -457,6 +536,248 @@ function App() {
       </div>
     </div>
   );
+
+  const renderConfigStrip = () => (
+    <div className="config-strip">
+      <div className="config-card">
+        <div className="config-card-icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.05.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>
+        </div>
+        <div className="config-card-body">
+          <span className="config-label">Shallow Thinker</span>
+          <CustomSelect
+            value={shallowThinker}
+            onChange={(val) => setShallowThinker(val)}
+            options={availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS}
+            disabled={isRunning}
+            title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === shallowThinker)?.label || 'Select'}
+          />
+        </div>
+      </div>
+
+      <div className="config-card">
+        <div className="config-card-icon deep">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+        </div>
+        <div className="config-card-body">
+          <span className="config-label">Deep Thinker</span>
+          <CustomSelect
+            value={deepThinker}
+            onChange={(val) => setDeepThinker(val)}
+            options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
+            disabled={isRunning}
+            title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
+          />
+        </div>
+      </div>
+
+      <div className="config-card">
+        <div className="config-card-icon date">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+        </div>
+        <div className="config-card-body">
+          <span className="config-label">Analysis Date</span>
+          <CustomDatePicker
+            value={analysisDate}
+            onChange={(val) => setAnalysisDate(val)}
+            disabled={isRunning}
+          />
+        </div>
+      </div>
+
+      <div className="config-card">
+        <div className="config-card-icon horizon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        </div>
+        <div className="config-card-body">
+          <span className="config-label">Time Horizon</span>
+          <CustomSelect
+            value={timeHorizon}
+            onChange={(val) => setTimeHorizon(val)}
+            options={HORIZONS}
+            disabled={isRunning}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const [showApiKey, setShowApiKey] = useState({});
+  const [newModelScope, setNewModelScope] = useState({});
+
+  const cycleScope = (providerId) => {
+    setNewModelScope(prev => {
+      const cur = prev[providerId] || 'both';
+      const next = cur === 'both' ? 'shallow' : cur === 'shallow' ? 'deep' : 'both';
+      return { ...prev, [providerId]: next };
+    });
+  };
+
+  const addModel = (providerId) => {
+    const name = (newModelInputs[providerId] || '').trim();
+    if (!name) return;
+    const scope = newModelScope[providerId] || 'both';
+    setCustomModels(prev => ({
+      ...prev,
+      [providerId]: [...(prev[providerId] || []), { name, scope }],
+    }));
+    setNewModelInputs(prev => ({ ...prev, [providerId]: '' }));
+  };
+
+  const deleteModel = (providerId, index) => {
+    setCustomModels(prev => ({
+      ...prev,
+      [providerId]: (prev[providerId] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const renderSettings = () => {
+    const PROVIDERS = [
+      { id: 'openai', name: 'OpenAI', url: 'https://platform.openai.com/api-keys' },
+      { id: 'anthropic', name: 'Anthropic', url: 'https://console.anthropic.com/' },
+      { id: 'qwen3-cn', name: 'Qwen (DashScope)', url: 'https://dashscope.console.aliyun.com/' },
+      { id: 'deepseek', name: 'DeepSeek', url: 'https://platform.deepseek.com/' },
+      { id: 'glm', name: 'GLM (ZhipuAI)', url: 'https://open.bigmodel.cn/' }
+    ];
+
+    const SCOPE_META = {
+      both:    { label: 'Both',    color: '#4285f4' },
+      shallow: { label: 'Shallow', color: '#9b72cb' },
+      deep:    { label: 'Deep',    color: '#d96570' },
+    };
+
+    return (
+      <div className="settings-page">
+        <div className="settings-header">
+          <h2>Model Providers</h2>
+          <p>Enable providers, set API keys, and add custom model IDs for each agent tier.</p>
+        </div>
+
+        <div className="provider-grid">
+          {PROVIDERS.map(provider => {
+            const isActive = activeProviders[provider.id];
+            const models = customModels[provider.id] || [];
+            const scope = newModelScope[provider.id] || 'both';
+            const scopeMeta = SCOPE_META[scope];
+
+            return (
+              <div key={provider.id} className={`provider-card ${isActive ? 'active' : ''}`}>
+                {/* Header row */}
+                <div className="provider-card-header">
+                  <div className="provider-info">
+                    <h3>{provider.name}</h3>
+                    <a href={provider.url} target="_blank" rel="noreferrer" className="get-key-chip">
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                      Get API Key
+                    </a>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={(e) => setActiveProviders(prev => ({ ...prev, [provider.id]: e.target.checked }))}
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                </div>
+
+                {isActive && (
+                  <div className="provider-body">
+                    {/* API Key input */}
+                    <div className="api-key-field">
+                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.65 10A5.99 5.99 0 007 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 005.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                      <input
+                        type={showApiKey[provider.id] ? 'text' : 'password'}
+                        className="api-key-input"
+                        placeholder={`${provider.name} API Key`}
+                        value={apiKeys[provider.id] || ''}
+                        onChange={(e) => setApiKeys(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        className="api-key-eye"
+                        onClick={() => setShowApiKey(prev => ({ ...prev, [provider.id]: !prev[provider.id] }))}
+                        title={showApiKey[provider.id] ? 'Hide key' : 'Reveal key'}
+                      >
+                        {showApiKey[provider.id] ? (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Custom Models section */}
+                    <div className="custom-models-section">
+                      <div className="custom-models-header">
+                        <span className="custom-models-title">Custom Models</span>
+                        <span className="custom-models-hint">Model IDs added here appear in the agent selectors above.</span>
+                      </div>
+
+                      {/* Existing models list */}
+                      {models.length > 0 && (
+                        <div className="model-list">
+                          {models.map((entry, i) => {
+                            // Support legacy plain-string entries
+                            const modelName = typeof entry === 'string' ? entry : entry.name;
+                            const modelScope = typeof entry === 'string' ? 'both' : entry.scope;
+                            const meta = SCOPE_META[modelScope] || SCOPE_META.both;
+                            return (
+                              <div key={i} className="model-list-item">
+                                <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
+                                <span className="model-list-name">{modelName}</span>
+                                <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
+                                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add model row */}
+                      <div className="model-add-row">
+                        <button
+                          type="button"
+                          className="scope-toggle"
+                          style={{ color: scopeMeta.color, borderColor: `${scopeMeta.color}55`, background: `${scopeMeta.color}11` }}
+                          onClick={() => cycleScope(provider.id)}
+                          title="Click to cycle: Both → Shallow → Deep"
+                        >
+                          {scopeMeta.label}
+                        </button>
+                        <input
+                          className="model-name-input"
+                          placeholder="model-id (e.g. gpt-4o)"
+                          value={newModelInputs[provider.id] || ''}
+                          onChange={(e) => setNewModelInputs(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') addModel(provider.id); }}
+                        />
+                        <button
+                          type="button"
+                          className="model-add-btn"
+                          onClick={() => addModel(provider.id)}
+                          disabled={!(newModelInputs[provider.id] || '').trim()}
+                        >
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="settings-footer">
+          <p className="settings-note">Keys are stored locally in your browser and sent to your backend proxy only.</p>
+          <button className="primary-btn" onClick={() => setActiveMode('analysis')}>Done</button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="app-shell">
@@ -499,26 +820,41 @@ function App() {
               <p className="empty-copy">No saved sessions yet.</p>
             ) : (
               historyList.map((item) => (
-                <button
-                  key={item.id}
-                  className={activeSessionId === item.id ? 'history-item active' : 'history-item'}
-                  onClick={() => loadHistoryItem(item.id)}
-                >
-                  <span>{item.ticker}</span>
-                  <small>{item.time_horizon.replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
-                </button>
+                <div key={item.id} className={activeSessionId === item.id ? 'history-item active' : 'history-item'}>
+                  <button className="history-item-content" onClick={() => loadHistoryItem(item.id)}>
+                    <span>{item.ticker}</span>
+                    <small>{item.time_horizon.replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
+                  </button>
+                  <button className="history-delete-btn" onClick={(e) => deleteHistoryItem(e, item.id)} title="Delete session">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                  </button>
+                </div>
               ))
             )}
           </div>
         </section>
 
-        <button className="theme-button" onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}>
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
+        <div style={{ marginTop: 'auto' }}>
+          <button 
+            className={`mode-item ${activeMode === 'settings' ? 'active' : ''}`} 
+            onClick={() => setActiveMode('settings')}
+            style={{ width: '100%', marginBottom: '8px' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+              Settings
+            </span>
+          </button>
+          <button className="theme-button" onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}>
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+        </div>
       </aside>
 
       <main className="workspace">
-        {hasConversation ? (
+        {activeMode === 'settings' ? (
+          renderSettings()
+        ) : hasConversation ? (
           <>
             <header className="workspace-header">
               <div>
@@ -535,6 +871,7 @@ function App() {
 
             <section className="composer-wrapper compact">
               {renderComposer(false)}
+              {renderConfigStrip()}
             </section>
 
             <div className="content-grid">
@@ -639,16 +976,20 @@ function App() {
 
             <section className="composer-wrapper large">
               {renderComposer(true)}
+              {renderConfigStrip()}
 
               <div className="gemini-suggestions">
+                <p className="suggestions-label">Try asking</p>
                 {[
-                  ['Analyze NVDA', 'NVDA', 'short_term', '📈', '#4285f4'],
-                  ['Swing trade TSLA', 'TSLA', 'swing', '🚗', '#d96570'],
-                  ['Long term SPY', 'SPY', 'long_term', '🏦', '#f4b400'],
-                  ['Research AAPL', 'AAPL', 'short_term', '🍎', '#9b72cb'],
-                ].map(([label, symbol, horizon, icon, color]) => (
-                  <button key={`${symbol}-${horizon}`} className="suggestion-pill" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
-                    <span className="suggestion-icon" style={{ color }}>{icon}</span> {label}
+                  ['Analyze NVDA', 'NVDA', 'short_term', '📈'],
+                  ['Swing trade TSLA', 'TSLA', 'swing', '🚗'],
+                  ['Long term SPY', 'SPY', 'long_term', '🏦'],
+                  ['Research AAPL', 'AAPL', 'short_term', '🍎'],
+                ].map(([label, symbol, horizon, icon]) => (
+                  <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
+                    <span className="suggestion-row-icon">{icon}</span>
+                    <span className="suggestion-row-text">{label}</span>
+                    <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
                   </button>
                 ))}
               </div>

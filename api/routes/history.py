@@ -47,3 +47,14 @@ def get_history_detail(session_id: int, db: Session = Depends(get_db)) -> Dict[s
         "reports": session.reports,
         "created_at": session.created_at.isoformat()
     }
+
+@router.delete("/history/{session_id}")
+def delete_history_session(session_id: int, db: Session = Depends(get_db)):
+    """Delete a specific session."""
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    db.delete(session)
+    db.commit()
+    return {"status": "success", "message": "Session deleted"}
