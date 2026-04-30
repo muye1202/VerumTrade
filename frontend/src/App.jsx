@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -46,7 +48,9 @@ const REPORT_SECTIONS = [
   ['sentiment_report', 'Sentiment'],
   ['news_report', 'News'],
   ['fundamentals_report', 'Fundamentals'],
+  ['investment_debate_state', 'Debate'],
   ['trader_investment_plan', 'Trader Plan'],
+  ['risk_debate_state', 'Risk Debate'],
   ['final_trade_decision', 'Final Decision'],
 ];
 
@@ -55,6 +59,63 @@ const makeLog = (type, content) => ({
   type,
   content,
 });
+
+const PREVIEW_LINES = 3;
+const PREVIEW_CHARS = 300;
+
+const CollapsibleContent = ({ content }) => {
+  const [expanded, setExpanded] = useState(false);
+  const lines = content.split('\n');
+  const isLong = lines.length > PREVIEW_LINES || content.length > PREVIEW_CHARS;
+
+  if (!isLong) {
+    return (
+      <div className="markdown-content">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </div>
+    );
+  }
+
+  return (
+    <div className="msg-collapsible">
+      <div className={`markdown-content ${expanded ? '' : 'collapsed'}`}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </div>
+      <button className="expand-btn" onClick={() => setExpanded(e => !e)}>
+        {expanded ? '▲ Show less' : `▼ Show more`}
+      </button>
+    </div>
+  );
+};
+
+const ToolGroupMessage = ({ tools }) => {
+  const [expanded, setExpanded] = useState(false);
+  // Extract unique tool names (content is "toolName: {args}")
+  const names = [...new Set(tools.map(t => t.content.split(':')[0].trim()))];
+  const preview = names.slice(0, 3).join(' · ') + (names.length > 3 ? ` +${names.length - 3}` : '');
+
+  return (
+    <div className="tool-group-row">
+      <button className="tool-group-chip" onClick={() => setExpanded(e => !e)}>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style={{flexShrink:0}}>
+          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0014.4 3h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 9.47c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        </svg>
+        <span className="tg-count">{tools.length} tool call{tools.length > 1 ? 's' : ''}</span>
+        <span className="tg-names">{preview}</span>
+        <span className="tg-chevron">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <div className="tool-group-detail">
+          {tools.map(t => (
+            <div key={t.id} className="tool-detail-item">
+              <code>{t.content}</code>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const formatDateTime = (value) => {
   if (!value) return '';
@@ -297,6 +358,31 @@ function App() {
     ? activeReport
     : availableReports[0]?.[0];
 
+  // Total tool calls for the live activity bar
+  const toolCallCount = useMemo(() => logs.filter(l => l.type === 'tool').length, [logs]);
+
+  // Group consecutive tool-call logs into single collapsible chips
+  const processedLogs = useMemo(() => {
+    const result = [];
+    let toolBatch = [];
+    const flushBatch = () => {
+      if (toolBatch.length > 0) {
+        result.push({ id: toolBatch[0].id, type: 'tool_group', tools: [...toolBatch] });
+        toolBatch = [];
+      }
+    };
+    for (const log of logs) {
+      if (log.type === 'tool') {
+        toolBatch.push(log);
+      } else {
+        flushBatch();
+        result.push(log);
+      }
+    }
+    flushBatch();
+    return result;
+  }, [logs]);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -366,7 +452,7 @@ function App() {
       deep_thinker: deepModel,
       time_horizon: overrides.timeHorizon ?? timeHorizon,
       skip_completed_analysts: false,
-      mock: true,
+      mock: false,
       execution: {
         enabled: false,
         provider: 'alpaca',
@@ -412,9 +498,14 @@ function App() {
         if (data.updates) {
           data.updates.forEach((update) => {
             if (update.event === 'message') {
+              const rawType = (update.type || 'agent').toLowerCase();
+              const frontendType = rawType === 'user' ? 'user'
+                : rawType === 'system' ? 'system'
+                : rawType === 'toolresult' ? 'tool_output'
+                : 'agent';
               setLogs((prev) => [
                 ...prev,
-                makeLog(update.type?.toLowerCase() || 'agent', update.content),
+                makeLog(frontendType, update.content),
               ]);
             }
             if (update.event === 'tool_call') {
@@ -486,14 +577,35 @@ function App() {
         setTicker(data.ticker);
         setAnalysisDate(data.analysis_date);
         setTimeHorizon(data.time_horizon);
-        setLogs((Array.isArray(data.logs) ? data.logs : []).map((log, index) => ({
-          ...log,
-          id: `history-${data.id}-${index}`,
-          type: log.type || 'agent',
-        })));
+
+        // Normalize stored logs from backend format → frontend display format.
+        // Backend stores: {event:"message", type:"Reasoning"/"User"/..., content:"..."}
+        //             and: {event:"tool_call", tool:"...", args:{...}}
+        // Frontend expects: {id, type:"agent"/"user"/"tool"/"system", content:"..."}
+        const normalizeLog = (log, index) => {
+          const id = `history-${data.id}-${index}`;
+          if (log.event === 'tool_call') {
+            const args = typeof log.args === 'object' ? JSON.stringify(log.args) : (log.args ?? '');
+            return { id, type: 'tool', content: `${log.tool}: ${args}` };
+          }
+          if (log.event === 'message') {
+            const rawType = (log.type || 'agent').toLowerCase();
+            const frontendType = rawType === 'user' ? 'user'
+              : rawType === 'system' ? 'system'
+              : rawType === 'toolresult' ? 'tool_output'
+              : 'agent';
+            return { id, type: frontendType, content: log.content || '' };
+          }
+          // Fallback for any logs already in frontend format (type but no event)
+          return { id, type: log.type || 'agent', content: log.content || '' };
+        };
+
+        setLogs((Array.isArray(data.logs) ? data.logs : []).map(normalizeLog));
         setReports(typeof data.reports === 'object' && data.reports ? data.reports : {});
         setActiveMode('reports');
-        setActiveReport('market_report');
+        // Default to first available report section
+        const firstAvailable = REPORT_SECTIONS.find(([key]) => data.reports && data.reports[key]);
+        setActiveReport(firstAvailable ? firstAvailable[0] : 'market_report');
       });
     } catch (error) {
       setErrorMessage(error.message);
@@ -505,6 +617,11 @@ function App() {
     if (typeof value === 'string') return value;
     if (value.judge_decision) return value.judge_decision;
     if (value.final_decision) return value.final_decision;
+    // Debate state objects — extract the most useful readable text
+    if (value.current_response) return value.current_response;
+    if (value.history && Array.isArray(value.history)) {
+      return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
+    }
     return JSON.stringify(value, null, 2);
   };
 
@@ -889,12 +1006,51 @@ function App() {
                   <p>Choose a ticker or open a previous analysis from history.</p>
                 </div>
               ) : (
-                logs.map((log) => (
-                  <article key={log.id} className={`message ${log.type}`}>
-                    <div className="avatar">{log.type === 'user' ? 'You' : log.type.slice(0, 2).toUpperCase()}</div>
-                    <p>{log.content}</p>
-                  </article>
-                ))
+                processedLogs.map((log) => {
+                  // System status → subtle centered pill
+                  if (log.type === 'system') {
+                    return (
+                      <div key={log.id} className="status-line">
+                        <span className="status-dot" />
+                        <span>{log.content}</span>
+                      </div>
+                    );
+                  }
+                  // Grouped tool calls → compact collapsible chip
+                  if (log.type === 'tool_group') {
+                    return <ToolGroupMessage key={log.id} tools={log.tools} />;
+                  }
+                  
+                  // Hide completely empty messages
+                  if (!log.content || log.content.trim() === '') {
+                    return null;
+                  }
+
+                  // Determine avatar text
+                  let avatarText = log.type === 'user' ? 'You' : log.type.slice(0, 2).toUpperCase();
+                  if (log.type === 'tool_output') avatarText = '⚙️';
+                  if (log.type === 'agent') avatarText = 'AG';
+
+                  // User & agent messages → full bubbles
+                  return (
+                    <article key={log.id} className={`message ${log.type}`}>
+                      <div className="avatar">{avatarText}</div>
+                      {log.type === 'user'
+                        ? <p>{log.content}</p>
+                        : <CollapsibleContent content={log.content} />
+                      }
+                    </article>
+                  );
+                })
+              )}
+              {isRunning && (
+                <div className="live-activity-bar">
+                  <span className="activity-pulse-dot" />
+                  <span>Agents working</span>
+                  {toolCallCount > 0 && (
+                    <span className="activity-calls">{toolCallCount} tool call{toolCallCount !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
               )}
               <div ref={logsEndRef} />
             </div>
@@ -944,7 +1100,11 @@ function App() {
                         </button>
                       ))}
                     </div>
-                    <pre className="report-body">{renderReportText(reports[selectedReportKey])}</pre>
+                    <div className="report-body markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {renderReportText(reports[selectedReportKey]) || ''}
+                      </ReactMarkdown>
+                    </div>
                   </>
                 )}
               </>

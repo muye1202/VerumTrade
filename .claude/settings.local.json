@@ -5,7 +5,10 @@
       "Bash(python -c:*)",
       "Bash(python -m pytest:*)",
       "Bash(pip show:*)",
-      "Bash(ls -la /d/repos/TradingAgents-main/cli/*.py)"
+      "Bash(ls -la /d/repos/TradingAgents-main/cli/*.py)",
+      "Bash(npx vite *)",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }

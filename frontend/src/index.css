@@ -325,7 +325,9 @@ select:focus-visible {
   gap: 14px;
   border-radius: var(--radius-lg);
   padding: 20px;
-  overflow: hidden;
+  height: calc(100vh - 28px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .workspace-header {
@@ -1061,7 +1063,8 @@ h1 {
   font-weight: 900;
 }
 
-.message p {
+.message > p,
+.message .markdown-content {
   margin: 0;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -1070,20 +1073,278 @@ h1 {
   color: var(--text);
   line-height: 1.55;
   white-space: pre-wrap;
+  width: 100%;
 }
 
-.message.user p {
+.markdown-content {
+  white-space: normal;
+  word-wrap: break-word;
+  font-size: 13.5px;
+}
+
+.markdown-content.collapsed {
+  max-height: 120px;
+  overflow: hidden;
+  position: relative;
+}
+
+.markdown-content.collapsed::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50px;
+  background: linear-gradient(to bottom, transparent, var(--surface-muted));
+  pointer-events: none;
+}
+
+.markdown-content p {
+  margin: 0 0 10px 0;
+}
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content pre {
+  background: var(--bg);
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+}
+.markdown-content code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  background: var(--bg);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.markdown-content pre code {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0 0 10px 0;
+  padding-left: 20px;
+}
+.markdown-content li {
+  margin-bottom: 4px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  margin: 14px 0 8px 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.markdown-content h1 { font-size: 1.4em; }
+.markdown-content h2 { font-size: 1.2em; }
+.markdown-content h3 { font-size: 1.1em; }
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.markdown-content th {
+  background: var(--bg);
+}
+
+.message.user > p {
   background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
-.message.system p {
+.message.system > p {
   color: var(--muted);
 }
 
-.message.tool p {
+.message.tool > p {
   font-family: "Cascadia Code", "Consolas", monospace;
   color: color-mix(in srgb, var(--accent) 82%, var(--text));
   font-size: 13px;
+}
+
+.message.tool_output > p,
+.message.tool_output .markdown-content {
+  background: color-mix(in srgb, var(--border) 20%, transparent);
+  border: 1px dashed var(--border-strong);
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--text) 90%, transparent);
+}
+
+/* ── System status lines ── */
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 2px 0;
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  animation: riseIn 200ms ease both;
+}
+
+.status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex-shrink: 0;
+}
+
+/* ── Tool call group chip ── */
+.tool-group-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: riseIn 200ms ease both;
+}
+
+.tool-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.tool-group-chip:hover {
+  background: var(--surface-muted);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.tg-count {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.tg-names {
+  color: var(--faint);
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tg-chevron {
+  font-size: 9px;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.tool-group-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+  margin-left: 4px;
+}
+
+.tool-detail-item code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--accent) 75%, var(--text));
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+/* ── Live activity bar ── */
+.live-activity-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  align-self: center;
+  animation: riseIn 240ms ease both;
+}
+
+.activity-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: statusPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.activity-calls {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.msg-collapsible {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+
+.msg-collapsible p {
+  width: 100%;
+}
+
+.expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+
+.expand-btn:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .empty-state {

@@ -43,12 +43,14 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
         # Save mock session to DB for testing UI
         db = SessionLocal()
         try:
+            safe_logs = json.loads(json.dumps(all_logs, default=str))
+            safe_reports = json.loads(json.dumps(final_reports, default=str))
             db_session = AnalysisSession(
                 ticker=f"MOCK {req.ticker}",
                 analysis_date=req.analysis_date,
                 time_horizon=req.time_horizon,
-                logs=all_logs,
-                reports=final_reports
+                logs=safe_logs,
+                reports=safe_reports,
             )
             db.add(db_session)
             db.commit()
@@ -169,18 +171,30 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     # Save real session to DB
     db = SessionLocal()
     try:
-        # Strip large raw inputs from reports to save space, keeping the final texts
+        # Round-trip through json.dumps/loads to coerce any non-serializable Python
+        # objects (LangChain messages, datetimes, Pydantic models, etc.) to plain
+        # strings before SQLAlchemy tries to persist them as JSON.
+        safe_logs = json.loads(json.dumps(all_logs, default=str))
+        safe_reports = json.loads(json.dumps(final_reports, default=str))
+
         db_session = AnalysisSession(
             ticker=req.ticker,
             analysis_date=req.analysis_date,
             time_horizon=req.time_horizon,
-            logs=all_logs,
-            reports=final_reports
+            logs=safe_logs,
+            reports=safe_reports,
         )
         db.add(db_session)
         db.commit()
     except Exception as e:
         print(f"Error saving history: {e}")
+        try:
+            await websocket.send_json({
+                "event": "system",
+                "content": f"Warning: session could not be saved to history: {e}",
+            })
+        except Exception:
+            pass
     finally:
         db.close()
         
