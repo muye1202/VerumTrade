@@ -6,10 +6,25 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 
 const HORIZONS = [
-  { value: 'short_term', label: 'Short term', detail: 'Days to weeks' },
-  { value: 'swing', label: 'Swing', detail: 'Weeks to months' },
-  { value: 'long_term', label: 'Long term', detail: 'Months to years' },
+  { value: '1-2 weeks', label: 'Short term', detail: '1-2 weeks' },
+  { value: '1-2 months', label: 'Swing', detail: '1-2 months' },
+  { value: '2-3 months', label: 'Long term', detail: '2-3 months' },
 ];
+
+const LEGACY_HORIZON_VALUES = {
+  short_term: '1-2 weeks',
+  swing: '1-2 months',
+  long_term: '2-3 months',
+};
+
+const normalizeHorizonValue = (value) => {
+  const normalized = LEGACY_HORIZON_VALUES[value] || value;
+  return HORIZONS.some((item) => item.value === normalized) ? normalized : HORIZONS[0].value;
+};
+
+const getHorizonMeta = (value) => (
+  HORIZONS.find((item) => item.value === normalizeHorizonValue(value)) || HORIZONS[0]
+);
 
 const MODES = [
   { id: 'analysis', label: 'Analysis', description: 'Run the agent pipeline' },
@@ -200,10 +215,6 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (value) setViewDate(new Date(value + 'T00:00:00'));
-  }, [value]);
-
   const dateObj = new Date(value + 'T00:00:00');
   const displayDate = new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).format(dateObj);
 
@@ -249,7 +260,11 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
     <div className={`gemini-custom-select ${disabled ? 'disabled' : ''}`} ref={containerRef}>
       <button 
         className={`gemini-select-trigger ${isOpen ? 'active' : ''}`}
-        onClick={() => !disabled && setIsOpen(!isOpen)} 
+        onClick={() => {
+          if (disabled) return;
+          if (!isOpen && value) setViewDate(new Date(value + 'T00:00:00'));
+          setIsOpen(!isOpen);
+        }}
         type="button"
       >
         <span className="select-icon">
@@ -289,7 +304,7 @@ function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [ticker, setTicker] = useState('');
   const [analysisDate, setAnalysisDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [timeHorizon, setTimeHorizon] = useState('short_term');
+  const [timeHorizon, setTimeHorizon] = useState(HORIZONS[0].value);
   const [shallowThinker, setShallowThinker] = useState('openai|gpt-4o-mini');
   const [deepThinker, setDeepThinker] = useState('openai|gpt-4o-mini');
   const [activeMode, setActiveMode] = useState('analysis');
@@ -352,7 +367,7 @@ function App() {
   const logsEndRef = useRef(null);
 
   const hasConversation = logs.length > 0 || Object.keys(reports).length > 0 || Boolean(activeSessionId);
-  const currentHorizon = HORIZONS.find((item) => item.value === timeHorizon) || HORIZONS[0];
+  const currentHorizon = getHorizonMeta(timeHorizon);
   const availableReports = REPORT_SECTIONS.filter(([key]) => reports[key]);
   const selectedReportKey = availableReports.some(([key]) => key === activeReport)
     ? activeReport
@@ -439,7 +454,7 @@ function App() {
     const shallowVal = overrides.shallowThinker ?? shallowThinker;
     
     const [deepProvider, deepModel] = deepVal.split('|');
-    const [shallowProvider, shallowModel] = shallowVal.split('|');
+    const [, shallowModel] = shallowVal.split('|');
 
     return {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
@@ -450,7 +465,7 @@ function App() {
       backend_url: BACKEND_URLS[deepProvider] || null,
       shallow_thinker: shallowModel,
       deep_thinker: deepModel,
-      time_horizon: overrides.timeHorizon ?? timeHorizon,
+      time_horizon: normalizeHorizonValue(overrides.timeHorizon ?? timeHorizon),
       skip_completed_analysts: false,
       mock: false,
       execution: {
@@ -576,7 +591,7 @@ function App() {
         setActiveSessionId(data.id);
         setTicker(data.ticker);
         setAnalysisDate(data.analysis_date);
-        setTimeHorizon(data.time_horizon);
+        setTimeHorizon(normalizeHorizonValue(data.time_horizon));
 
         // Normalize stored logs from backend format → frontend display format.
         // Backend stores: {event:"message", type:"Reasoning"/"User"/..., content:"..."}
@@ -973,30 +988,35 @@ function App() {
           renderSettings()
         ) : hasConversation ? (
           <>
-            <header className="workspace-header">
-              <div>
-                <p className="eyebrow">TradingAgents workspace</p>
-                <h1>{ticker || 'Session'} analysis</h1>
+            <header className="session-bar">
+              <div className="session-title">
+                <span className="ticker-pill">{ticker || 'Session'}</span>
+                <span className="session-meta">{currentHorizon.label} analysis</span>
               </div>
-              <div className={isRunning ? 'run-status active' : 'run-status'}>
-                <span />
-                {isRunning ? 'Agents running' : isPending ? 'Loading session' : 'Idle'}
+              <div className="session-actions">
+                <div className={isRunning ? 'run-status active' : 'run-status'}>
+                  <span />
+                  {isRunning ? 'Agents running' : isPending ? 'Loading session' : 'Idle'}
+                </div>
+                {isRunning && (
+                  <button className="stop-analysis-btn" onClick={handleStop} type="button">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M6 6h12v12H6z" />
+                    </svg>
+                    Stop
+                  </button>
+                )}
               </div>
             </header>
 
             {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
-            <section className="composer-wrapper compact">
-              {renderComposer(false)}
-              {renderConfigStrip()}
-            </section>
-
             <div className="content-grid">
           <section className="conversation-panel">
             <div className="panel-header">
               <div>
-                <h2>Agent transcript</h2>
-                <p>Live stream from analyst, research, trader, and risk agents.</p>
+                <h2>Transcript</h2>
+                <p>Agent activity and intermediate reasoning stream.</p>
               </div>
             </div>
             <div className="message-list">
@@ -1061,14 +1081,14 @@ function App() {
               <>
                 <div className="panel-header">
                   <div>
-                    <h2>Run setup</h2>
-                    <p>Current settings sent to the analysis pipeline.</p>
+                    <h2>Session summary</h2>
+                    <p>Current pipeline scope for this ticker.</p>
                   </div>
                 </div>
                 <div className="metric-stack">
                   <div><span>Analysts</span><strong>Market, Social, News, Fundamentals</strong></div>
                   <div><span>Horizon</span><strong>{currentHorizon.label}</strong><small>{currentHorizon.detail}</small></div>
-                  <div><span>Mode</span><strong>Mock stream</strong><small>UI-safe test execution</small></div>
+                  <div><span>Date</span><strong>{analysisDate}</strong><small>Analysis snapshot</small></div>
                   <div><span>Execution</span><strong>Paper disabled</strong><small>No orders will be submitted</small></div>
                 </div>
               </>
@@ -1078,8 +1098,8 @@ function App() {
               <>
                 <div className="panel-header">
                   <div>
-                    <h2>Executive report</h2>
-                    <p>Switch between generated report sections.</p>
+                    <h2>Report</h2>
+                    <p>Generated sections for the active ticker.</p>
                   </div>
                 </div>
                 {availableReports.length === 0 ? (

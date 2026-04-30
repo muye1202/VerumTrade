@@ -19,7 +19,7 @@ class AnalysisRequest(BaseModel):
     backend_url: Optional[str] = Field(default=None, description="Backend URL for local/custom LLMs")
     shallow_thinker: str = Field(default="gpt-4o-mini", description="Model used for shallow tasks")
     deep_thinker: str = Field(default="gpt-4o", description="Model used for deep reasoning")
-    time_horizon: str = Field(default="short_term", description="Trading time horizon")
+    time_horizon: str = Field(default="1-2 weeks", description="Trading time horizon")
     skip_completed_analysts: bool = Field(default=False, description="Whether to skip already completed analysts")
     execution: Optional[ExecutionSettings] = None
     mock: bool = Field(default=False, description="If true, bypass LLM and return mock stream")
