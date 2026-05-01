@@ -2,9 +2,10 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Define the local database file
-SQLITE_DB_FILE = "trading_history.db"
-DATABASE_URL = f"sqlite:///./{SQLITE_DB_FILE}"
+# Use absolute path to the repository root to ensure the DB is always found
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SQLITE_DB_FILE = os.path.join(BASE_DIR, "trading_history.db")
+DATABASE_URL = f"sqlite:///{SQLITE_DB_FILE}"
 
 # Create the engine, configure for SQLite multi-threading
 engine = create_engine(

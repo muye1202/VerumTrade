@@ -955,7 +955,7 @@ function App() {
                 <div key={item.id} className={activeSessionId === item.id ? 'history-item active' : 'history-item'}>
                   <button className="history-item-content" onClick={() => loadHistoryItem(item.id)}>
                     <span>{item.ticker}</span>
-                    <small>{item.time_horizon.replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
+                    <small>{(item.time_horizon || '').replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
                   </button>
                   <button className="history-delete-btn" onClick={(e) => deleteHistoryItem(e, item.id)} title="Delete session">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>

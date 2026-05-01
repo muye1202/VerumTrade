@@ -72,6 +72,25 @@ APCA_API_BASE_URL=https://paper-api.alpaca.markets/v2
 
 ## 📖 User Guide
 
+### 🖥️ Running the Web Interface (Quick Start)
+
+The easiest way to use the application is via the modern web interface.
+
+`ash
+# Windows
+run.bat
+
+# Mac / Linux
+./run.sh
+`
+
+*(Alternatively, you can run python run.py directly).*
+
+This script automatically launches both the backend API and the frontend UI in a single terminal window. Once running, open your browser to [http://localhost:5173](http://localhost:5173) (or whichever port Vite provides).
+
+> [!NOTE]
+> **First-time setup:** If you haven't installed dependencies yet, run start.bat (Windows) or ./start.sh (Mac/Linux) first. These scripts will create the Python virtual environment, set up your .env file, and install all required Node.js and Python packages.
+
 ### 💻 Running a single-stock analysis (CLI)
 
 The interactive CLI walks you through every choice step by step — this is the recommended way to start:

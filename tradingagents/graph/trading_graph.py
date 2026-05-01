@@ -39,7 +39,9 @@ from tradingagents.agents.utils.agent_runtime.agent_utils import (
     get_company_news_window,
     get_insider_sentiment,
     get_insider_transactions,
-    get_global_news
+    get_global_news,
+    get_news_sentiment,
+    get_recent_sec_filings
 )
 from tradingagents.agents.utils.market_data.vwap_tools import (
     get_intraday_vwap_position,
@@ -156,6 +158,9 @@ def _sanitize_outbound_openai_messages_payload(payload: Dict[str, Any]) -> Dict[
         if not isinstance(msg, dict):
             _drop_pending_tool_calls_if_unresolved()
             continue
+
+        if msg.get("content") is None:
+            msg["content"] = ""
 
         role = msg.get("role")
         if role == "assistant":
@@ -747,14 +752,15 @@ class TradingAgentsGraph:
             # News tools for social media analysis
             get_news,
             get_company_news_window,
+            get_news_sentiment,
         ]
         news_tools = [
             # News and insider information
             get_news,
             get_company_news_window,
             get_global_news,
-            get_insider_sentiment,
-            get_insider_transactions,
+            get_news_sentiment,
+            get_recent_sec_filings,
         ]
         fundamentals_tools = [
             # Fundamental analysis tools
