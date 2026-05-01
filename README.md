@@ -10,6 +10,8 @@
     <img src="https://img.shields.io/badge/Framework-LangGraph-7c3aed.svg" alt="LangGraph">
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
   </p>
+
+  <img src="demos/INTC_demo_preview.gif" alt="TradingAgents INTC demo preview" width="100%">
 </div>
 
 ---
