@@ -2,7 +2,7 @@
   <img src="assets/bool_trader.svg" alt="Boolean — AIStockTrader" width="300">
 
   <!-- <h1>Boolean Trader</h1> -->
-  <p><em>A multi-agent AI system where teams of specialised LLM agents research, debate, and decide on stock trades — end to end.</em></p>
+  <p><em>A sophisticated multi-agentic AI framework where autonomous teams of LLM specialists research, debate, and execute stock trades with institutional-grade rigor.</em></p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
@@ -20,7 +20,7 @@
 |:--|:--|
 | [🚀 Getting Started](#-getting-started) | Install, configure API keys, and run your first analysis |
 | [📖 User Guide](#-user-guide) | Everything you need to use TradingAgents day-to-day |
-| [🏗️ Architecture](#-architecture) | How the agents, data, and execution layers fit together |
+| [🏗️ Architecture](#-architecture) | How the autonomous agent teams and execution layers collaborate |
 
 ---
 
@@ -78,13 +78,13 @@ APCA_API_BASE_URL=https://paper-api.alpaca.markets/v2
 
 The easiest way to use the application is via the modern web interface.
 
-`ash
+```bash
 # Windows
 run.bat
 
 # Mac / Linux
 ./run.sh
-`
+```
 
 *(Alternatively, you can run python run.py directly).*
 
@@ -113,7 +113,7 @@ You'll be prompted to pick:
 | **Models** | One quick-thinking model (used by most agents) and one deep-thinking model (used by the judges) |
 | **Execution** | Analysis only, or also place a paper trade via Alpaca |
 
-A live terminal dashboard streams agent progress, tool calls, and the growing report in real time. All outputs are saved automatically to `results/{ticker}/{date}/` when the run finishes.
+A live terminal dashboard streams agent progress, tool calls, and the growing report in real time. All outputs are saved automatically to `results/stocks/{date}/{ticker}/` when the run finishes.
 
 ### 📊 Running a portfolio analysis
 
@@ -200,26 +200,26 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       📊 Market Data Layer                          |
+│                       📊 Market Data Layer                          │
 │   Alpaca  ·  Yahoo Finance  ·  Alpha Vantage  ·  Google  ·  Local   │
 │                  (automatic fallback between sources)               │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  price · news · fundamentals · sentiment
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    🔍 1. Analyst Team                              │
+│                    🔍 I. Analyst Team                              │
 │                                                                     │
 │   ┌────────────┐  ┌────────────┐  ┌──────────┐  ┌───────────────┐   │
 │   │  Market    │→ │  Social    │→ │  News    │→ │ Fundamentals  │   │
 │   │  Analyst   │  │  Analyst   │  │  Analyst │  │   Analyst     │   │
 │   └────────────┘  └────────────┘  └──────────┘  └───────────────┘   │
-│        Each analyst calls data tools in a loop, then writes a       │
-│        focused report.  Uses the quick-thinking LLM.                │
+│        Each specialist agent calls data tools in a loop, then       │
+│        writes a focused report. Uses the quick-thinking LLM.        │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  four analyst reports
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                 💬 2. Research Team (Debate)                        │
+│                 💬 II. Research Team Decision                      │
 │                                                                     │
 │          ┌──────────────┐  ◄──►  ┌──────────────┐                   │
 │          │ Bull         │        │ Bear         │                   │
@@ -230,25 +230,25 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
 │          ┌────────────────────────────────┐                         │
 │          │      Research Manager          │  ← deep-thinking LLM    │
 │          │  Judges the debate, writes     │                         │
-│          │  the investment plan           │                         │
+│          │  the investment decision       │                         │
 │          └────────────────┬───────────────┘                         │
 └───────────────────────────┼─────────────────────────────────────────┘
-                            │  investment plan
+                            │  investment decision
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     📝 3. Trading Team                              │
+│                     📝 III. Trading Team Plan                       │
 │                                                                     │
 │          ┌────────────────────────────────┐                         │
 │          │            Trader              │                         │
-│          │  Combines all reports into a   │                         │
-│          │  BUY / SELL / HOLD decision    │                         │
-│          │  with order type & quantity    │                         │
+│          │  Synthesizes research into a   │                         │
+│          │  concrete investment plan with │                         │
+│          │  order type & quantity details │                         │
 │          └────────────────┬───────────────┘                         │
 └───────────────────────────┼─────────────────────────────────────────┘
-                            │  proposed trade
+                            │  proposed plan
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│               ⚖️  4. Risk Management Team (Debate)                  │
+│               ⚖️  IV. Risk Management Team Decision                 │
 │                                                                     │
 │     ┌───────────┐   ┌─────────┐   ┌───────────┐                     │
 │     │  Risky    │◄──│ Neutral │──►│  Safe     │                     │
@@ -257,15 +257,15 @@ TradingAgents is built on **LangGraph** — each agent is a node in a directed w
 │                         │                                           │
 │                         ▼                                           │
 │          ┌────────────────────────────────┐                         │
-│          │        Risk Judge              │  ← deep-thinking LLM    │
-│          │  Final decision with position  │                         │
-│          │  size, guardrails, and order   │                         │
+│          │       Portfolio Manager        │  ← deep-thinking LLM    │
+│          │  Final risk-aware decision     │                         │
+│          │  with position-sizing & limits │                         │
 │          └────────────────┬───────────────┘                         │
 └───────────────────────────┼─────────────────────────────────────────┘
                             │  final structured decision
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                  💰 5. Execution Layer                              │
+│                  💰 V. Execution Layer                             │
 │                                                                     │
 │          ┌────────────────────────────────┐                         │
 │          │       Alpaca Executor          │                         │

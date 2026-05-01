@@ -11,6 +11,12 @@ const HORIZONS = [
   { value: '2-3 months', label: 'Long term', detail: '2-3 months' },
 ];
 
+const RESEARCH_DEPTHS = [
+  { value: 1, label: 'Shallow', detail: 'Fast scan' },
+  { value: 3, label: 'Medium', detail: 'Balanced' },
+  { value: 5, label: 'Deep', detail: 'Thorough' },
+];
+
 const LEGACY_HORIZON_VALUES = {
   short_term: '1-2 weeks',
   swing: '1-2 months',
@@ -305,6 +311,7 @@ function App() {
   const [ticker, setTicker] = useState('');
   const [analysisDate, setAnalysisDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeHorizon, setTimeHorizon] = useState(HORIZONS[0].value);
+  const [researchDepth, setResearchDepth] = useState(RESEARCH_DEPTHS[0].value);
   const [shallowThinker, setShallowThinker] = useState('openai|gpt-4o-mini');
   const [deepThinker, setDeepThinker] = useState('openai|gpt-4o-mini');
   const [activeMode, setActiveMode] = useState('analysis');
@@ -460,7 +467,7 @@ function App() {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
       analysis_date: overrides.analysisDate ?? analysisDate,
       analysts: ['market', 'social', 'news', 'fundamentals'],
-      research_depth: 1,
+      research_depth: overrides.researchDepth ?? researchDepth,
       llm_provider: deepProvider,
       backend_url: BACKEND_URLS[deepProvider] || null,
       shallow_thinker: shallowModel,
@@ -485,6 +492,7 @@ function App() {
     setTicker(payload.ticker);
     setAnalysisDate(payload.analysis_date);
     setTimeHorizon(payload.time_horizon);
+    setResearchDepth(payload.research_depth);
     setActiveSessionId(null);
     setActiveMode('analysis');
     setActiveReport('market_report');
@@ -652,9 +660,18 @@ function App() {
           disabled={isRunning}
         />
         <div className="input-actions">
-          <button className="icon-btn" title="Microphone">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-          </button>
+          <CustomSelect
+            value={researchDepth}
+            onChange={(val) => setResearchDepth(Number(val))}
+            options={RESEARCH_DEPTHS}
+            disabled={isRunning}
+            title={RESEARCH_DEPTHS.find((item) => item.value === researchDepth)?.label || 'Shallow'}
+            icon={
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zm-6.76 7.56L3 11.69l9 4.5 9-4.5-2.24-1.13L12 13.94l-6.76-3.38zm0 4.2L3 15.89l9 4.5 9-4.5-2.24-1.13L12 18.14l-6.76-3.38z" />
+              </svg>
+            }
+          />
           {isRunning ? (
             <button className="submit-circle danger" onClick={handleStop}>
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>

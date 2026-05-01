@@ -570,6 +570,34 @@ h1 {
   flex-shrink: 0;
 }
 
+.input-actions .gemini-custom-select {
+  display: inline-flex;
+}
+
+.input-actions .gemini-select-trigger {
+  height: 38px;
+  max-width: 136px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.input-actions .gemini-select-trigger:hover,
+.input-actions .gemini-select-trigger.active {
+  color: var(--text);
+}
+
+.input-actions .select-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.input-actions .select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .gemini-input {
   background: transparent;
   border: none;
@@ -2075,6 +2103,20 @@ input:checked + .slider:before {
   .workspace-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .gemini-input-row {
+    gap: 4px;
+  }
+
+  .input-actions .gemini-select-trigger {
+    max-width: 46px;
+    padding: 0 8px;
+  }
+
+  .input-actions .select-label,
+  .input-actions .gemini-select-trigger .chevron {
+    display: none;
   }
 
   .config-strip {
