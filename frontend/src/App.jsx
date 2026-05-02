@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { formatFinalDecisionReport } from './reportFormatting';
+import {
+  getRetrievedInfoTitle,
+  getTranscriptMessagePresentation,
+  groupTranscriptLogs,
+} from './transcriptDisplay';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -131,6 +137,37 @@ const ToolGroupMessage = ({ tools }) => {
             <div key={t.id} className="tool-detail-item">
               <code>{t.content}</code>
             </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RetrievedInfoGroupMessage = ({ items }) => {
+  const [expanded, setExpanded] = useState(false);
+  const previews = items.map((item, index) => getRetrievedInfoTitle(item.content, index));
+  const preview = previews.slice(0, 2).join(' / ') + (previews.length > 2 ? ` +${previews.length - 2}` : '');
+
+  return (
+    <div className="retrieved-info-row">
+      <button className="retrieved-info-chip" onClick={() => setExpanded(e => !e)}>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style={{flexShrink:0}}>
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+        </svg>
+        <span className="ri-count">{items.length} retrieved info item{items.length > 1 ? 's' : ''}</span>
+        <span className="ri-preview">{preview}</span>
+        <span className="ri-chevron">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <div className="retrieved-info-detail">
+          {items.map((item, index) => (
+            <details key={item.id} className="retrieved-info-item">
+              <summary>
+                <span className="retrieved-info-title">{getRetrievedInfoTitle(item.content, index)}</span>
+              </summary>
+              <pre><code>{item.content}</code></pre>
+            </details>
           ))}
         </div>
       )}
@@ -306,6 +343,27 @@ const LogoIcon = () => (
   </svg>
 );
 
+const TranscriptAvatar = ({ avatar, label }) => (
+  <div className={`avatar avatar-${avatar}`} title={label} aria-label={label}>
+    {avatar === 'user' ? (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 12.2c2.27 0 4.12-1.84 4.12-4.12S14.27 4 12 4 7.88 5.81 7.88 8.08 9.73 12.2 12 12.2Z" fill="currentColor" opacity="0.92" />
+        <path d="M4.95 20c.66-3.55 3.35-5.63 7.05-5.63S18.39 16.45 19.05 20H4.95Z" fill="currentColor" opacity="0.72" />
+      </svg>
+    ) : avatar === 'tool' ? (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M14.68 5.3 12.8 7.18l4.02 4.02 1.88-1.88a2.84 2.84 0 0 0-4.02-4.02Z" fill="currentColor" opacity="0.92" />
+        <path d="m11.74 8.24-6.8 6.8L4 20l4.96-.94 6.8-6.8-4.02-4.02Z" fill="currentColor" opacity="0.72" />
+      </svg>
+    ) : (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 3.75 5.25 7.5v6.97L12 20.25l6.75-5.78V7.5L12 3.75Z" fill="currentColor" opacity="0.2" />
+        <path d="M8.15 11.08h7.7M8.15 14.18h5.45M12 3.75 5.25 7.5v6.97L12 20.25l6.75-5.78V7.5L12 3.75Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )}
+  </div>
+);
+
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [ticker, setTicker] = useState('');
@@ -379,30 +437,17 @@ function App() {
   const selectedReportKey = availableReports.some(([key]) => key === activeReport)
     ? activeReport
     : availableReports[0]?.[0];
+  const selectedReportText = renderReportText(reports[selectedReportKey]) || '';
+  const selectedFinalDecision = selectedReportKey === 'final_trade_decision'
+    ? formatFinalDecisionReport(selectedReportText)
+    : null;
 
   // Total tool calls for the live activity bar
   const toolCallCount = useMemo(() => logs.filter(l => l.type === 'tool').length, [logs]);
 
-  // Group consecutive tool-call logs into single collapsible chips
+  // Group low-level tool traffic into compact expandable transcript entries.
   const processedLogs = useMemo(() => {
-    const result = [];
-    let toolBatch = [];
-    const flushBatch = () => {
-      if (toolBatch.length > 0) {
-        result.push({ id: toolBatch[0].id, type: 'tool_group', tools: [...toolBatch] });
-        toolBatch = [];
-      }
-    };
-    for (const log of logs) {
-      if (log.type === 'tool') {
-        toolBatch.push(log);
-      } else {
-        flushBatch();
-        result.push(log);
-      }
-    }
-    flushBatch();
-    return result;
+    return groupTranscriptLogs(logs);
   }, [logs]);
 
   useEffect(() => {
@@ -635,7 +680,7 @@ function App() {
     }
   };
 
-  const renderReportText = (value) => {
+  function renderReportText(value) {
     if (!value) return null;
     if (typeof value === 'string') return value;
     if (value.judge_decision) return value.judge_decision;
@@ -646,7 +691,7 @@ function App() {
       return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
     }
     return JSON.stringify(value, null, 2);
-  };
+  }
 
   const renderComposer = (isWelcome = false) => (
     <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
@@ -1057,25 +1102,29 @@ function App() {
                   if (log.type === 'tool_group') {
                     return <ToolGroupMessage key={log.id} tools={log.tools} />;
                   }
+
+                  if (log.type === 'retrieved_info_group') {
+                    return <RetrievedInfoGroupMessage key={log.id} items={log.items} />;
+                  }
                   
                   // Hide completely empty messages
                   if (!log.content || log.content.trim() === '') {
                     return null;
                   }
 
-                  // Determine avatar text
-                  let avatarText = log.type === 'user' ? 'You' : log.type.slice(0, 2).toUpperCase();
-                  if (log.type === 'tool_output') avatarText = '⚙️';
-                  if (log.type === 'agent') avatarText = 'AG';
 
                   // User & agent messages → full bubbles
+                  const presentation = getTranscriptMessagePresentation(log.type);
                   return (
-                    <article key={log.id} className={`message ${log.type}`}>
-                      <div className="avatar">{avatarText}</div>
-                      {log.type === 'user'
-                        ? <p>{log.content}</p>
-                        : <CollapsibleContent content={log.content} />
-                      }
+                    <article key={log.id} className={`message ${log.type} ${presentation.side}`}>
+                      <TranscriptAvatar avatar={presentation.avatar} label={presentation.label} />
+                      <div className="message-bubble">
+                        <div className="message-meta">{presentation.label}</div>
+                        {log.type === 'user'
+                          ? <p>{log.content}</p>
+                          : <CollapsibleContent content={log.content} />
+                        }
+                      </div>
                     </article>
                   );
                 })
@@ -1139,8 +1188,16 @@ function App() {
                     </div>
                     <div className="report-body markdown-content">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {renderReportText(reports[selectedReportKey]) || ''}
+                        {selectedFinalDecision?.markdown || selectedReportText}
                       </ReactMarkdown>
+                      {selectedFinalDecision?.hiddenDecisionJson && (
+                        <pre
+                          hidden
+                          data-final-decision-json
+                        >
+                          {JSON.stringify(selectedFinalDecision.hiddenDecisionJson, null, 2)}
+                        </pre>
+                      )}
                     </div>
                   </>
                 )}
