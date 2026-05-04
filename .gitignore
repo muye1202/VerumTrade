@@ -1,5 +1,6 @@
 .venv
 results
+docs
 env/
 __pycache__/
 .DS_Store
