@@ -70,6 +70,10 @@ class AgentState(_MessagesState):
     sentiment_evidence: Annotated[str, "Compact evidence summary from the Social Media Analyst"]
     news_evidence: Annotated[str, "Compact evidence summary from the News Analyst"]
     fundamentals_evidence: Annotated[str, "Compact evidence summary from the Fundamentals Analyst"]
+    market_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the Market Analyst"]
+    sentiment_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the Social Media Analyst"]
+    news_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the News Analyst"]
+    fundamentals_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the Fundamentals Analyst"]
 
     # researcher team discussion step
     investment_debate_state: Annotated[
@@ -97,6 +101,9 @@ class AgentState(_MessagesState):
     tool_call_total: Annotated[int, "Total number of tool rounds across analysts"]
     tool_calls_issued_by_agent: Annotated[dict, "Number of individual tool calls emitted by each analyst"]
     tool_calls_issued_total: Annotated[int, "Total individual tool calls emitted by analysts"]
+    analyst_tool_call_links: Annotated[dict, "Workbench tool-call links by analyst and named question"]
+    analyst_tool_call_blocked_counts: Annotated[dict, "Workbench fallback tool calls blocked by deterministic gating"]
+    analyst_workbench_metrics: Annotated[dict, "Workbench observation, anomaly, question, and hypothesis metrics by analyst"]
 
     # Exact run-level LLM telemetry.
     llm_metrics: Annotated[dict, "Exact LLM/API usage counters for this run"]

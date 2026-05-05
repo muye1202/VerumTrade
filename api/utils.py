@@ -10,6 +10,41 @@ from cli.analysis_utils import _msg_type_and_content, _extract_tool_calls
 from api.database import SessionLocal
 from api.models import AnalysisSession
 
+
+REPORT_PAYLOAD_KEYS = [
+    "market_report",
+    "sentiment_report",
+    "news_report",
+    "fundamentals_report",
+    "market_ledger",
+    "sentiment_ledger",
+    "news_ledger",
+    "fundamentals_ledger",
+    "analyst_workbench_metrics",
+    "analyst_tool_call_links",
+    "analyst_tool_call_blocked_counts",
+    "investment_debate_state",
+    "trader_investment_plan",
+    "risk_debate_state",
+    "final_trade_decision",
+    "final_trade_decision_structured",
+    "final_trade_decision_validation_error",
+    "market_snapshot",
+    "decision_guard",
+    "llm_metrics",
+]
+
+
+def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Build the persisted/API report payload from the final graph state."""
+    state = final_state or {}
+    return {
+        key: state.get(key)
+        for key in REPORT_PAYLOAD_KEYS
+        if key in state and state.get(key) is not None
+    }
+
+
 async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     """
     Runs the TradingAgentsGraph analysis and streams intermediate messages,
@@ -175,6 +210,8 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
         # objects (LangChain messages, datetimes, Pydantic models, etc.) to plain
         # strings before SQLAlchemy tries to persist them as JSON.
         safe_logs = json.loads(json.dumps(all_logs, default=str))
+        if final_state:
+            final_reports.update(build_analysis_reports_payload(final_state))
         safe_reports = json.loads(json.dumps(final_reports, default=str))
 
         db_session = AnalysisSession(

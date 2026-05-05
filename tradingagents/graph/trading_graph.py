@@ -714,12 +714,18 @@ class TradingAgentsGraph:
         metrics = diff_llm_api_calls(before_snapshot, after_snapshot)
         rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
         issued = state.get("tool_calls_issued_by_agent") or {}
+        workbench_metrics = state.get("analyst_workbench_metrics") or {}
+        blocked = state.get("analyst_tool_call_blocked_counts") or {}
+        links = state.get("analyst_tool_call_links") or {}
         metrics.update(
             {
                 "analyst_tool_rounds_by_agent": dict(rounds),
                 "analyst_tool_rounds_total": int(state.get("tool_call_total", sum(int(v or 0) for v in rounds.values())) or 0),
                 "tool_calls_issued_by_agent": dict(issued),
                 "tool_calls_issued_total": int(state.get("tool_calls_issued_total", sum(int(v or 0) for v in issued.values())) or 0),
+                "analyst_workbench_metrics": dict(workbench_metrics),
+                "analyst_tool_call_blocked_counts": dict(blocked),
+                "analyst_tool_call_links": dict(links),
             }
         )
         return metrics
@@ -1328,6 +1334,10 @@ class TradingAgentsGraph:
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
             "fundamentals_report": final_state["fundamentals_report"],
+            "market_ledger": final_state.get("market_ledger", {}),
+            "sentiment_ledger": final_state.get("sentiment_ledger", {}),
+            "news_ledger": final_state.get("news_ledger", {}),
+            "fundamentals_ledger": final_state.get("fundamentals_ledger", {}),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],
@@ -1358,6 +1368,9 @@ class TradingAgentsGraph:
             "tool_call_total": final_state.get("tool_call_total", 0),
             "tool_calls_issued_by_agent": final_state.get("tool_calls_issued_by_agent", {}),
             "tool_calls_issued_total": final_state.get("tool_calls_issued_total", 0),
+            "analyst_tool_call_links": final_state.get("analyst_tool_call_links", {}),
+            "analyst_tool_call_blocked_counts": final_state.get("analyst_tool_call_blocked_counts", {}),
+            "analyst_workbench_metrics": final_state.get("analyst_workbench_metrics", {}),
             "llm_metrics": final_state.get("llm_metrics", {}),
         }
 

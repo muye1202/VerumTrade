@@ -11,6 +11,17 @@ from tradingagents.agents.utils.market_data.bundle_tools import (
 from tradingagents.dataflows.config import get_config
 from tradingagents.agents.utils.llm.tool_binding import bind_tools_parallel_safe
 from tradingagents.agents.analysts.tooling import build_tooling_state_update
+from tradingagents.agents.analysts.discovery_lane import (
+    count_blocked_tool_call,
+    merge_workbench_metrics,
+    record_tool_call_links,
+    select_question_gated_tools,
+)
+from tradingagents.agents.analysts.workbench import (
+    build_minimum_evidence_question,
+    build_workbench_prompt_block,
+    finalize_analyst_workbench_output,
+)
 
 
 def create_news_analyst(llm):
@@ -40,12 +51,32 @@ def create_news_analyst(llm):
             get_news_sentiment,
             get_recent_sec_filings,
         ]
-        tools = select_bundle_first_tools(
-            get_news_data_bundle,
-            fallback_tools,
-            enable_bundle_tools=enable_bundle_tools,
-            rounds_used=rounds_used,
-        )
+        blocked_tooling_update = {}
+        selected_question = None
+        if rounds_used <= 0:
+            tools = select_bundle_first_tools(
+                get_news_data_bundle,
+                fallback_tools,
+                enable_bundle_tools=enable_bundle_tools,
+                rounds_used=rounds_used,
+            )
+            selected_question = build_minimum_evidence_question(
+                "news",
+                getattr(get_news_data_bundle, "name", "get_news_data_bundle")
+                if enable_bundle_tools
+                else None,
+            )
+        else:
+            tools, selected_question = select_question_gated_tools(
+                state,
+                "news",
+                fallback_tools,
+                rounds_used=rounds_used,
+            )
+            if not tools:
+                blocked_tooling_update = count_blocked_tool_call(
+                    state, "news", "no_named_open_question"
+                )
 
         system_message = (
             f"You are a news + macro analyst supporting a {holding_text} swing trade decision. Your job is to identify *trade-relevant* catalysts and risks for {window_text}, not to produce a long general news recap."
@@ -64,6 +95,8 @@ def create_news_analyst(llm):
             "\n- Do not output `FINAL TRANSACTION PROPOSAL`; provide domain bias and evidence only. The trader/risk judge owns executable BUY/HOLD/SELL decisions."
             "\n\nEnd with a compact Markdown table: theme, bullish/bearish impulse, confidence, time horizon, and key watch item."
         )
+        system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
+        system_message += build_workbench_prompt_block("news", selected_question)
 
         if portfolio_context:
             system_message += (
@@ -98,23 +131,63 @@ def create_news_analyst(llm):
             or total_rounds_used >= global_tool_round_cap
         )
         chain = prompt | (
-            llm if force_no_tools else bind_tools_parallel_safe(llm, tools)
+            llm if force_no_tools or not tools else bind_tools_parallel_safe(llm, tools)
         )
         result = chain.invoke(state["messages"])
         tool_calls_count = len(getattr(result, "tool_calls", None) or [])
         tooling_state = build_tooling_state_update(state, "news", tool_calls_count)
+        link_state = {**state, **blocked_tooling_update}
+        if tool_calls_count > 0:
+            for tool_call in getattr(result, "tool_calls", None) or []:
+                tool_name = (
+                    tool_call.get("name")
+                    if isinstance(tool_call, dict)
+                    else getattr(tool_call, "name", "")
+                )
+                link_state.update(
+                    record_tool_call_links(
+                        link_state,
+                        "news",
+                        str(tool_name or ""),
+                        selected_question,
+                        tool_calls_count=1,
+                    )
+                )
+        tool_link_update = {
+            "analyst_tool_call_links": link_state.get(
+                "analyst_tool_call_links",
+                state.get("analyst_tool_call_links", {}),
+            )
+        }
 
         report = ""
+        ledger = None
+        evidence = ""
+        workbench_metrics_update = {}
 
         if tool_calls_count == 0:
-            report = result.content
+            finalized = finalize_analyst_workbench_output("news", result.content)
+            report = finalized["report"]
+            ledger = finalized["ledger"]
+            evidence = finalized["evidence"]
+            workbench_metrics_update = merge_workbench_metrics(
+                {**state, **blocked_tooling_update, **tool_link_update},
+                "news",
+                finalized["metrics"],
+            )
 
-        return {
+        out = {
             "messages": [result],
             "news_report": report,
-            "news_evidence": build_report_evidence_summary("news", report) if report else "",
+            "news_evidence": evidence or (build_report_evidence_summary("news", report) if report else ""),
             "force_no_tools_for": "",
             **tooling_state,
+            **blocked_tooling_update,
+            **tool_link_update,
+            **workbench_metrics_update,
         }
+        if ledger is not None:
+            out["news_ledger"] = ledger
+        return out
 
     return news_analyst_node

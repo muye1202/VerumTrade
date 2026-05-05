@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from tradingagents.dataflows.config import get_config
+from tradingagents.agents.analysts.workbench import build_ledger_evidence_summary
 
 
 logger = logging.getLogger(__name__)
@@ -237,11 +238,22 @@ def format_analyst_evidence_context(
     sections: List[str] = ["# Analyst Evidence Context"]
     for label, report_key in ANALYST_REPORT_KEYS:
         evidence_key = f"{label}_evidence"
+        ledger_key = f"{label}_ledger"
         evidence = state.get(evidence_key)
         if evidence:
             section = cap_section(
                 evidence_key,
                 evidence,
+                int(max_chars_per_report or get_budget_settings()["section_max_chars_report"]),
+            )
+        elif state.get(ledger_key):
+            section = cap_section(
+                ledger_key,
+                build_ledger_evidence_summary(
+                    label,
+                    state.get(ledger_key, {}),
+                    max_chars=max_chars_per_report,
+                ),
                 int(max_chars_per_report or get_budget_settings()["section_max_chars_report"]),
             )
         else:

@@ -2,7 +2,7 @@ import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from api.schemas import AnalysisRequest, AnalysisResponse
-from api.utils import stream_analysis_ws, run_analysis_sync
+from api.utils import build_analysis_reports_payload, stream_analysis_ws, run_analysis_sync
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,16 +18,7 @@ async def analyze_sync(req: AnalysisRequest):
         if not final_state:
             raise HTTPException(status_code=500, detail="Analysis failed to produce a final state.")
             
-        reports = {
-            "market_report": final_state.get("market_report"),
-            "sentiment_report": final_state.get("sentiment_report"),
-            "news_report": final_state.get("news_report"),
-            "fundamentals_report": final_state.get("fundamentals_report"),
-            "investment_debate_state": final_state.get("investment_debate_state"),
-            "trader_investment_plan": final_state.get("trader_investment_plan"),
-            "risk_debate_state": final_state.get("risk_debate_state"),
-            "final_trade_decision": final_state.get("final_trade_decision"),
-        }
+        reports = build_analysis_reports_payload(final_state)
         
         return AnalysisResponse(
             status="completed",

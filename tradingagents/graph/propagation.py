@@ -6,6 +6,7 @@ from tradingagents.utils.market_session import (
     format_market_session_context,
 )
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from tradingagents.agents.analysts.workbench import normalize_ledger
 
 
 class Propagator:
@@ -39,6 +40,9 @@ class Propagator:
             "tool_call_total": 0,
             "tool_calls_issued_by_agent": {},
             "tool_calls_issued_total": 0,
+            "analyst_tool_call_links": {},
+            "analyst_tool_call_blocked_counts": {},
+            "analyst_workbench_metrics": {},
             "llm_metrics": {},
             "investment_debate_state": {"history": "", "current_response": "", "count": 0},
             "risk_debate_state": {
@@ -56,6 +60,10 @@ class Propagator:
             "fundamentals_evidence": "",
             "sentiment_evidence": "",
             "news_evidence": "",
+            "market_ledger": normalize_ledger("market"),
+            "sentiment_ledger": normalize_ledger("sentiment"),
+            "news_ledger": normalize_ledger("news"),
+            "fundamentals_ledger": normalize_ledger("fundamentals"),
             "final_trade_decision": "",
             "final_trade_decision_structured": None,
             "final_trade_decision_validation_error": "",
