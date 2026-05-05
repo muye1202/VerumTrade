@@ -7,9 +7,12 @@ from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horiz
 from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
-    format_analyst_evidence_context,
     get_budget_settings,
     prompt_diagnostics,
+)
+from tradingagents.agents.utils.agent_runtime.evidence_graph import (
+    build_decision_trace,
+    format_evidence_projection,
 )
 from tradingagents.execution.decision_guard import build_market_snapshot
 
@@ -75,7 +78,7 @@ def create_risk_manager(llm, memory):
                 market_session_context,
                 settings["section_max_chars_response"],
             ),
-            "reports": format_analyst_evidence_context(state),
+            "reports": format_evidence_projection(state, "risk"),
         }
         sections = cap_sections_with_soft_token_cap(
             sections_before, settings["soft_cap_tokens"]
@@ -129,7 +132,7 @@ Guidelines for Decision-Making:
 3. **Refine the Trader's Plan**: Start with the trader's original plan, **{sections["trader_plan"]}**, and adjust it based on the analysts' insights.
 4. **Learn from Past Mistakes**: Use lessons from **{sections["memories"]}** to address prior misjudgments and improve the decision you are making now to make sure you don't make a wrong BUY/SELL/HOLD call that loses money.
 
-Reference analyst evidence context:
+Reference evidence graph projection. Cite weakest assumptions and evidence IDs in the narrative; do not add them to the strict JSON:
 {sections["reports"]}
 
 Deliverables:
@@ -281,6 +284,10 @@ Validation-critical constraints:
         return {
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": response.content,
+            "decision_trace": build_decision_trace(
+                {**state, "final_trade_decision": response.content},
+                response.content,
+            ),
             "market_snapshot": market_snapshot,
         }
 

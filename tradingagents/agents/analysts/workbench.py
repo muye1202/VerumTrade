@@ -724,6 +724,8 @@ Default weak-prior hypotheses for this analyst: {default_priors}.
 Final output contract:
 - Emit one JSON block between BEGIN_ANALYST_LEDGER_JSON and END_ANALYST_LEDGER_JSON.
 - The JSON must match the AnalystLedger shape: observations, anomalies, question_backlog, hypothesis_candidates, active_hypotheses, discarded_hypotheses, resolved_questions, open_questions, coverage_gaps, cross_domain_handoffs, do_not_fetch_again, unexplained_but_decision_relevant.
+- If the tool output includes compact bundle facts with `id` fields, every observation should cite the relevant vendor fact IDs in `source_fact_ids`.
+- Hypothesis support and against entries should cite observation IDs and/or vendor fact IDs when available; avoid raw prose evidence when an ID exists.
 - Every analyst should emit 3-8 observations before selecting active hypotheses.
 - Every active hypothesis must include id, claim, origin, support, against, confidence, falsifier, and unresolved_questions.
 - Active hypotheses should be capped to 2-4 total, with at most 2 default_prior hypotheses and at least one non-default origin when material anomalies exist.

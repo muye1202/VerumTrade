@@ -7,6 +7,10 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_runtime.agent_states import AgentState
+from tradingagents.agents.utils.agent_runtime.evidence_graph import (
+    create_capture_evidence_facts_node,
+    create_evidence_graph_node,
+)
 
 from .conditional_logic import ConditionalLogic
 
@@ -124,8 +128,14 @@ class GraphSetup:
                 force_finalize_nodes[analyst_type],
             )
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            capture_domain = "sentiment" if analyst_type == "social" else analyst_type
+            workflow.add_node(
+                f"Capture {analyst_type.capitalize()} Evidence Facts",
+                create_capture_evidence_facts_node(capture_domain),
+            )
 
         # Add other nodes
+        workflow.add_node("Evidence Graph", create_evidence_graph_node())
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
         workflow.add_node("Research Manager", research_manager_node)
@@ -146,6 +156,7 @@ class GraphSetup:
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
             current_force_finalize = f"Force Finalize {analyst_type.capitalize()}"
+            current_capture = f"Capture {analyst_type.capitalize()} Evidence Facts"
 
             # Add conditional edges for current analyst
             workflow.add_conditional_edges(
@@ -157,17 +168,19 @@ class GraphSetup:
                     current_force_finalize: current_force_finalize,
                 },
             )
-            workflow.add_edge(current_tools, current_analyst)
+            workflow.add_edge(current_tools, current_capture)
+            workflow.add_edge(current_capture, current_analyst)
             workflow.add_edge(current_force_finalize, current_analyst)
 
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
+            # Connect to next analyst or build the evidence graph if this is the last analyst
             if i < len(selected_analysts) - 1:
                 next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
                 workflow.add_edge(current_clear, next_analyst)
             else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+                workflow.add_edge(current_clear, "Evidence Graph")
 
         # Add remaining edges
+        workflow.add_edge("Evidence Graph", "Bull Researcher")
         workflow.add_conditional_edges(
             "Bull Researcher",
             self.conditional_logic.should_continue_debate,

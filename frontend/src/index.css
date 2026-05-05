@@ -1102,6 +1102,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(380px, 0.95fr) minmax(520px, 1.05fr);
   gap: 12px;
+  min-width: 0;
   min-height: 0;
   flex: 1;
 }
@@ -1154,6 +1155,7 @@ h1 {
   align-items: flex-end;
   gap: 9px;
   max-width: min(86%, 820px);
+  min-width: 0;
   animation: riseIn 240ms ease both;
 }
 
@@ -1199,8 +1201,11 @@ h1 {
 }
 
 .message-bubble {
+  flex: 1 1 auto;
   min-width: 0;
-  width: 100%;
+  max-width: calc(100% - 43px);
+  overflow-wrap: break-word;
+  word-break: break-word;
   margin: 0;
   padding: 10px 13px 12px;
   border: 1px solid var(--border);
@@ -1236,6 +1241,8 @@ h1 {
 
 .message-bubble > p,
 .message-bubble .markdown-content {
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   color: var(--text);
   line-height: 1.66;
@@ -1249,7 +1256,16 @@ h1 {
 .markdown-content {
   white-space: normal;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-size: 13.5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.msg-collapsible {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .markdown-content.collapsed {
@@ -1277,10 +1293,16 @@ h1 {
 }
 
 .markdown-content pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
   background: var(--bg);
   padding: 12px;
   border-radius: 10px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   margin: 12px 0;
   border: 1px solid var(--border);
   line-height: 1.55;
@@ -1291,11 +1313,14 @@ h1 {
   padding: 2px 4px;
   border-radius: 4px;
   font-size: 0.9em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .markdown-content pre code {
   padding: 0;
   background: transparent;
   border: none;
+  white-space: inherit;
 }
 
 .markdown-content ul,
@@ -1370,12 +1395,16 @@ h1 {
 .message.tool_output .message-bubble {
   background: color-mix(in srgb, var(--border) 20%, transparent);
   border: 1px dashed var(--border-strong);
+  overflow-x: hidden;
 }
 
 .message.tool_output .markdown-content {
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: 12.5px;
   color: color-mix(in srgb, var(--text) 90%, transparent);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
 }
 
 /* ── System status lines ── */
@@ -2326,6 +2355,7 @@ input:checked + .slider:before {
   }
 
   .message-bubble {
+    max-width: calc(100% - 37px);
     padding: 9px 11px 11px;
   }
 }

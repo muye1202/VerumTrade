@@ -20,6 +20,10 @@ REPORT_PAYLOAD_KEYS = [
     "sentiment_ledger",
     "news_ledger",
     "fundamentals_ledger",
+    "evidence_source_facts",
+    "evidence_graph",
+    "evidence_graph_audit",
+    "decision_trace",
     "analyst_workbench_metrics",
     "analyst_tool_call_links",
     "analyst_tool_call_blocked_counts",
@@ -176,6 +180,15 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             reports["news_report"] = chunk["news_report"]
         if chunk.get("fundamentals_report"):
             reports["fundamentals_report"] = chunk["fundamentals_report"]
+
+        if chunk.get("evidence_source_facts"):
+            reports["evidence_source_facts"] = chunk["evidence_source_facts"]
+        if chunk.get("evidence_graph"):
+            reports["evidence_graph"] = chunk["evidence_graph"]
+        if chunk.get("evidence_graph_audit"):
+            reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
+        if chunk.get("decision_trace"):
+            reports["decision_trace"] = chunk["decision_trace"]
             
         # Debate State
         if chunk.get("investment_debate_state"):

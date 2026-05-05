@@ -7,6 +7,7 @@ from tradingagents.utils.market_session import (
 )
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.analysts.workbench import normalize_ledger
+from tradingagents.agents.utils.agent_runtime.evidence_graph import build_evidence_graph
 
 
 class Propagator:
@@ -64,6 +65,10 @@ class Propagator:
             "sentiment_ledger": normalize_ledger("sentiment"),
             "news_ledger": normalize_ledger("news"),
             "fundamentals_ledger": normalize_ledger("fundamentals"),
+            "evidence_source_facts": [],
+            "evidence_graph": build_evidence_graph({}),
+            "evidence_graph_audit": [],
+            "decision_trace": {},
             "final_trade_decision": "",
             "final_trade_decision_structured": None,
             "final_trade_decision_validation_error": "",

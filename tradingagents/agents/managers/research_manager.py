@@ -7,10 +7,10 @@ from tradingagents.agents.utils.llm.llm_rate_limit import invoke_with_backoff
 from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
-    format_analyst_evidence_context,
     get_budget_settings,
     prompt_diagnostics,
 )
+from tradingagents.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from tradingagents.execution.decision_guard import build_market_snapshot
 
 
@@ -50,7 +50,7 @@ def create_research_manager(llm, memory):
             "memories": cap_section(
                 "memories", past_memory_str, settings["section_max_chars_memory"]
             ),
-            "reports": format_analyst_evidence_context(state),
+            "reports": format_evidence_projection(state, "research_manager"),
         }
         sections = cap_sections_with_soft_token_cap(
             sections_before, settings["soft_cap_tokens"]
@@ -75,7 +75,7 @@ Take into account your past mistakes on similar situations. Use these insights t
 Here are your past reflections on mistakes:
 \"{sections["memories"]}\"
 
-Here is the compact analyst evidence context:
+Here is the evidence graph projection. Cite inference IDs when selecting the thesis:
 {sections["reports"]}
 
 Canonical market snapshot for price anchoring:

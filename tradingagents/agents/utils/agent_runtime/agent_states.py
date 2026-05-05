@@ -74,6 +74,10 @@ class AgentState(_MessagesState):
     sentiment_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the Social Media Analyst"]
     news_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the News Analyst"]
     fundamentals_ledger: Annotated[dict, "Structured Analyst Workbench ledger from the Fundamentals Analyst"]
+    evidence_source_facts: Annotated[list, "Canonical vendor facts captured from compact bundle tool outputs"]
+    evidence_graph: Annotated[dict, "Shared evidence graph built from vendor facts plus analyst inferences"]
+    evidence_graph_audit: Annotated[list, "Deterministic audit issues from evidence graph construction"]
+    decision_trace: Annotated[dict, "Trace from final decision to thesis, inferences, facts, and sources"]
 
     # researcher team discussion step
     investment_debate_state: Annotated[

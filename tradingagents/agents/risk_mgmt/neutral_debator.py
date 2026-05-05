@@ -3,10 +3,10 @@ import logging
 from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
-    format_analyst_evidence_context,
     get_budget_settings,
     prompt_diagnostics,
 )
+from tradingagents.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def create_neutral_debator(llm):
                     ),
                 ]
             ),
-            "reports": format_analyst_evidence_context(state),
+            "reports": format_evidence_projection(state, "risk"),
             "memories": "",
             "portfolio_context": "",
         }
@@ -68,7 +68,7 @@ def create_neutral_debator(llm):
 
 {sections["trader_plan"]}
 
-Your task is to challenge both the Risky and Safe Analysts, pointing out where each perspective may be overly optimistic or overly cautious. Use insights from the following data sources to support a moderate, sustainable strategy to adjust the trader's decision:
+Your task is to challenge both the Risky and Safe Analysts, pointing out where each perspective may be overly optimistic or overly cautious. Use insights from the following evidence graph projection to support a moderate, sustainable strategy to adjust the trader's decision:
 
 {sections["reports"]}
 Here is the current conversation history: {sections["history_tail"]} {sections["current_response"]}. If there are no responses from the other viewpoints, do not halluncinate and just present your point.

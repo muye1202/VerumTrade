@@ -6,10 +6,10 @@ import logging
 from tradingagents.agents.utils.agent_runtime.context_budget import (
     cap_section,
     cap_sections_with_soft_token_cap,
-    format_analyst_evidence_context,
     get_budget_settings,
     prompt_diagnostics,
 )
+from tradingagents.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def create_bear_researcher(llm, memory):
                 current_response,
                 settings["section_max_chars_response"],
             ),
-            "reports": format_analyst_evidence_context(state),
+            "reports": format_evidence_projection(state, "bear"),
             "memories": cap_section(
                 "memories", past_memory_str, settings["section_max_chars_memory"]
             ),
@@ -67,7 +67,7 @@ Key points to focus on:
 - Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions.
 - Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
 
-Resources available:
+Evidence graph projection available:
 
 {sections["reports"]}
 Conversation history of the debate: {sections["history_tail"]}

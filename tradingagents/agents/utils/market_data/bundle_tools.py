@@ -95,6 +95,24 @@ def _score_bundle_line(line: str) -> int:
     return score
 
 
+def _bundle_domain(bundle_name: str) -> str:
+    lower = str(bundle_name or "").lower()
+    if "fundamental" in lower:
+        return "fundamentals"
+    if "news" in lower:
+        return "news"
+    if "sentiment" in lower:
+        return "sentiment"
+    return "market"
+
+
+def _clean_fact_part(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[^a-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text or "unknown"
+
+
 def _missing_summary(section: str, value: str) -> str | None:
     text = str(value or "").strip()
     if not text:
@@ -117,9 +135,11 @@ def format_evidence_bundle(
     max_chars: int = 6000,
 ) -> str:
     """Return a compact JSON evidence packet instead of raw concatenated tool output."""
-    facts: list[dict[str, str]] = []
+    domain = _bundle_domain(bundle_name)
+    facts: list[dict[str, Any]] = []
     missing_data: list[dict[str, str]] = []
     source_quality: list[dict[str, Any]] = []
+    section_counts: dict[str, int] = {}
 
     for section, raw in results.items():
         text = str(raw or "")
@@ -139,7 +159,22 @@ def format_evidence_bundle(
             if score > 0
         ][:4]
         for line in selected:
-            facts.append({"section": section, "text": line[:320]})
+            section_counts[section] = section_counts.get(section, 0) + 1
+            fact_text = line[:320]
+            facts.append(
+                {
+                    "id": f"fact_{domain}_{_clean_fact_part(section)}_{section_counts[section]:03d}",
+                    "domain": domain,
+                    "claim": fact_text,
+                    "text": fact_text,
+                    "source": section,
+                    "section": section,
+                    "as_of": curr_date,
+                    "confidence": 0.85,
+                    "quality": "normal",
+                    "source_type": "vendor",
+                }
+            )
 
     packet: dict[str, Any] = {
         "bundle": bundle_name,

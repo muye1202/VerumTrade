@@ -5,6 +5,7 @@ import json
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.dataflows.config import get_config
 from tradingagents.execution.decision_guard import build_market_snapshot
+from tradingagents.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 
 
 def create_trader(llm, memory):
@@ -24,6 +25,7 @@ def create_trader(llm, memory):
             structured_decision=None,
             snapshot_source=get_config().get("decision_snapshot_source", "executor_quote_first"),
         )
+        evidence_projection = format_evidence_projection(state, "trader")
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
         trading_days_text = (
@@ -59,6 +61,9 @@ You MUST factor in the portfolio state above when making your decision:
             "content": f"""Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment.
 
 Proposed Investment Plan: {investment_plan}
+
+Evidence graph projection for execution planning:
+{evidence_projection}
 {portfolio_block}
 Leverage these insights to make an informed and strategic decision.""",
         }
