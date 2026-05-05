@@ -23,6 +23,17 @@ const RESEARCH_DEPTHS = [
   { value: 5, label: 'Deep', detail: 'Thorough' },
 ];
 
+const DISCOVERY_TRACKS = [
+  { value: 'enricher', label: 'Enricher', detail: 'Stage 1 & 2' },
+  { value: 'anomaly_scan', label: 'Anomaly Scan', detail: 'Short-term' },
+  { value: 'dual_track', label: 'Dual-Track', detail: 'Both tracks' },
+];
+
+const CATALYST_MODES = [
+  { value: 'daily_calendar', label: 'Daily Calendar', detail: 'Default' },
+  { value: 'per_ticker_calendar', label: 'Per Ticker', detail: 'Slower' },
+];
+
 const LEGACY_HORIZON_VALUES = {
   short_term: '1-2 weeks',
   swing: '1-2 months',
@@ -86,6 +97,7 @@ const BACKEND_URLS = {
 };
 
 const REPORT_SECTIONS = [
+  ['discovery_report', 'Candidate Stocks'],
   ['market_report', 'Market'],
   ['sentiment_report', 'Sentiment'],
   ['news_report', 'News'],
@@ -390,6 +402,10 @@ function App() {
   const [shallowThinker, setShallowThinker] = useState('openai|gpt-4o-mini');
   const [deepThinker, setDeepThinker] = useState('openai|gpt-4o-mini');
   const [activeMode, setActiveMode] = useState('analysis');
+  const [mainPageMode, setMainPageMode] = useState('single');
+  const [discoveryTrack, setDiscoveryTrack] = useState(DISCOVERY_TRACKS[0].value);
+  const [catalystMode, setCatalystMode] = useState(CATALYST_MODES[0].value);
+  const [activeSessionType, setActiveSessionType] = useState('single');
 
   const [apiKeys, setApiKeys] = useState(() => {
     const saved = localStorage.getItem('apiKeys');
@@ -631,6 +647,122 @@ function App() {
     };
   };
 
+  const createDiscoveryPayload = (overrides = {}) => {
+    const deepVal = overrides.deepThinker ?? deepThinker;
+    const shallowVal = overrides.shallowThinker ?? shallowThinker;
+    
+    const [deepProvider, deepModel] = deepVal.split('|');
+    const [, shallowModel] = shallowVal.split('|');
+
+    return {
+      analysis_mode: 'discovery',
+      discovery_mode_variant: 'fresh',
+      ticker: null,
+      analysis_date: overrides.analysisDate ?? analysisDate,
+      discovery_track: overrides.discoveryTrack ?? discoveryTrack,
+      discovery_catalyst_mode: overrides.catalystMode ?? catalystMode,
+      analysts: [],
+      research_depth: 1,
+      llm_provider: deepProvider,
+      backend_url: BACKEND_URLS[deepProvider] || null,
+      shallow_thinker: shallowModel,
+      deep_thinker: deepModel,
+      execution: {
+        enabled: false,
+        provider: 'alpaca',
+        paper: true,
+        position_size_pct: 0.1,
+      },
+      n_stocks: null,
+    };
+  };
+
+  const startDiscovery = (overrides = {}) => {
+    const payload = createDiscoveryPayload(overrides);
+    if (isRunning) return;
+
+    stopSocket();
+    setAnalysisDate(payload.analysis_date);
+    setDiscoveryTrack(payload.discovery_track);
+    setCatalystMode(payload.discovery_catalyst_mode);
+    setActiveSessionId(null);
+    setActiveMode('analysis');
+    setActiveSessionType('discovery');
+    setActiveReport('discovery_report');
+    setErrorMessage('');
+    
+    const trackLabel = DISCOVERY_TRACKS.find(t => t.value === payload.discovery_track)?.label || 'Discovery';
+    setLogs([makeLog('user', `Start ${trackLabel} discovery pipeline for ${payload.analysis_date}.`)]);
+    setReports({});
+    setIsRunning(true);
+
+    const ws = new WebSocket(`${WS_BASE}/api/ws/discovery`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify(payload));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === 'system') {
+        setLogs((prev) => [...prev, makeLog('system', data.content)]);
+        return;
+      }
+
+      if (data.event === 'chunk') {
+        if (data.updates) {
+          data.updates.forEach((update) => {
+            if (update.event === 'message') {
+              const rawType = (update.type || 'agent').toLowerCase();
+              const frontendType = rawType === 'user' ? 'user'
+                : rawType === 'system' ? 'system'
+                : rawType === 'toolresult' ? 'tool_output'
+                : 'agent';
+              setLogs((prev) => [
+                ...prev,
+                makeLog(frontendType, update.content),
+              ]);
+            }
+            if (update.event === 'tool_call') {
+              const args = typeof update.args === 'object' ? JSON.stringify(update.args) : update.args;
+              setLogs((prev) => [...prev, makeLog('tool', `${update.tool}: ${args}`)]);
+            }
+          });
+        }
+        if (data.reports) {
+          setReports((prev) => ({ ...prev, ...data.reports }));
+        }
+        return;
+      }
+
+      if (data.event === 'completed') {
+        setIsRunning(false);
+        setLogs((prev) => [...prev, makeLog('system', `Discovery pipeline completed.`)]);
+        fetchHistory();
+        return;
+      }
+
+      if (data.event === 'error') {
+        setIsRunning(false);
+        setErrorMessage(data.content);
+        setLogs((prev) => [...prev, makeLog('system', `Error: ${data.content}`)]);
+      }
+    };
+
+    ws.onerror = () => {
+      setIsRunning(false);
+      setErrorMessage('WebSocket error. Start the backend and try again.');
+      setLogs((prev) => [...prev, makeLog('system', 'WebSocket error. Ensure the backend is running.')]);
+    };
+
+    ws.onclose = () => {
+      setIsRunning(false);
+      fetchHistory();
+    };
+  };
+
   const handleStop = () => {
     stopSocket();
     setIsRunning(false);
@@ -645,7 +777,8 @@ function App() {
     setActiveSessionId(null);
     setErrorMessage('');
     setActiveMode('analysis');
-    setActiveReport('market_report');
+    setActiveSessionType(mainPageMode);
+    setActiveReport(mainPageMode === 'discovery' ? 'discovery_report' : 'market_report');
   };
 
   const loadHistoryItem = async (id) => {
@@ -710,108 +843,203 @@ function App() {
     return JSON.stringify(value, null, 2);
   }
 
-  const renderComposer = (isWelcome = false) => (
-    <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
-      <div className="gemini-input-row">
-        <input
-          className="gemini-input"
-          value={ticker}
-          onChange={(event) => setTicker(event.target.value.toUpperCase())}
-          onKeyDown={(event) => event.key === 'Enter' && startAnalysis()}
-          placeholder="Ask about a ticker (e.g. AAPL, NVDA)..."
-          disabled={isRunning}
-        />
-        <div className="input-actions">
-          <CustomSelect
-            value={researchDepth}
-            onChange={(val) => setResearchDepth(Number(val))}
-            options={RESEARCH_DEPTHS}
+  const renderComposer = (isWelcome = false) => {
+    if (mainPageMode === 'discovery') {
+      return (
+        <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`} style={{ justifyContent: 'center', padding: '16px' }}>
+          <button 
+            className="submit-circle primary" 
+            onClick={() => startDiscovery()} 
             disabled={isRunning}
-            title={RESEARCH_DEPTHS.find((item) => item.value === researchDepth)?.label || 'Shallow'}
-            icon={
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zm-6.76 7.56L3 11.69l9 4.5 9-4.5-2.24-1.13L12 13.94l-6.76-3.38zm0 4.2L3 15.89l9 4.5 9-4.5-2.24-1.13L12 18.14l-6.76-3.38z" />
-              </svg>
-            }
+            style={{ width: '100%', height: '56px', borderRadius: '28px', fontSize: '18px', gap: '8px', padding: '0 24px' }}
+          >
+            {isRunning ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M6 6h12v12H6z"/></svg>
+                Stop Discovery
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                Start AI Discovery
+              </>
+            )}
+          </button>
+        </div>
+      );
+    }
+    
+    return (
+      <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
+        <div className="gemini-input-row">
+          <input
+            className="gemini-input"
+            value={ticker}
+            onChange={(event) => setTicker(event.target.value.toUpperCase())}
+            onKeyDown={(event) => event.key === 'Enter' && startAnalysis()}
+            placeholder="Ask about a ticker (e.g. AAPL, NVDA)..."
+            disabled={isRunning}
           />
-          {isRunning ? (
-            <button className="submit-circle danger" onClick={handleStop}>
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-            </button>
-          ) : (
-            <button className="submit-circle primary" onClick={() => startAnalysis()} disabled={!ticker.trim()}>
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            </button>
-          )}
+          <div className="input-actions">
+            <CustomSelect
+              value={researchDepth}
+              onChange={(val) => setResearchDepth(Number(val))}
+              options={RESEARCH_DEPTHS}
+              disabled={isRunning}
+              title={RESEARCH_DEPTHS.find((item) => item.value === researchDepth)?.label || 'Shallow'}
+              icon={
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zm-6.76 7.56L3 11.69l9 4.5 9-4.5-2.24-1.13L12 13.94l-6.76-3.38zm0 4.2L3 15.89l9 4.5 9-4.5-2.24-1.13L12 18.14l-6.76-3.38z" />
+                </svg>
+              }
+            />
+            {isRunning ? (
+              <button className="submit-circle danger" onClick={handleStop}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+              </button>
+            ) : (
+              <button className="submit-circle primary" onClick={() => startAnalysis()} disabled={!ticker.trim()}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const renderConfigStrip = () => (
-    <div className="config-strip">
-      <div className="config-card">
-        <div className="config-card-icon">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.05.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>
-        </div>
-        <div className="config-card-body">
-          <span className="config-label">Shallow Thinker</span>
-          <CustomSelect
-            value={shallowThinker}
-            onChange={(val) => setShallowThinker(val)}
-            options={availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS}
-            disabled={isRunning}
-            title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === shallowThinker)?.label || 'Select'}
-          />
-        </div>
-      </div>
+  const renderConfigStrip = () => {
+    if (mainPageMode === 'discovery') {
+      return (
+        <div className="config-strip">
+          <div className="config-card">
+            <div className="config-card-icon horizon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Track</span>
+              <CustomSelect
+                value={discoveryTrack}
+                onChange={(val) => setDiscoveryTrack(val)}
+                options={DISCOVERY_TRACKS}
+                disabled={isRunning}
+              />
+            </div>
+          </div>
 
-      <div className="config-card">
-        <div className="config-card-icon deep">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-        </div>
-        <div className="config-card-body">
-          <span className="config-label">Deep Thinker</span>
-          <CustomSelect
-            value={deepThinker}
-            onChange={(val) => setDeepThinker(val)}
-            options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
-            disabled={isRunning}
-            title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
-          />
-        </div>
-      </div>
+          <div className="config-card">
+            <div className="config-card-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Catalyst Filter</span>
+              <CustomSelect
+                value={catalystMode}
+                onChange={(val) => setCatalystMode(val)}
+                options={CATALYST_MODES}
+                disabled={isRunning}
+              />
+            </div>
+          </div>
 
-      <div className="config-card">
-        <div className="config-card-icon date">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
-        </div>
-        <div className="config-card-body">
-          <span className="config-label">Analysis Date</span>
-          <CustomDatePicker
-            value={analysisDate}
-            onChange={(val) => setAnalysisDate(val)}
-            disabled={isRunning}
-          />
-        </div>
-      </div>
+          <div className="config-card">
+            <div className="config-card-icon date">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Date</span>
+              <CustomDatePicker
+                value={analysisDate}
+                onChange={(val) => setAnalysisDate(val)}
+                disabled={isRunning}
+              />
+            </div>
+          </div>
 
-      <div className="config-card">
-        <div className="config-card-icon horizon">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          <div className="config-card">
+            <div className="config-card-icon deep">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Deep Thinker</span>
+              <CustomSelect
+                value={deepThinker}
+                onChange={(val) => setDeepThinker(val)}
+                options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
+                disabled={isRunning}
+                title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
+              />
+            </div>
+          </div>
         </div>
-        <div className="config-card-body">
-          <span className="config-label">Time Horizon</span>
-          <CustomSelect
-            value={timeHorizon}
-            onChange={(val) => setTimeHorizon(val)}
-            options={HORIZONS}
-            disabled={isRunning}
-          />
+      );
+    }
+
+    return (
+      <div className="config-strip">
+        <div className="config-card">
+          <div className="config-card-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.05.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>
+          </div>
+          <div className="config-card-body">
+            <span className="config-label">Shallow Thinker</span>
+            <CustomSelect
+              value={shallowThinker}
+              onChange={(val) => setShallowThinker(val)}
+              options={availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS}
+              disabled={isRunning}
+              title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === shallowThinker)?.label || 'Select'}
+            />
+          </div>
+        </div>
+
+        <div className="config-card">
+          <div className="config-card-icon deep">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+          </div>
+          <div className="config-card-body">
+            <span className="config-label">Deep Thinker</span>
+            <CustomSelect
+              value={deepThinker}
+              onChange={(val) => setDeepThinker(val)}
+              options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
+              disabled={isRunning}
+              title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
+            />
+          </div>
+        </div>
+
+        <div className="config-card">
+          <div className="config-card-icon date">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+          </div>
+          <div className="config-card-body">
+            <span className="config-label">Analysis Date</span>
+            <CustomDatePicker
+              value={analysisDate}
+              onChange={(val) => setAnalysisDate(val)}
+              disabled={isRunning}
+            />
+          </div>
+        </div>
+
+        <div className="config-card">
+          <div className="config-card-icon horizon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          </div>
+          <div className="config-card-body">
+            <span className="config-label">Time Horizon</span>
+            <CustomSelect
+              value={timeHorizon}
+              onChange={(val) => setTimeHorizon(val)}
+              options={HORIZONS}
+              disabled={isRunning}
+            />
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const [showApiKey, setShowApiKey] = useState({});
   const [newModelScope, setNewModelScope] = useState({});
@@ -1070,8 +1298,19 @@ function App() {
           <>
             <header className="session-bar">
               <div className="session-title">
-                <span className="ticker-pill">{ticker || 'Session'}</span>
-                <span className="session-meta">{currentHorizon.label} analysis</span>
+                {activeSessionType === 'discovery' ? (
+                  <>
+                    <span className="ticker-pill">AI Discovery</span>
+                    <span className="session-meta">
+                      {DISCOVERY_TRACKS.find(t => t.value === discoveryTrack)?.label} • {analysisDate}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="ticker-pill">{ticker || 'Session'}</span>
+                    <span className="session-meta">{currentHorizon.label} analysis</span>
+                  </>
+                )}
               </div>
               <div className="session-actions">
                 <div className={isRunning ? 'run-status active' : 'run-status'}>
@@ -1242,29 +1481,49 @@ function App() {
         ) : (
           <div className="welcome-container">
             <div className="welcome-hero">
-              <h2><span className="greeting-gradient">Hi Trader</span></h2>
-              <h1>Where should we start?</h1>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
+                <div className="segmented-modes" style={{ display: 'flex', width: '380px', padding: '6px', borderRadius: '24px', background: 'var(--surface-strong)', boxShadow: 'var(--shadow)' }}>
+                  <button 
+                    className={`segmented-item ${mainPageMode === 'single' ? 'active' : ''}`} 
+                    onClick={() => setMainPageMode('single')} 
+                    style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
+                  >
+                    Single Ticker
+                  </button>
+                  <button 
+                    className={`segmented-item ${mainPageMode === 'discovery' ? 'active' : ''}`} 
+                    onClick={() => setMainPageMode('discovery')} 
+                    style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
+                  >
+                    Stock Discovery
+                  </button>
+                </div>
+              </div>
+              <h2 style={{ textAlign: 'center' }}><span className="greeting-gradient">Hi Trader</span></h2>
+              <h1 style={{ textAlign: 'center' }}>Where should we start?</h1>
             </div>
 
             <section className="composer-wrapper large">
               {renderComposer(true)}
               {renderConfigStrip()}
 
-              <div className="gemini-suggestions">
-                <p className="suggestions-label">Try asking</p>
-                {[
-                  ['Analyze NVDA', 'NVDA', 'short_term', '📈'],
-                  ['Swing trade TSLA', 'TSLA', 'swing', '🚗'],
-                  ['Long term SPY', 'SPY', 'long_term', '🏦'],
-                  ['Research AAPL', 'AAPL', 'short_term', '🍎'],
-                ].map(([label, symbol, horizon, icon]) => (
-                  <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
-                    <span className="suggestion-row-icon">{icon}</span>
-                    <span className="suggestion-row-text">{label}</span>
-                    <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
-                  </button>
-                ))}
-              </div>
+              {mainPageMode === 'single' && (
+                <div className="gemini-suggestions">
+                  <p className="suggestions-label">Try asking</p>
+                  {[
+                    ['Analyze NVDA', 'NVDA', 'short_term', '📈'],
+                    ['Swing trade TSLA', 'TSLA', 'swing', '🚗'],
+                    ['Long term SPY', 'SPY', 'long_term', '🏦'],
+                    ['Research AAPL', 'AAPL', 'short_term', '🍎'],
+                  ].map(([label, symbol, horizon, icon]) => (
+                    <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
+                      <span className="suggestion-row-icon">{icon}</span>
+                      <span className="suggestion-row-text">{label}</span>
+                      <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         )}
