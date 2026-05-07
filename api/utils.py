@@ -27,6 +27,8 @@ REPORT_PAYLOAD_KEYS = [
     "analyst_workbench_metrics",
     "analyst_tool_call_links",
     "analyst_tool_call_blocked_counts",
+    "tool_cache_metrics",
+    "vendor_telemetry",
     "investment_debate_state",
     "trader_investment_plan",
     "risk_debate_state",

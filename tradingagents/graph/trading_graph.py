@@ -66,6 +66,7 @@ from tradingagents.agents.utils.market_data.bundle_tools import (
     get_fundamentals_data_bundle,
     get_sentiment_data_bundle,
 )
+from tradingagents.agents.utils.agent_runtime.tool_cache import create_cache_aware_tool_node
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -718,6 +719,8 @@ class TradingAgentsGraph:
         workbench_metrics = state.get("analyst_workbench_metrics") or {}
         blocked = state.get("analyst_tool_call_blocked_counts") or {}
         links = state.get("analyst_tool_call_links") or {}
+        cache_metrics = state.get("tool_cache_metrics") or {}
+        vendor_events = state.get("vendor_telemetry") or []
         metrics.update(
             {
                 "analyst_tool_rounds_by_agent": dict(rounds),
@@ -727,6 +730,8 @@ class TradingAgentsGraph:
                 "analyst_workbench_metrics": dict(workbench_metrics),
                 "analyst_tool_call_blocked_counts": dict(blocked),
                 "analyst_tool_call_links": dict(links),
+                "tool_cache_metrics": dict(cache_metrics),
+                "vendor_telemetry_event_count": len(vendor_events) if isinstance(vendor_events, list) else 0,
             }
         )
         return metrics
@@ -787,10 +792,10 @@ class TradingAgentsGraph:
             fundamentals_tools = [get_fundamentals_data_bundle, *fundamentals_tools]
 
         return {
-            "market": ToolNode(market_tools),
-            "social": ToolNode(social_tools),
-            "news": ToolNode(news_tools),
-            "fundamentals": ToolNode(fundamentals_tools),
+            "market": create_cache_aware_tool_node(market_tools),
+            "social": create_cache_aware_tool_node(social_tools),
+            "news": create_cache_aware_tool_node(news_tools),
+            "fundamentals": create_cache_aware_tool_node(fundamentals_tools),
         }
 
     def extract_structured_decision(self, full_signal: str) -> dict:

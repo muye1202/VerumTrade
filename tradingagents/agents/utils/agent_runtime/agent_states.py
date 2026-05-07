@@ -108,6 +108,9 @@ class AgentState(_MessagesState):
     analyst_tool_call_links: Annotated[dict, "Workbench tool-call links by analyst and named question"]
     analyst_tool_call_blocked_counts: Annotated[dict, "Workbench fallback tool calls blocked by deterministic gating"]
     analyst_workbench_metrics: Annotated[dict, "Workbench observation, anomaly, question, and hypothesis metrics by analyst"]
+    tool_result_cache: Annotated[dict, "Run-scoped cache of tool outputs keyed by normalized tool name and args"]
+    tool_cache_metrics: Annotated[dict, "Run-scoped tool cache hit/miss and avoided-call counters"]
+    vendor_telemetry: Annotated[list, "Run-scoped vendor routing telemetry emitted by dataflow calls"]
 
     # Exact run-level LLM telemetry.
     llm_metrics: Annotated[dict, "Exact LLM/API usage counters for this run"]

@@ -645,6 +645,8 @@ def run_single_ticker_analysis(
             llm_metrics = diff_llm_api_calls(llm_snapshot_before, llm_snapshot_after)
             rounds = final_state.get("tool_round_counts") or final_state.get("tool_call_counts") or {}
             issued = final_state.get("tool_calls_issued_by_agent") or {}
+            cache_metrics = final_state.get("tool_cache_metrics") or {}
+            vendor_events = final_state.get("vendor_telemetry") or []
             llm_metrics.update(
                 {
                     "analyst_tool_rounds_by_agent": dict(rounds),
@@ -655,6 +657,8 @@ def run_single_ticker_analysis(
                     "tool_calls_issued_total": int(
                         final_state.get("tool_calls_issued_total", sum(int(v or 0) for v in issued.values())) or 0
                     ),
+                    "tool_cache_metrics": dict(cache_metrics),
+                    "vendor_telemetry_event_count": len(vendor_events) if isinstance(vendor_events, list) else 0,
                 }
             )
             final_state["llm_metrics"] = llm_metrics

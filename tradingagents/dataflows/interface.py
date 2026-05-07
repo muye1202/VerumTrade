@@ -2,6 +2,10 @@ from typing import Annotated
 import json
 import logging
 import inspect
+import time
+from contextvars import ContextVar
+from threading import Lock
+from uuid import uuid4
 
 # Import from vendor-specific modules
 from .vendors.local.local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
@@ -27,6 +31,9 @@ from .vendors.twelve_data.twelve_data_common import TwelveDataRateLimitError
 import re
 
 logger = logging.getLogger(__name__)
+_VENDOR_TELEMETRY_SCOPE: ContextVar[str] = ContextVar("vendor_telemetry_scope", default="default")
+_VENDOR_TELEMETRY_EVENTS: dict[str, list[dict]] = {}
+_VENDOR_TELEMETRY_LOCK = Lock()
 
 # Configuration and routing logic
 from .config import get_config
@@ -173,6 +180,37 @@ def _call_vendor_impl(impl_func, *args, **kwargs):
 
     return impl_func(*call_args, **call_kwargs)
 
+
+def clear_vendor_telemetry() -> None:
+    scope = f"scope-{uuid4().hex}"
+    _VENDOR_TELEMETRY_SCOPE.set(scope)
+    with _VENDOR_TELEMETRY_LOCK:
+        _VENDOR_TELEMETRY_EVENTS[scope] = []
+
+
+def pop_vendor_telemetry() -> list[dict]:
+    scope = _VENDOR_TELEMETRY_SCOPE.get() or "default"
+    with _VENDOR_TELEMETRY_LOCK:
+        events = list(_VENDOR_TELEMETRY_EVENTS.get(scope) or [])
+        _VENDOR_TELEMETRY_EVENTS[scope] = []
+    return events
+
+
+def _append_vendor_telemetry(event: dict) -> None:
+    scope = _VENDOR_TELEMETRY_SCOPE.get() or "default"
+    with _VENDOR_TELEMETRY_LOCK:
+        events = _VENDOR_TELEMETRY_EVENTS.setdefault(scope, [])
+        events.append(event)
+
+
+def _safe_result_chars(value) -> int:
+    try:
+        if isinstance(value, (dict, list)):
+            return len(json.dumps(value, ensure_ascii=False))
+        return len(str(value or ""))
+    except Exception:
+        return 0
+
 # Mapping of methods to their vendor-specific implementations
 VENDOR_METHODS = {
     # core_stock_apis
@@ -262,6 +300,7 @@ def get_vendor(category: str, method: str = None) -> str:
 
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""
+    started = time.perf_counter()
     category = get_category_for_method(method)
     vendor_config = get_vendor(category, method)
 
@@ -295,6 +334,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     vendor_attempt_count = 0
     any_primary_vendor_attempted = False
     successful_vendor = None
+    attempts: list[dict] = []
 
     for vendor in fallback_vendors:
         if vendor not in VENDOR_METHODS[method]:
@@ -309,6 +349,15 @@ def route_to_vendor(method: str, *args, **kwargs):
         vendor_impl = VENDOR_METHODS[method][vendor]
         is_primary_vendor = vendor in primary_vendors
         vendor_attempt_count += 1
+        attempt_started = time.perf_counter()
+        attempt = {
+            "vendor": vendor,
+            "role": "primary" if is_primary_vendor else "fallback",
+            "status": "pending",
+            "implementation_count": len(vendor_impl) if isinstance(vendor_impl, list) else 1,
+            "errors": [],
+        }
+        attempts.append(attempt)
 
         # Track if we attempted any primary vendor
         if is_primary_vendor:
@@ -351,14 +400,20 @@ def route_to_vendor(method: str, *args, **kwargs):
                         "Alpaca market data unavailable (%s); falling back to next vendor.",
                         e,
                     )
+                attempt["errors"].append(
+                    {"implementation": impl_func.__name__, "type": type(e).__name__, "message": str(e)[:300]}
+                )
                 continue
             except AlphaVantageRateLimitError as e:
                 if vendor == "alpha_vantage":
                     logger.warning(
                         "Alpha Vantage rate limit exceeded; falling back. details=%s",
                         e,
-                    )
+                )
                 # Continue to next vendor for fallback
+                attempt["errors"].append(
+                    {"implementation": impl_func.__name__, "type": type(e).__name__, "message": str(e)[:300]}
+                )
                 continue
             except TwelveDataRateLimitError as e:
                 if vendor == "twelve_data":
@@ -366,6 +421,9 @@ def route_to_vendor(method: str, *args, **kwargs):
                         "Twelve Data rate limit exceeded; falling back. details=%s",
                         e,
                     )
+                attempt["errors"].append(
+                    {"implementation": impl_func.__name__, "type": type(e).__name__, "message": str(e)[:300]}
+                )
                 continue
             except Exception as e:
                 # Log error but continue with other implementations
@@ -375,10 +433,17 @@ def route_to_vendor(method: str, *args, **kwargs):
                     vendor_name,
                     e,
                 )
+                attempt["errors"].append(
+                    {"implementation": impl_func.__name__, "type": type(e).__name__, "message": str(e)[:300]}
+                )
                 continue
 
         # Add this vendor's results
         if vendor_results:
+            attempt["status"] = "success"
+            attempt["result_count"] = len(vendor_results)
+            attempt["result_chars"] = sum(_safe_result_chars(vr) for vr in vendor_results)
+            attempt["latency_ms"] = round((time.perf_counter() - attempt_started) * 1000.0, 3)
             results.extend(vendor_results)
             successful_vendor = vendor
             result_summary = f"Got {len(vendor_results)} result(s)"
@@ -408,7 +473,9 @@ def route_to_vendor(method: str, *args, **kwargs):
                 )
                 break
         else:
+            attempt["status"] = "error" if attempt.get("errors") else "empty"
             logger.debug("Vendor '%s' produced no results for %s", vendor, method)
+            attempt["latency_ms"] = round((time.perf_counter() - attempt_started) * 1000.0, 3)
 
     # Final result summary
     if not results:
@@ -416,6 +483,20 @@ def route_to_vendor(method: str, *args, **kwargs):
             "All %s vendor attempts failed for method '%s'",
             vendor_attempt_count,
             method,
+        )
+        _append_vendor_telemetry(
+            {
+                "method": method,
+                "category": category,
+                "configured_vendors": primary_vendors,
+                "successful_vendor": None,
+                "vendor_attempt_count": vendor_attempt_count,
+                "attempts": attempts,
+                "status": "error",
+                "latency_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "result_count": 0,
+                "result_chars": 0,
+            }
         )
         raise RuntimeError(f"All vendor implementations failed for method '{method}'")
     else:
@@ -428,8 +509,24 @@ def route_to_vendor(method: str, *args, **kwargs):
 
     # Return single result if only one, otherwise concatenate as string, then compact.
     if len(results) == 1:
-        return _compact_tool_output(method, results[0])
+        final_result = _compact_tool_output(method, results[0])
     else:
         # Convert all results to strings and concatenate
         merged = '\n'.join(str(result) for result in results)
-        return _compact_tool_output(method, merged)
+        final_result = _compact_tool_output(method, merged)
+
+    _append_vendor_telemetry(
+        {
+            "method": method,
+            "category": category,
+            "configured_vendors": primary_vendors,
+            "successful_vendor": successful_vendor,
+            "vendor_attempt_count": vendor_attempt_count,
+            "attempts": attempts,
+            "status": "success",
+            "latency_ms": round((time.perf_counter() - started) * 1000.0, 3),
+            "result_count": len(results),
+            "result_chars": _safe_result_chars(final_result),
+        }
+    )
+    return final_result

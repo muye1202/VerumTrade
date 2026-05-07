@@ -44,6 +44,9 @@ class Propagator:
             "analyst_tool_call_links": {},
             "analyst_tool_call_blocked_counts": {},
             "analyst_workbench_metrics": {},
+            "tool_result_cache": {},
+            "tool_cache_metrics": {},
+            "vendor_telemetry": [],
             "llm_metrics": {},
             "investment_debate_state": {"history": "", "current_response": "", "count": 0},
             "risk_debate_state": {
