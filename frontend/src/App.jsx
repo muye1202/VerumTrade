@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  ANALYST_SUMMARY_LABEL,
+  DEFAULT_ANALYSTS,
+  REPORT_SECTIONS,
+} from './analysisConfig';
 import { formatFinalDecisionReport } from './reportFormatting';
 import {
   getRetrievedInfoTitle,
@@ -84,19 +89,6 @@ const BACKEND_URLS = {
   'anthropic': 'http://ai.tachira.cn/api',
   'openrouter': 'https://openrouter.ai/api/v1',
 };
-
-const REPORT_SECTIONS = [
-  ['market_report', 'Market'],
-  ['sentiment_report', 'Sentiment'],
-  ['news_report', 'News'],
-  ['fundamentals_report', 'Fundamentals'],
-  ['evidence_graph', 'Evidence Graph'],
-  ['decision_trace', 'Decision Trace'],
-  ['investment_debate_state', 'Debate'],
-  ['trader_investment_plan', 'Trader Plan'],
-  ['risk_debate_state', 'Risk Debate'],
-  ['final_trade_decision', 'Final Decision'],
-];
 
 const makeLog = (type, content) => ({
   id: `${Date.now()}-${Math.random()}`,
@@ -437,7 +429,7 @@ function App() {
 
   const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
   const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
-  const [activeReport, setActiveReport] = useState('market_report');
+  const [activeReport, setActiveReport] = useState('catalyst_report');
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -528,7 +520,7 @@ function App() {
     return {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
       analysis_date: overrides.analysisDate ?? analysisDate,
-      analysts: ['market', 'social', 'news', 'fundamentals'],
+      analysts: [...DEFAULT_ANALYSTS],
       research_depth: overrides.researchDepth ?? researchDepth,
       llm_provider: deepProvider,
       backend_url: BACKEND_URLS[deepProvider] || null,
@@ -557,7 +549,7 @@ function App() {
     setResearchDepth(payload.research_depth);
     setActiveSessionId(null);
     setActiveMode('analysis');
-    setActiveReport('market_report');
+    setActiveReport('catalyst_report');
     setErrorMessage('');
     const payloadHorizon = HORIZONS.find((item) => item.value === payload.time_horizon) || HORIZONS[0];
     setLogs([makeLog('user', `Analyze ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
@@ -645,7 +637,7 @@ function App() {
     setActiveSessionId(null);
     setErrorMessage('');
     setActiveMode('analysis');
-    setActiveReport('market_report');
+    setActiveReport('catalyst_report');
   };
 
   const loadHistoryItem = async (id) => {
@@ -690,7 +682,7 @@ function App() {
         setActiveMode('reports');
         // Default to first available report section
         const firstAvailable = REPORT_SECTIONS.find(([key]) => data.reports && data.reports[key]);
-        setActiveReport(firstAvailable ? firstAvailable[0] : 'market_report');
+        setActiveReport(firstAvailable ? firstAvailable[0] : 'catalyst_report');
       });
     } catch (error) {
       setErrorMessage(error.message);
@@ -1170,7 +1162,7 @@ function App() {
                   </div>
                 </div>
                 <div className="metric-stack">
-                  <div><span>Analysts</span><strong>Market, Social, News, Fundamentals</strong></div>
+                  <div><span>Analysts</span><strong>{ANALYST_SUMMARY_LABEL}</strong></div>
                   <div><span>Horizon</span><strong>{currentHorizon.label}</strong><small>{currentHorizon.detail}</small></div>
                   <div><span>Date</span><strong>{analysisDate}</strong><small>Analysis snapshot</small></div>
                   <div><span>Execution</span><strong>Paper disabled</strong><small>No orders will be submitted</small></div>
