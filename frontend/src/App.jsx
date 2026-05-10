@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -197,6 +197,78 @@ const formatDateTime = (value) => {
     minute: '2-digit',
   }).format(new Date(value));
 };
+
+function renderReportText(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value.judge_decision) return value.judge_decision;
+  if (value.final_decision) return value.final_decision;
+  // Debate state objects - extract the most useful readable text
+  if (value.current_response) return value.current_response;
+  if (value.history && Array.isArray(value.history)) {
+    return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+const ReportMarkdown = memo(({ markdown, hiddenDecisionJson }) => (
+  <>
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {markdown}
+    </ReactMarkdown>
+    {hiddenDecisionJson && (
+      <pre hidden data-final-decision-json>
+        {JSON.stringify(hiddenDecisionJson, null, 2)}
+      </pre>
+    )}
+  </>
+));
+
+const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle }) => {
+  const header = (
+    <button
+      className="report-section-header"
+      onClick={() => onToggle(sectionKey)}
+      aria-expanded={isExpanded}
+    >
+      <span className="report-section-label">{label}</span>
+      <span className="report-section-chevron">
+        {isExpanded ? (
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        ) : (
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        )}
+      </span>
+    </button>
+  );
+
+  if (!isExpanded) {
+    return (
+      <div className="report-section">
+        {header}
+      </div>
+    );
+  }
+
+  const reportText = renderReportText(data) || '';
+  const finalDecision = sectionKey === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
+
+  return (
+    <div className="report-section expanded">
+      {header}
+      <div className="report-section-body markdown-content">
+        {sectionKey === 'evidence_graph' ? (
+          <EvidenceGraphPanel data={data} />
+        ) : (
+          <ReportMarkdown
+            markdown={finalDecision?.markdown || reportText}
+            hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
 
 const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -434,7 +506,9 @@ function App() {
   const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
   const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
   const [expandedSections, setExpandedSections] = useState(DEFAULT_EXPANDED_REPORT_SECTIONS);
-  const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleSection = useCallback((key) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -684,19 +758,6 @@ function App() {
       setErrorMessage(error.message);
     }
   };
-
-  function renderReportText(value) {
-    if (!value) return null;
-    if (typeof value === 'string') return value;
-    if (value.judge_decision) return value.judge_decision;
-    if (value.final_decision) return value.final_decision;
-    // Debate state objects — extract the most useful readable text
-    if (value.current_response) return value.current_response;
-    if (value.history && Array.isArray(value.history)) {
-      return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
-    }
-    return JSON.stringify(value, null, 2);
-  }
 
   const renderComposer = (isWelcome = false) => (
     <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
@@ -1204,44 +1265,15 @@ function App() {
                           <div className="report-group-content">
                             {activeGroupSections.map(section => {
                               const isExpanded = isReportSectionExpanded(section.key, expandedSections);
-                              const reportText = renderReportText(section.data) || '';
-                              const finalDecision = section.key === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
-
                               return (
-                                <div key={section.key} className={`report-section ${isExpanded ? 'expanded' : ''}`}>
-                                  <button
-                                    className="report-section-header"
-                                    onClick={() => toggleSection(section.key)}
-                                    aria-expanded={isExpanded}
-                                  >
-                                    <span className="report-section-label">{section.label}</span>
-                                    <span className="report-section-chevron">
-                                      {isExpanded ? (
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
-                                      ) : (
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
-                                      )}
-                                    </span>
-                                  </button>
-                                  {isExpanded && (
-                                    <div className="report-section-body markdown-content">
-                                      {section.key === 'evidence_graph' ? (
-                                        <EvidenceGraphPanel data={section.data} />
-                                      ) : (
-                                        <>
-                                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                            {finalDecision?.markdown || reportText}
-                                          </ReactMarkdown>
-                                          {finalDecision?.hiddenDecisionJson && (
-                                            <pre hidden data-final-decision-json>
-                                              {JSON.stringify(finalDecision.hiddenDecisionJson, null, 2)}
-                                            </pre>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                                <ReportSection
+                                  key={section.key}
+                                  sectionKey={section.key}
+                                  label={section.label}
+                                  data={section.data}
+                                  isExpanded={isExpanded}
+                                  onToggle={toggleSection}
+                                />
                               );
                             })}
                           </div>

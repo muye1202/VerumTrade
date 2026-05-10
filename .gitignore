@@ -25,3 +25,5 @@ test_*
 scratch/*
 *.db
 scripts/
+
+*.test.*
