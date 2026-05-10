@@ -3,8 +3,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ANALYST_SUMMARY_LABEL,
+  DEFAULT_EXPANDED_REPORT_SECTIONS,
   DEFAULT_ANALYSTS,
   REPORT_SECTIONS,
+  REPORT_GROUPS,
+  isReportSectionExpanded,
 } from './analysisConfig';
 import { formatFinalDecisionReport } from './reportFormatting';
 import {
@@ -430,7 +433,8 @@ function App() {
 
   const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
   const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
-  const [activeReport, setActiveReport] = useState('catalyst_report');
+  const [expandedSections, setExpandedSections] = useState(DEFAULT_EXPANDED_REPORT_SECTIONS);
+  const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -444,13 +448,6 @@ function App() {
   const hasConversation = logs.length > 0 || Object.keys(reports).length > 0 || Boolean(activeSessionId);
   const currentHorizon = getHorizonMeta(timeHorizon);
   const availableReports = REPORT_SECTIONS.filter(([key]) => reports[key]);
-  const selectedReportKey = availableReports.some(([key]) => key === activeReport)
-    ? activeReport
-    : availableReports[0]?.[0];
-  const selectedReportText = renderReportText(reports[selectedReportKey]) || '';
-  const selectedFinalDecision = selectedReportKey === 'final_trade_decision'
-    ? formatFinalDecisionReport(selectedReportText)
-    : null;
 
   // Total tool calls for the live activity bar
   const toolCallCount = useMemo(() => logs.filter(l => l.type === 'tool').length, [logs]);
@@ -550,7 +547,7 @@ function App() {
     setResearchDepth(payload.research_depth);
     setActiveSessionId(null);
     setActiveMode('analysis');
-    setActiveReport('catalyst_report');
+    setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
     setErrorMessage('');
     const payloadHorizon = HORIZONS.find((item) => item.value === payload.time_horizon) || HORIZONS[0];
     setLogs([makeLog('user', `Analyze ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
@@ -638,7 +635,7 @@ function App() {
     setActiveSessionId(null);
     setErrorMessage('');
     setActiveMode('analysis');
-    setActiveReport('catalyst_report');
+    setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
   };
 
   const loadHistoryItem = async (id) => {
@@ -681,9 +678,7 @@ function App() {
         setLogs((Array.isArray(data.logs) ? data.logs : []).map(normalizeLog));
         setReports(typeof data.reports === 'object' && data.reports ? data.reports : {});
         setActiveMode('reports');
-        // Default to first available report section
-        const firstAvailable = REPORT_SECTIONS.find(([key]) => data.reports && data.reports[key]);
-        setActiveReport(firstAvailable ? firstAvailable[0] : 'catalyst_report');
+        setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
       });
     } catch (error) {
       setErrorMessage(error.message);
@@ -1185,38 +1180,75 @@ function App() {
                     <p>Reports appear here as agents complete their work.</p>
                   </div>
                 ) : (
-                  <>
-                    <div className="report-tabs">
-                      {availableReports.map(([key, label]) => (
-                        <button
-                          key={key}
-                          className={selectedReportKey === key ? 'active' : ''}
-                          onClick={() => setActiveReport(key)}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="report-body markdown-content">
-                      {selectedReportKey === 'evidence_graph' ? (
-                        <EvidenceGraphPanel data={reports[selectedReportKey]} />
-                      ) : (
-                        <>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {selectedFinalDecision?.markdown || selectedReportText}
-                          </ReactMarkdown>
-                          {selectedFinalDecision?.hiddenDecisionJson && (
-                            <pre
-                              hidden
-                              data-final-decision-json
-                            >
-                              {JSON.stringify(selectedFinalDecision.hiddenDecisionJson, null, 2)}
-                            </pre>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </>
+                  <div className="report-accordion-container">
+                    {REPORT_GROUPS.map(group => {
+                      const activeGroupSections = group.sections
+                        .map(key => {
+                          const sectionMeta = REPORT_SECTIONS.find(s => s[0] === key);
+                          return {
+                            key,
+                            label: sectionMeta ? sectionMeta[1] : key,
+                            data: reports[key]
+                          };
+                        })
+                        .filter(s => s.data);
+
+                      if (activeGroupSections.length === 0) return null;
+
+                      return (
+                        <div key={group.id} className="report-group">
+                          <h3 className="report-group-title">
+                            <span className="report-group-icon">{group.icon}</span>
+                            {group.label}
+                          </h3>
+                          <div className="report-group-content">
+                            {activeGroupSections.map(section => {
+                              const isExpanded = isReportSectionExpanded(section.key, expandedSections);
+                              const reportText = renderReportText(section.data) || '';
+                              const finalDecision = section.key === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
+
+                              return (
+                                <div key={section.key} className={`report-section ${isExpanded ? 'expanded' : ''}`}>
+                                  <button
+                                    className="report-section-header"
+                                    onClick={() => toggleSection(section.key)}
+                                    aria-expanded={isExpanded}
+                                  >
+                                    <span className="report-section-label">{section.label}</span>
+                                    <span className="report-section-chevron">
+                                      {isExpanded ? (
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+                                      ) : (
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+                                      )}
+                                    </span>
+                                  </button>
+                                  {isExpanded && (
+                                    <div className="report-section-body markdown-content">
+                                      {section.key === 'evidence_graph' ? (
+                                        <EvidenceGraphPanel data={section.data} />
+                                      ) : (
+                                        <>
+                                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {finalDecision?.markdown || reportText}
+                                          </ReactMarkdown>
+                                          {finalDecision?.hiddenDecisionJson && (
+                                            <pre hidden data-final-decision-json>
+                                              {JSON.stringify(finalDecision.hiddenDecisionJson, null, 2)}
+                                            </pre>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </>
             )}
