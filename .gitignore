@@ -27,3 +27,8 @@ scratch/*
 scripts/
 
 *.test.*
+
+.claude
+.vscode
+
+scripts
