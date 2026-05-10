@@ -12,6 +12,7 @@ import {
   getTranscriptMessagePresentation,
   groupTranscriptLogs,
 } from './transcriptDisplay';
+import EvidenceGraphPanel from './EvidenceGraphPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -1197,16 +1198,22 @@ function App() {
                       ))}
                     </div>
                     <div className="report-body markdown-content">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {selectedFinalDecision?.markdown || selectedReportText}
-                      </ReactMarkdown>
-                      {selectedFinalDecision?.hiddenDecisionJson && (
-                        <pre
-                          hidden
-                          data-final-decision-json
-                        >
-                          {JSON.stringify(selectedFinalDecision.hiddenDecisionJson, null, 2)}
-                        </pre>
+                      {selectedReportKey === 'evidence_graph' ? (
+                        <EvidenceGraphPanel data={reports[selectedReportKey]} />
+                      ) : (
+                        <>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {selectedFinalDecision?.markdown || selectedReportText}
+                          </ReactMarkdown>
+                          {selectedFinalDecision?.hiddenDecisionJson && (
+                            <pre
+                              hidden
+                              data-final-decision-json
+                            >
+                              {JSON.stringify(selectedFinalDecision.hiddenDecisionJson, null, 2)}
+                            </pre>
+                          )}
+                        </>
                       )}
                     </div>
                   </>
