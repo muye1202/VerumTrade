@@ -8,6 +8,7 @@ from tradingagents.utils.market_session import (
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.analysts.workbench import normalize_ledger
 from tradingagents.agents.utils.agent_runtime.evidence_graph import build_evidence_graph
+from tradingagents.graph.reasoning_trace import empty_agent_reasoning_trace
 
 
 class Propagator:
@@ -78,6 +79,16 @@ class Propagator:
             "evidence_graph": build_evidence_graph({}),
             "evidence_graph_audit": [],
             "decision_trace": {},
+            "trader_decision_brief": {},
+            "trade_setup_diagnosis": {},
+            "scenario_analysis": {},
+            "execution_plan_compiler": {},
+            "trader_self_audit": {},
+            "agent_reasoning_trace": empty_agent_reasoning_trace(
+                ticker=company_name,
+                trade_date=str(trade_date),
+                time_horizon=horizon,
+            ),
             "final_trade_decision": "",
             "final_trade_decision_structured": None,
             "final_trade_decision_validation_error": "",

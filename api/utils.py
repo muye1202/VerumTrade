@@ -4,6 +4,7 @@ from typing import Dict, Any
 from fastapi import WebSocket
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from cli.analysis_utils import _msg_type_and_content, _extract_tool_calls
@@ -30,6 +31,12 @@ REPORT_PAYLOAD_KEYS = [
     "evidence_graph",
     "evidence_graph_audit",
     "decision_trace",
+    "trader_decision_brief",
+    "trade_setup_diagnosis",
+    "scenario_analysis",
+    "execution_plan_compiler",
+    "trader_self_audit",
+    "agent_reasoning_trace",
     "analyst_workbench_metrics",
     "analyst_tool_call_links",
     "analyst_tool_call_blocked_counts",
@@ -50,6 +57,8 @@ REPORT_PAYLOAD_KEYS = [
 def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[str, Any]:
     """Build the persisted/API report payload from the final graph state."""
     state = final_state or {}
+    if "agent_reasoning_trace" not in state:
+        state = {**state, "agent_reasoning_trace": build_agent_reasoning_trace(state)}
     return {
         key: state.get(key)
         for key in REPORT_PAYLOAD_KEYS
@@ -205,6 +214,18 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
         if chunk.get("decision_trace"):
             reports["decision_trace"] = chunk["decision_trace"]
+        if chunk.get("trader_decision_brief"):
+            reports["trader_decision_brief"] = chunk["trader_decision_brief"]
+        if chunk.get("trade_setup_diagnosis"):
+            reports["trade_setup_diagnosis"] = chunk["trade_setup_diagnosis"]
+        if chunk.get("scenario_analysis"):
+            reports["scenario_analysis"] = chunk["scenario_analysis"]
+        if chunk.get("execution_plan_compiler"):
+            reports["execution_plan_compiler"] = chunk["execution_plan_compiler"]
+        if chunk.get("trader_self_audit"):
+            reports["trader_self_audit"] = chunk["trader_self_audit"]
+        if chunk.get("agent_reasoning_trace"):
+            reports["agent_reasoning_trace"] = chunk["agent_reasoning_trace"]
             
         # Debate State
         if chunk.get("investment_debate_state"):
@@ -231,7 +252,20 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             
         final_reports.update(reports)
         final_state = chunk
-        
+
+    if final_state:
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+        final_reports["agent_reasoning_trace"] = final_state["agent_reasoning_trace"]
+        await websocket.send_json(
+            {
+                "event": "chunk",
+                "updates": [],
+                "reports": {
+                    "agent_reasoning_trace": final_state["agent_reasoning_trace"],
+                },
+            }
+        )
+
     # Save real session to DB
     db = SessionLocal()
     try:
@@ -302,5 +336,8 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     final_state = None
     async for chunk in graph.graph.astream(init_agent_state, **args):
         final_state = chunk
-        
+
+    if final_state:
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+
     return final_state

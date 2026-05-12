@@ -22,6 +22,41 @@ from tradingagents.dataflows.config import get_config
 from tradingagents.schemas.catalyst_events import CatalystEventBundle, CatalystEventReport
 
 
+REPORT_JSON_HINT_KEYS = {
+    "event_risk_rating",
+    "catalyst_score",
+    "thesis_break_score",
+    "thesis_support_score",
+    "near_term_catalysts",
+    "recent_material_events",
+    "thesis_supporting_events",
+    "thesis_breaking_events",
+    "unresolved_questions",
+    "recommended_action",
+    "action_rationale",
+    "risk_controls",
+    "evidence_table",
+}
+
+
+def _looks_like_catalyst_report(parsed: dict[str, Any]) -> bool:
+    strong_keys = {
+        "event_risk_rating",
+        "catalyst_score",
+        "thesis_break_score",
+        "thesis_support_score",
+        "near_term_catalysts",
+        "recent_material_events",
+        "recommended_action",
+        "action_rationale",
+        "risk_controls",
+        "evidence_table",
+    }
+    if strong_keys.intersection(parsed.keys()):
+        return True
+    return len(REPORT_JSON_HINT_KEYS.intersection(parsed.keys())) >= 2
+
+
 def _json_from_brace_balanced_text(raw: str) -> dict[str, Any] | None:
     start = raw.find("{")
     while start >= 0:
@@ -50,7 +85,7 @@ def _json_from_brace_balanced_text(raw: str) -> dict[str, Any] | None:
                         parsed = json.loads(candidate)
                     except Exception:
                         break
-                    if isinstance(parsed, dict):
+                    if isinstance(parsed, dict) and _looks_like_catalyst_report(parsed):
                         return parsed
                     break
         start = raw.find("{", start + 1)
@@ -94,7 +129,7 @@ def _extract_json_block(text: Any, start_tag: str, end_tag: str) -> tuple[dict[s
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             continue
-        if isinstance(parsed, dict):
+        if isinstance(parsed, dict) and _looks_like_catalyst_report(parsed):
             return parsed, stage, ""
     parsed = _json_from_brace_balanced_text(raw)
     if parsed:

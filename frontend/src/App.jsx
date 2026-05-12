@@ -16,6 +16,7 @@ import {
   groupTranscriptLogs,
 } from './transcriptDisplay';
 import EvidenceGraphPanel from './EvidenceGraphPanel';
+import TraderReasoningPanel from './TraderReasoningPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -224,7 +225,7 @@ const ReportMarkdown = memo(({ markdown, hiddenDecisionJson }) => (
   </>
 ));
 
-const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle }) => {
+const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, allReports }) => {
   const header = (
     <button
       className="report-section-header"
@@ -259,6 +260,21 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle }) =
       <div className="report-section-body markdown-content">
         {sectionKey === 'evidence_graph' ? (
           <EvidenceGraphPanel data={data} />
+        ) : sectionKey === 'agent_reasoning_trace' ? (
+          <TraderReasoningPanel data={data} />
+        ) : sectionKey === 'trader_investment_plan' ? (
+          <>
+            <ReportMarkdown
+              markdown={finalDecision?.markdown || reportText}
+              hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+            />
+            {allReports?.agent_reasoning_trace && (
+              <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <h4 style={{ marginBottom: '16px', color: '#e5e7eb' }}>Reasoning Trace</h4>
+                <TraderReasoningPanel data={allReports.agent_reasoning_trace} />
+              </div>
+            )}
+          </>
         ) : (
           <ReportMarkdown
             markdown={finalDecision?.markdown || reportText}
@@ -1273,6 +1289,7 @@ function App() {
                                   data={section.data}
                                   isExpanded={isExpanded}
                                   onToggle={toggleSection}
+                                  allReports={reports}
                                 />
                               );
                             })}

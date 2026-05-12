@@ -25,6 +25,7 @@ from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.utils.market_session import now_et
 from tradingagents.execution.decision_guard import build_market_snapshot
 from tradingagents.agents.utils.agent_runtime.evidence_graph import build_decision_trace
+from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
@@ -904,6 +905,7 @@ class TradingAgentsGraph:
             final_state,
             final_state.get("final_trade_decision", ""),
         )
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
         return final_state
 
     def _enforce_decision_guard(
@@ -993,6 +995,7 @@ class TradingAgentsGraph:
             final_state,
             final_state.get("final_trade_decision", ""),
         )
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
         return final_state
 
     @staticmethod
@@ -1388,6 +1391,7 @@ class TradingAgentsGraph:
             "evidence_graph": final_state.get("evidence_graph", {}),
             "evidence_graph_audit": final_state.get("evidence_graph_audit", []),
             "decision_trace": final_state.get("decision_trace", {}),
+            "agent_reasoning_trace": final_state.get("agent_reasoning_trace", {}),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],
