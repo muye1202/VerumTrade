@@ -54,6 +54,7 @@ class MessageBuffer:
         self.final_report = None  # Store the complete final report
         self.agent_status = {
             # Analyst Team
+            "Catalyst Analyst": "pending",
             "Market Analyst": "pending",
             "Social Analyst": "pending",
             "News Analyst": "pending",
@@ -74,6 +75,7 @@ class MessageBuffer:
         self.current_agent = None
         self.report_sections = {
             "market_report": None,
+            "catalyst_report": None,
             "sentiment_report": None,
             "news_report": None,
             "fundamentals_report": None,
@@ -116,6 +118,7 @@ class MessageBuffer:
             # Format the current section for display
             section_titles = {
                 "market_report": "Market Analysis",
+                "catalyst_report": "Catalyst / Event-Risk Analysis",
                 "sentiment_report": "Social Sentiment",
                 "news_report": "News Analysis",
                 "fundamentals_report": "Fundamentals Analysis",
@@ -139,6 +142,7 @@ class MessageBuffer:
             self.report_sections[section]
             for section in [
                 "market_report",
+                "catalyst_report",
                 "sentiment_report",
                 "news_report",
                 "fundamentals_report",
@@ -148,6 +152,10 @@ class MessageBuffer:
             if self.report_sections["market_report"]:
                 report_parts.append(
                     f"### Market Analysis\n{self.report_sections['market_report']}"
+                )
+            if self.report_sections["catalyst_report"]:
+                report_parts.append(
+                    f"### Catalyst / Event-Risk Analysis\n{self.report_sections['catalyst_report']}"
                 )
             if self.report_sections["sentiment_report"]:
                 report_parts.append(
@@ -1020,6 +1028,17 @@ def display_complete_report(final_state):
 
     # I. Analyst Team Reports
     analyst_reports = []
+
+    # Market Analyst Report
+    if final_state.get("catalyst_report"):
+        analyst_reports.append(
+            Panel(
+                Markdown(final_state["catalyst_report"]),
+                title="Catalyst / Event-Risk Analyst",
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
 
     # Market Analyst Report
     if final_state.get("market_report"):

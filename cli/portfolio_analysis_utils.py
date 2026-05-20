@@ -49,6 +49,7 @@ class PortfolioMessageBuffer:
 
     # Agent names matching the single-ticker analysis
     AGENT_NAMES = [
+        "Catalyst Analyst",
         "Market Analyst",
         "Social Analyst",
         "News Analyst",
@@ -86,6 +87,7 @@ class PortfolioMessageBuffer:
         # Reports
         self.current_report: Optional[str] = None
         self.report_sections: Dict[str, Optional[str]] = {
+            "catalyst_report": None,
             "market_report": None,
             "sentiment_report": None,
             "news_report": None,
@@ -127,6 +129,7 @@ class PortfolioMessageBuffer:
         """Update current_report with the latest non-None section."""
         section_titles = {
             "market_report": "Market Analysis",
+            "catalyst_report": "Catalyst / Event-Risk Analysis",
             "sentiment_report": "Social Sentiment",
             "news_report": "News Analysis",
             "fundamentals_report": "Fundamentals Analysis",
@@ -554,7 +557,7 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
         buffer.reset_agent_statuses()
 
         # Set first analyst to in_progress based on selected analysts
-        analyst_order = ["market", "social", "news", "fundamentals"]
+        analyst_order = ["catalyst", "market", "social", "news", "fundamentals"]
         selected_analyst_values = [a.value for a in selections.get("analysts", [])]
         for analyst_type in analyst_order:
             if analyst_type in selected_analyst_values:
@@ -664,6 +667,12 @@ def _process_chunk_for_buffer(
 
     # Update reports and agent status based on chunk content
     # Analyst Team Reports
+    if "catalyst_report" in chunk and chunk["catalyst_report"]:
+        buffer.update_report_section("catalyst_report", chunk["catalyst_report"])
+        buffer.update_agent_status("Catalyst Analyst", "completed")
+        if "market" in [a.value for a in selections.get("analysts", [])]:
+            buffer.update_agent_status("Market Analyst", "in_progress")
+
     if "market_report" in chunk and chunk["market_report"]:
         buffer.update_report_section("market_report", chunk["market_report"])
         buffer.update_agent_status("Market Analyst", "completed")

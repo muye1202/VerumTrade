@@ -72,7 +72,8 @@ DEFAULT_CONFIG = {
     "max_risk_discuss_rounds": 1,
     "max_recur_limit": int(os.getenv("TRADINGAGENTS_MAX_RECUR_LIMIT", "100")),
     # Hard cap for analyst tool rounds (LLM -> tools -> LLM loop control)
-    "analyst_tool_round_cap": int(os.getenv("TRADINGAGENTS_ANALYST_TOOL_ROUND_CAP", "2")),
+    # Set TRADINGAGENTS_ANALYST_TOOL_ROUND_CAP=0 to disable the per-analyst round cap.
+    "analyst_tool_round_cap": int(os.getenv("TRADINGAGENTS_ANALYST_TOOL_ROUND_CAP", "4")),
     # Guardrails to prevent infinite analyst->tools loops (LangGraph recursion errors)
     "max_tool_calls_per_analyst": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_PER_ANALYST", "8")),
     "max_tool_calls_total": int(os.getenv("TRADINGAGENTS_MAX_TOOL_CALLS_TOTAL", "50")),

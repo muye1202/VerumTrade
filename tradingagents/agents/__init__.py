@@ -20,6 +20,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "RiskDebateState": ("tradingagents.agents.utils.agent_runtime.agent_states", "RiskDebateState"),
     "FinancialSituationMemory": ("tradingagents.agents.utils.memory.memory", "FinancialSituationMemory"),
     "create_fundamentals_analyst": ("tradingagents.agents.analysts.fundamentals_analyst", "create_fundamentals_analyst"),
+    "create_catalyst_event_analyst": ("tradingagents.agents.analysts.catalyst_event_analyst", "create_catalyst_event_analyst"),
     "create_market_analyst": ("tradingagents.agents.analysts.market_analyst", "create_market_analyst"),
     "create_news_analyst": ("tradingagents.agents.analysts.news_analyst", "create_news_analyst"),
     "create_social_media_analyst": ("tradingagents.agents.analysts.social_media_analyst", "create_social_media_analyst"),

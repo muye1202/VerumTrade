@@ -51,6 +51,8 @@ def create_market_analyst(llm):
         ticker = state["company_of_interest"]
         portfolio_context = state.get("portfolio_context", "")
         market_session_context = state.get("market_session_context", "")
+        catalyst_context = state.get("catalyst_report", "")
+        catalyst_structured = state.get("catalyst_event_report_structured", {})
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
         window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
@@ -59,7 +61,7 @@ def create_market_analyst(llm):
         )
 
         enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
-        tool_round_cap = int(get_config().get("analyst_tool_round_cap", 2) or 2)
+        tool_round_cap = int(get_config().get("analyst_tool_round_cap", 4) or 0)
         global_tool_round_cap = int(get_config().get("max_tool_calls_total", 50) or 50)
         rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
         rounds_used = int(rounds.get("market", 0) or 0)
@@ -217,6 +219,15 @@ Report requirements (keep it to-the-point, but specific):
         if market_session_context:
             system_message += "\n\n---\n" + str(market_session_context).strip() + "\n---"
 
+        if catalyst_context or catalyst_structured:
+            system_message += (
+                "\n\n---\nCATALYST / EVENT-RISK CONTEXT:\n"
+                + (str(catalyst_structured) if catalyst_structured else "")
+                + "\n"
+                + str(catalyst_context)
+                + "\nUse this to interpret price/volume action around known events, near-term timing risk, and price-volume shocks. Do not duplicate the catalyst report; incorporate it into technical bias and risk levels.\n---"
+            )
+
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -239,8 +250,8 @@ Report requirements (keep it to-the-point, but specific):
 
         force_no_tools = (
             state.get("force_no_tools_for") == "market"
-            or rounds_used >= tool_round_cap
-            or total_rounds_used >= global_tool_round_cap
+            or (tool_round_cap > 0 and rounds_used >= tool_round_cap)
+            or (global_tool_round_cap > 0 and total_rounds_used >= global_tool_round_cap)
         )
         chain = prompt | (
             llm if force_no_tools or not tools else bind_tools_parallel_safe(llm, tools)

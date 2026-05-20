@@ -250,6 +250,24 @@ def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_
             a.value if hasattr(a, "value") else str(a) for a in selected_analysts
         ]
 
+        def _start_next_after(completed_key: str):
+            order = ["catalyst", "market", "social", "news", "fundamentals"]
+            labels = {
+                "catalyst": "Catalyst Analyst",
+                "market": "Market Analyst",
+                "social": "Social Analyst",
+                "news": "News Analyst",
+                "fundamentals": "Fundamentals Analyst",
+            }
+            selected = [key for key in order if key in analyst_names]
+            if completed_key not in selected:
+                return
+            idx = selected.index(completed_key)
+            if idx + 1 < len(selected):
+                mbuf.update_agent_status(labels[selected[idx + 1]], "in_progress")
+            else:
+                update_research_team_status("in_progress", mbuf=mbuf)
+
         trace = []
         final_state = None
         seen_messages = 0
@@ -268,28 +286,30 @@ def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_
 
             # Update reports and agent status based on chunk content
             # Analyst Team Reports
+            if "catalyst_report" in chunk and chunk["catalyst_report"]:
+                mbuf.update_report_section("catalyst_report", chunk["catalyst_report"])
+                mbuf.update_agent_status("Catalyst Analyst", "completed")
+                _start_next_after("catalyst")
+
             if "market_report" in chunk and chunk["market_report"]:
                 mbuf.update_report_section("market_report", chunk["market_report"])
                 mbuf.update_agent_status("Market Analyst", "completed")
-                if "social" in analyst_names:
-                    mbuf.update_agent_status("Social Analyst", "in_progress")
+                _start_next_after("market")
 
             if "sentiment_report" in chunk and chunk["sentiment_report"]:
                 mbuf.update_report_section("sentiment_report", chunk["sentiment_report"])
                 mbuf.update_agent_status("Social Analyst", "completed")
-                if "news" in analyst_names:
-                    mbuf.update_agent_status("News Analyst", "in_progress")
+                _start_next_after("social")
 
             if "news_report" in chunk and chunk["news_report"]:
                 mbuf.update_report_section("news_report", chunk["news_report"])
                 mbuf.update_agent_status("News Analyst", "completed")
-                if "fundamentals" in analyst_names:
-                    mbuf.update_agent_status("Fundamentals Analyst", "in_progress")
+                _start_next_after("news")
 
             if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
                 mbuf.update_report_section("fundamentals_report", chunk["fundamentals_report"])
                 mbuf.update_agent_status("Fundamentals Analyst", "completed")
-                update_research_team_status("in_progress", mbuf=mbuf)
+                _start_next_after("fundamentals")
 
             # Research Team - Handle Investment Debate State
             if "investment_debate_state" in chunk and chunk["investment_debate_state"]:
@@ -587,6 +607,7 @@ def run_single_ticker_analysis(
         existing_reports = {}
         if selections.get("skip_completed_analysts"):
             report_mapping = {
+                "catalyst_report": "catalyst_report.md",
                 "market_report": "market_report.md",
                 "sentiment_report": "sentiment_report.md",
                 "news_report": "news_report.md",
@@ -645,6 +666,8 @@ def run_single_ticker_analysis(
             llm_metrics = diff_llm_api_calls(llm_snapshot_before, llm_snapshot_after)
             rounds = final_state.get("tool_round_counts") or final_state.get("tool_call_counts") or {}
             issued = final_state.get("tool_calls_issued_by_agent") or {}
+            cache_metrics = final_state.get("tool_cache_metrics") or {}
+            vendor_events = final_state.get("vendor_telemetry") or []
             llm_metrics.update(
                 {
                     "analyst_tool_rounds_by_agent": dict(rounds),
@@ -655,6 +678,8 @@ def run_single_ticker_analysis(
                     "tool_calls_issued_total": int(
                         final_state.get("tool_calls_issued_total", sum(int(v or 0) for v in issued.values())) or 0
                     ),
+                    "tool_cache_metrics": dict(cache_metrics),
+                    "vendor_telemetry_event_count": len(vendor_events) if isinstance(vendor_events, list) else 0,
                 }
             )
             final_state["llm_metrics"] = llm_metrics

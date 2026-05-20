@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict, List, Literal, TypedDict
 
 
-AnalystDomain = Literal["market", "news", "fundamentals", "sentiment"]
+AnalystDomain = Literal["market", "news", "fundamentals", "sentiment", "catalyst"]
 HypothesisOrigin = Literal[
     "default_prior",
     "anomaly_generated",
@@ -94,7 +94,7 @@ class AnalystLedger(TypedDict, total=False):
     critic_flags: List[str]
 
 
-ANALYST_DOMAINS = {"market", "news", "fundamentals", "sentiment"}
+ANALYST_DOMAINS = {"market", "news", "fundamentals", "sentiment", "catalyst"}
 HYPOTHESIS_ORIGINS = {
     "default_prior",
     "anomaly_generated",
@@ -674,6 +674,7 @@ DOMAIN_DISCOVERY_PROMPTS = {
     "news": """During discovery, look for catalysts that may be misclassified, stale, incomplete, or already priced in: company news smaller than the price reaction, sector sympathy mistaken for company-specific strength, macro headlines overwhelming company catalysts, positive news with bearish price reaction, or missing regulatory, litigation, customer, supply-chain, or earnings-quality angles.""",
     "fundamentals": """During discovery, look for disconnects between valuation, growth expectations, margin trajectory, balance-sheet risk, and narrative strength: multiple expansion without estimate revisions, revenue growth with declining earnings quality, unsupported margin optimism, ignored dilution/liquidity risk, or one-customer/product/cycle dependency.""",
     "sentiment": """During discovery, look for whether attention is informative, reflexive, crowded, stale, or noisy: attention spikes after price has already moved, sentiment divergence from price, retail enthusiasm without institutional confirmation, crowded bullishness increasing downside gap risk, or negative sentiment that fails to pressure price.""",
+    "catalyst": """During discovery, look for discrete events that can change timing, thesis validity, or risk budget: earnings proximity, guidance changes, filings, dilution, insider activity, lawsuits/regulatory events, product or customer events, macro dates, and price/volume shocks without a clear explanation.""",
 }
 
 
@@ -682,6 +683,7 @@ DEFAULT_HYPOTHESES = {
     "fundamentals": "structural inflection, cyclical peak, valuation stretch, data insufficient",
     "news": "catalyst continuation, sell-the-news, macro drag, no material catalyst",
     "sentiment": "attention acceleration, crowded trade, narrative fatigue, low-signal noise",
+    "catalyst": "thesis-supporting catalyst, thesis-breaking catalyst, timing risk, low materiality noise",
 }
 
 

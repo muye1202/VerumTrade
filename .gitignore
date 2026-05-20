@@ -25,3 +25,10 @@ test_*
 scratch/*
 *.db
 scripts/
+
+*.test.*
+
+.claude
+.vscode
+
+scripts

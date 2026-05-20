@@ -8,6 +8,7 @@ from cli.models import AnalystType
 console = Console()
 
 ANALYST_ORDER = [
+    ("Catalyst / Event-Risk Analyst", AnalystType.CATALYST),
     ("Market Analyst", AnalystType.MARKET),
     ("Social Media Analyst", AnalystType.SOCIAL),
     ("News Analyst", AnalystType.NEWS),

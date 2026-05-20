@@ -42,7 +42,7 @@ class GraphSetup:
         self.conditional_logic = conditional_logic
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["catalyst", "market", "social", "news", "fundamentals"]
     ):
         """Set up and compile the agent workflow graph.
 
@@ -51,6 +51,7 @@ class GraphSetup:
                 - "market": Market analyst
                 - "social": Social media analyst
                 - "news": News analyst
+                - "catalyst": Catalyst / Event-Risk analyst
                 - "fundamentals": Fundamentals analyst
         """
         if len(selected_analysts) == 0:
@@ -85,6 +86,14 @@ class GraphSetup:
             delete_nodes["news"] = create_msg_delete()
             force_finalize_nodes["news"] = create_force_finalize("news")
             tool_nodes["news"] = self.tool_nodes["news"]
+
+        if "catalyst" in selected_analysts:
+            analyst_nodes["catalyst"] = create_catalyst_event_analyst(
+                self.quick_thinking_llm
+            )
+            delete_nodes["catalyst"] = create_msg_delete()
+            force_finalize_nodes["catalyst"] = create_force_finalize("catalyst")
+            tool_nodes["catalyst"] = self.tool_nodes["catalyst"]
 
         if "fundamentals" in selected_analysts:
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(

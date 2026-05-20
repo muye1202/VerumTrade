@@ -25,6 +25,7 @@ from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from tradingagents.utils.market_session import now_et
 from tradingagents.execution.decision_guard import build_market_snapshot
 from tradingagents.agents.utils.agent_runtime.evidence_graph import build_decision_trace
+from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
@@ -61,11 +62,13 @@ from tradingagents.agents.utils.market_data.short_interest_tools import (
     get_squeeze_candidates_assessment,
 )
 from tradingagents.agents.utils.market_data.bundle_tools import (
+    get_catalyst_event_bundle,
     get_market_data_bundle,
     get_news_data_bundle,
     get_fundamentals_data_bundle,
     get_sentiment_data_bundle,
 )
+from tradingagents.agents.utils.agent_runtime.tool_cache import create_cache_aware_tool_node
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -389,7 +392,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["catalyst", "market", "social", "news", "fundamentals"],
         debug=False,
         config: Dict[str, Any] = None,
     ):
@@ -402,6 +405,7 @@ class TradingAgentsGraph:
         """
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
+        selected_analysts = self.normalize_selected_analysts(selected_analysts)
 
         # Update the interface's config
         set_config(self.config)
@@ -483,7 +487,8 @@ class TradingAgentsGraph:
                     return True
                 if name.startswith("qwq"):
                     return True
-                return False
+                # Allow override if thinking mode is explicitly enabled via config
+                return True
 
             def _qwen_requires_stream(model_name: str) -> bool:
                 """Some DashScope models require stream mode regardless of thinking flags."""
@@ -680,7 +685,7 @@ class TradingAgentsGraph:
             max_risk_discuss_rounds=self.config.get("max_risk_discuss_rounds", 1),
             max_tool_calls_per_analyst=self.config.get(
                 "analyst_tool_round_cap",
-                self.config.get("max_tool_calls_per_analyst", 2),
+                self.config.get("max_tool_calls_per_analyst", 4),
             ),
             max_tool_calls_total=self.config.get("max_tool_calls_total", 50),
         )
@@ -711,6 +716,23 @@ class TradingAgentsGraph:
         self.graph = self.graph_setup.setup_graph(selected_analysts)
 
     @staticmethod
+    def normalize_selected_analysts(selected_analysts) -> List[str]:
+        """Deduplicate analyst keys and run catalyst first when selected."""
+        raw = selected_analysts or ["market", "social", "news", "fundamentals"]
+        seen = set()
+        normalized: List[str] = []
+        for item in raw:
+            value = getattr(item, "value", item)
+            key = str(value or "").strip().lower()
+            if not key or key in seen:
+                continue
+            normalized.append(key)
+            seen.add(key)
+        if "catalyst" in seen:
+            normalized = ["catalyst", *[item for item in normalized if item != "catalyst"]]
+        return normalized
+
+    @staticmethod
     def _build_run_metrics(before_snapshot: Dict[str, Any], after_snapshot: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
         metrics = diff_llm_api_calls(before_snapshot, after_snapshot)
         rounds = state.get("tool_round_counts") or state.get("tool_call_counts") or {}
@@ -718,6 +740,8 @@ class TradingAgentsGraph:
         workbench_metrics = state.get("analyst_workbench_metrics") or {}
         blocked = state.get("analyst_tool_call_blocked_counts") or {}
         links = state.get("analyst_tool_call_links") or {}
+        cache_metrics = state.get("tool_cache_metrics") or {}
+        vendor_events = state.get("vendor_telemetry") or []
         metrics.update(
             {
                 "analyst_tool_rounds_by_agent": dict(rounds),
@@ -727,6 +751,8 @@ class TradingAgentsGraph:
                 "analyst_workbench_metrics": dict(workbench_metrics),
                 "analyst_tool_call_blocked_counts": dict(blocked),
                 "analyst_tool_call_links": dict(links),
+                "tool_cache_metrics": dict(cache_metrics),
+                "vendor_telemetry_event_count": len(vendor_events) if isinstance(vendor_events, list) else 0,
             }
         )
         return metrics
@@ -769,6 +795,13 @@ class TradingAgentsGraph:
             get_news_sentiment,
             get_recent_sec_filings,
         ]
+        catalyst_tools = [
+            get_catalyst_event_bundle,
+            get_company_news_window,
+            get_recent_sec_filings,
+            get_insider_transactions,
+            get_price_action_summary,
+        ]
         fundamentals_tools = [
             # Fundamental analysis tools
             get_fundamentals,
@@ -787,10 +820,11 @@ class TradingAgentsGraph:
             fundamentals_tools = [get_fundamentals_data_bundle, *fundamentals_tools]
 
         return {
-            "market": ToolNode(market_tools),
-            "social": ToolNode(social_tools),
-            "news": ToolNode(news_tools),
-            "fundamentals": ToolNode(fundamentals_tools),
+            "catalyst": create_cache_aware_tool_node(catalyst_tools),
+            "market": create_cache_aware_tool_node(market_tools),
+            "social": create_cache_aware_tool_node(social_tools),
+            "news": create_cache_aware_tool_node(news_tools),
+            "fundamentals": create_cache_aware_tool_node(fundamentals_tools),
         }
 
     def extract_structured_decision(self, full_signal: str) -> dict:
@@ -872,6 +906,7 @@ class TradingAgentsGraph:
             final_state,
             final_state.get("final_trade_decision", ""),
         )
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
         return final_state
 
     def _enforce_decision_guard(
@@ -961,6 +996,7 @@ class TradingAgentsGraph:
             final_state,
             final_state.get("final_trade_decision", ""),
         )
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
         return final_state
 
     @staticmethod
@@ -1342,15 +1378,21 @@ class TradingAgentsGraph:
             "market_report": final_state["market_report"],
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
+            "catalyst_report": final_state.get("catalyst_report", ""),
             "fundamentals_report": final_state["fundamentals_report"],
             "market_ledger": final_state.get("market_ledger", {}),
             "sentiment_ledger": final_state.get("sentiment_ledger", {}),
             "news_ledger": final_state.get("news_ledger", {}),
+            "catalyst_ledger": final_state.get("catalyst_ledger", {}),
             "fundamentals_ledger": final_state.get("fundamentals_ledger", {}),
+            "catalyst_event_bundle": final_state.get("catalyst_event_bundle", {}),
+            "catalyst_event_report_structured": final_state.get("catalyst_event_report_structured", {}),
+            "catalyst_evidence": final_state.get("catalyst_evidence", ""),
             "evidence_source_facts": final_state.get("evidence_source_facts", []),
             "evidence_graph": final_state.get("evidence_graph", {}),
             "evidence_graph_audit": final_state.get("evidence_graph_audit", []),
             "decision_trace": final_state.get("decision_trace", {}),
+            "agent_reasoning_trace": final_state.get("agent_reasoning_trace", {}),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],

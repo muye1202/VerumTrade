@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  ANALYST_SUMMARY_LABEL,
+  DEFAULT_EXPANDED_REPORT_SECTIONS,
+  DEFAULT_ANALYSTS,
+  REPORT_SECTIONS,
+  REPORT_GROUPS,
+  isReportSectionExpanded,
+} from './analysisConfig';
 import { formatFinalDecisionReport } from './reportFormatting';
 import {
   getRetrievedInfoTitle,
   getTranscriptMessagePresentation,
   groupTranscriptLogs,
 } from './transcriptDisplay';
+import EvidenceGraphPanel from './EvidenceGraphPanel';
+import TraderReasoningPanel from './TraderReasoningPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -96,19 +106,38 @@ const BACKEND_URLS = {
   'openrouter': 'https://openrouter.ai/api/v1',
 };
 
-const REPORT_SECTIONS = [
-  ['discovery_report', 'Candidate Stocks'],
-  ['market_report', 'Market'],
-  ['sentiment_report', 'Sentiment'],
-  ['news_report', 'News'],
-  ['fundamentals_report', 'Fundamentals'],
-  ['evidence_graph', 'Evidence Graph'],
-  ['decision_trace', 'Decision Trace'],
-  ['investment_debate_state', 'Debate'],
-  ['trader_investment_plan', 'Trader Plan'],
-  ['risk_debate_state', 'Risk Debate'],
-  ['final_trade_decision', 'Final Decision'],
-];
+const getPredefinedModelsForProvider = (providerId) => {
+  const list = [];
+  const seen = new Set();
+
+  SHALLOW_MODELS.forEach(m => {
+    const [pid, name] = m.value.split('|');
+    if (pid === providerId) {
+      const isDeep = DEEP_MODELS.some(dm => dm.value === m.value);
+      const scope = isDeep ? 'both' : 'shallow';
+      const key = `${pid}|${name}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ name, label: m.label, detail: m.detail, scope });
+      }
+    }
+  });
+
+  DEEP_MODELS.forEach(m => {
+    const [pid, name] = m.value.split('|');
+    if (pid === providerId) {
+      const isShallow = SHALLOW_MODELS.some(sm => sm.value === m.value);
+      const scope = isShallow ? 'both' : 'deep';
+      const key = `${pid}|${name}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ name, label: m.label, detail: m.detail, scope });
+      }
+    }
+  });
+
+  return list;
+};
 
 const makeLog = (type, content) => ({
   id: `${Date.now()}-${Math.random()}`,
@@ -213,6 +242,93 @@ const formatDateTime = (value) => {
     minute: '2-digit',
   }).format(new Date(value));
 };
+
+function renderReportText(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value.judge_decision) return value.judge_decision;
+  if (value.final_decision) return value.final_decision;
+  // Debate state objects - extract the most useful readable text
+  if (value.current_response) return value.current_response;
+  if (value.history && Array.isArray(value.history)) {
+    return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+const ReportMarkdown = memo(({ markdown, hiddenDecisionJson }) => (
+  <>
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {markdown}
+    </ReactMarkdown>
+    {hiddenDecisionJson && (
+      <pre hidden data-final-decision-json>
+        {JSON.stringify(hiddenDecisionJson, null, 2)}
+      </pre>
+    )}
+  </>
+));
+
+const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, allReports }) => {
+  const header = (
+    <button
+      className="report-section-header"
+      onClick={() => onToggle(sectionKey)}
+      aria-expanded={isExpanded}
+    >
+      <span className="report-section-label">{label}</span>
+      <span className="report-section-chevron">
+        {isExpanded ? (
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+        ) : (
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        )}
+      </span>
+    </button>
+  );
+
+  if (!isExpanded) {
+    return (
+      <div className="report-section">
+        {header}
+      </div>
+    );
+  }
+
+  const reportText = renderReportText(data) || '';
+  const finalDecision = sectionKey === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
+
+  return (
+    <div className="report-section expanded">
+      {header}
+      <div className="report-section-body markdown-content">
+        {sectionKey === 'evidence_graph' ? (
+          <EvidenceGraphPanel data={data} />
+        ) : sectionKey === 'agent_reasoning_trace' ? (
+          <TraderReasoningPanel data={data} />
+        ) : sectionKey === 'trader_investment_plan' ? (
+          <>
+            <ReportMarkdown
+              markdown={finalDecision?.markdown || reportText}
+              hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+            />
+            {allReports?.agent_reasoning_trace && (
+              <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <h4 style={{ marginBottom: '16px', color: '#e5e7eb' }}>Reasoning Trace</h4>
+                <TraderReasoningPanel data={allReports.agent_reasoning_trace} />
+              </div>
+            )}
+          </>
+        ) : (
+          <ReportMarkdown
+            markdown={finalDecision?.markdown || reportText}
+            hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
 
 const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -422,7 +538,13 @@ function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [hiddenPredefinedModels, setHiddenPredefinedModels] = useState(() => {
+    const saved = localStorage.getItem('hiddenPredefinedModels');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [newModelInputs, setNewModelInputs] = useState({});
+  const [newModelThinking, setNewModelThinking] = useState({});
 
   useEffect(() => {
     localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
@@ -435,6 +557,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('customModels', JSON.stringify(customModels));
   }, [customModels]);
+
+  useEffect(() => {
+    localStorage.setItem('hiddenPredefinedModels', JSON.stringify(hiddenPredefinedModels));
+  }, [hiddenPredefinedModels]);
 
   const allShallowModels = [...SHALLOW_MODELS];
   const allDeepModels = [...DEEP_MODELS];
@@ -451,9 +577,30 @@ function App() {
     });
   });
 
-  const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
-  const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
-  const [activeReport, setActiveReport] = useState('market_report');
+  const availableShallowModels = allShallowModels
+    .filter(m => activeProviders[m.value.split('|')[0]])
+    .filter(m => !hiddenPredefinedModels.includes(m.value));
+
+  const availableDeepModels = allDeepModels
+    .filter(m => activeProviders[m.value.split('|')[0]])
+    .filter(m => !hiddenPredefinedModels.includes(m.value));
+
+  // Reset selected models if they are hidden or removed
+  useEffect(() => {
+    if (availableShallowModels.length > 0 && !availableShallowModels.some(m => m.value === shallowThinker)) {
+      setShallowThinker(availableShallowModels[0].value);
+    }
+  }, [availableShallowModels, shallowThinker]);
+
+  useEffect(() => {
+    if (availableDeepModels.length > 0 && !availableDeepModels.some(m => m.value === deepThinker)) {
+      setDeepThinker(availableDeepModels[0].value);
+    }
+  }, [availableDeepModels, deepThinker]);
+  const [expandedSections, setExpandedSections] = useState(DEFAULT_EXPANDED_REPORT_SECTIONS);
+  const toggleSection = useCallback((key) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -467,13 +614,6 @@ function App() {
   const hasConversation = logs.length > 0 || Object.keys(reports).length > 0 || Boolean(activeSessionId);
   const currentHorizon = getHorizonMeta(timeHorizon);
   const availableReports = REPORT_SECTIONS.filter(([key]) => reports[key]);
-  const selectedReportKey = availableReports.some(([key]) => key === activeReport)
-    ? activeReport
-    : availableReports[0]?.[0];
-  const selectedReportText = renderReportText(reports[selectedReportKey]) || '';
-  const selectedFinalDecision = selectedReportKey === 'final_trade_decision'
-    ? formatFinalDecisionReport(selectedReportText)
-    : null;
 
   // Total tool calls for the live activity bar
   const toolCallCount = useMemo(() => logs.filter(l => l.type === 'tool').length, [logs]);
@@ -539,12 +679,23 @@ function App() {
     const shallowVal = overrides.shallowThinker ?? shallowThinker;
     
     const [deepProvider, deepModel] = deepVal.split('|');
-    const [, shallowModel] = shallowVal.split('|');
+    const [shallowProvider, shallowModel] = shallowVal.split('|');
+
+    const isThinkingEnabled = (provider, modelName) => {
+      if (provider !== 'qwen3-cn') return false;
+      const qwenCustoms = customModels['qwen3-cn'] || [];
+      const customMatch = qwenCustoms.find(m => (typeof m === 'string' ? m : m.name) === modelName);
+      if (customMatch && typeof customMatch === 'object') {
+        return !!customMatch.enableThinking;
+      }
+      const lowerName = modelName.toLowerCase();
+      return lowerName.startsWith('qwen3-max') || lowerName.includes('thinking') || lowerName.startsWith('qwq');
+    };
 
     return {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
       analysis_date: overrides.analysisDate ?? analysisDate,
-      analysts: ['market', 'social', 'news', 'fundamentals'],
+      analysts: [...DEFAULT_ANALYSTS],
       research_depth: overrides.researchDepth ?? researchDepth,
       llm_provider: deepProvider,
       backend_url: BACKEND_URLS[deepProvider] || null,
@@ -553,6 +704,8 @@ function App() {
       time_horizon: normalizeHorizonValue(overrides.timeHorizon ?? timeHorizon),
       skip_completed_analysts: false,
       mock: false,
+      qwen_enable_thinking: isThinkingEnabled(deepProvider, deepModel) || isThinkingEnabled(shallowProvider, shallowModel),
+      qwen_thinking_budget: 7000,
       execution: {
         enabled: false,
         provider: 'alpaca',
@@ -573,7 +726,7 @@ function App() {
     setResearchDepth(payload.research_depth);
     setActiveSessionId(null);
     setActiveMode('analysis');
-    setActiveReport('market_report');
+    setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
     setErrorMessage('');
     const payloadHorizon = HORIZONS.find((item) => item.value === payload.time_horizon) || HORIZONS[0];
     setLogs([makeLog('user', `Analyze ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
@@ -779,6 +932,7 @@ function App() {
     setActiveMode('analysis');
     setActiveSessionType(mainPageMode);
     setActiveReport(mainPageMode === 'discovery' ? 'discovery_report' : 'market_report');
+    setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
   };
 
   const loadHistoryItem = async (id) => {
@@ -821,35 +975,20 @@ function App() {
         setLogs((Array.isArray(data.logs) ? data.logs : []).map(normalizeLog));
         setReports(typeof data.reports === 'object' && data.reports ? data.reports : {});
         setActiveMode('reports');
-        // Default to first available report section
-        const firstAvailable = REPORT_SECTIONS.find(([key]) => data.reports && data.reports[key]);
-        setActiveReport(firstAvailable ? firstAvailable[0] : 'market_report');
+        setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
       });
     } catch (error) {
       setErrorMessage(error.message);
     }
   };
 
-  function renderReportText(value) {
-    if (!value) return null;
-    if (typeof value === 'string') return value;
-    if (value.judge_decision) return value.judge_decision;
-    if (value.final_decision) return value.final_decision;
-    // Debate state objects — extract the most useful readable text
-    if (value.current_response) return value.current_response;
-    if (value.history && Array.isArray(value.history)) {
-      return value.history.map(h => typeof h === 'string' ? h : JSON.stringify(h, null, 2)).join('\n\n---\n\n');
-    }
-    return JSON.stringify(value, null, 2);
-  }
-
   const renderComposer = (isWelcome = false) => {
     if (mainPageMode === 'discovery') {
       return (
         <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`} style={{ justifyContent: 'center', padding: '16px' }}>
-          <button 
-            className="submit-circle primary" 
-            onClick={() => startDiscovery()} 
+          <button
+            className="submit-circle primary"
+            onClick={() => startDiscovery()}
             disabled={isRunning}
             style={{ width: '100%', height: '56px', borderRadius: '28px', fontSize: '18px', gap: '8px', padding: '0 24px' }}
           >
@@ -868,7 +1007,7 @@ function App() {
         </div>
       );
     }
-    
+
     return (
       <div className={`gemini-composer ${isWelcome ? 'large' : 'compact'}`}>
         <div className="gemini-input-row">
@@ -906,6 +1045,14 @@ function App() {
         </div>
       </div>
     );
+  };
+
+  const handleDeepThinkerChange = (val) => {
+    setDeepThinker(val);
+  };
+
+  const handleShallowThinkerChange = (val) => {
+    setShallowThinker(val);
   };
 
   const renderConfigStrip = () => {
@@ -1056,11 +1203,13 @@ function App() {
     const name = (newModelInputs[providerId] || '').trim();
     if (!name) return;
     const scope = newModelScope[providerId] || 'both';
+    const enableThinking = providerId === 'qwen3-cn' ? !!newModelThinking[providerId] : false;
     setCustomModels(prev => ({
       ...prev,
-      [providerId]: [...(prev[providerId] || []), { name, scope }],
+      [providerId]: [...(prev[providerId] || []), { name, scope, enableThinking }],
     }));
     setNewModelInputs(prev => ({ ...prev, [providerId]: '' }));
+    setNewModelThinking(prev => ({ ...prev, [providerId]: false }));
   };
 
   const deleteModel = (providerId, index) => {
@@ -1069,6 +1218,17 @@ function App() {
       [providerId]: (prev[providerId] || []).filter((_, i) => i !== index),
     }));
   };
+
+  const hidePredefinedModel = (providerId, modelName) => {
+    const key = `${providerId}|${modelName}`;
+    setHiddenPredefinedModels(prev => [...prev, key]);
+  };
+
+  const showPredefinedModel = (providerId, modelName) => {
+    const key = `${providerId}|${modelName}`;
+    setHiddenPredefinedModels(prev => prev.filter(k => k !== key));
+  };
+
 
   const renderSettings = () => {
     const PROVIDERS = [
@@ -1098,6 +1258,7 @@ function App() {
             const models = customModels[provider.id] || [];
             const scope = newModelScope[provider.id] || 'both';
             const scopeMeta = SCOPE_META[scope];
+            const predefined = getPredefinedModelsForProvider(provider.id);
 
             return (
               <div key={provider.id} className={`provider-card ${isActive ? 'active' : ''}`}>
@@ -1146,36 +1307,60 @@ function App() {
                       </button>
                     </div>
 
-                    {/* Custom Models section */}
+                    {/* Unified Models section */}
                     <div className="custom-models-section">
                       <div className="custom-models-header">
-                        <span className="custom-models-title">Custom Models</span>
-                        <span className="custom-models-hint">Model IDs added here appear in the agent selectors above.</span>
+                        <span className="custom-models-title">Models Configuration</span>
+                        <span className="custom-models-hint">Remove default models or manage custom ones.</span>
                       </div>
 
-                      {/* Existing models list */}
-                      {models.length > 0 && (
-                        <div className="model-list">
-                          {models.map((entry, i) => {
-                            // Support legacy plain-string entries
-                            const modelName = typeof entry === 'string' ? entry : entry.name;
-                            const modelScope = typeof entry === 'string' ? 'both' : entry.scope;
-                            const meta = SCOPE_META[modelScope] || SCOPE_META.both;
+                      <div className="model-list">
+                        {/* Predefined Models */}
+                        {predefined
+                          .filter(entry => !hiddenPredefinedModels.includes(`${provider.id}|${entry.name}`))
+                          .map((entry, idx) => {
+                            const meta = SCOPE_META[entry.scope] || SCOPE_META.both;
                             return (
-                              <div key={i} className="model-list-item">
+                              <div key={`predefined-${idx}`} className="model-list-item">
                                 <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
-                                <span className="model-list-name">{modelName}</span>
-                                <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
+                                <span className="model-list-name" title={entry.name}>
+                                  {entry.label} <small style={{ color: 'var(--faint)', fontFamily: 'inherit' }}>({entry.name})</small>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="model-delete-btn"
+                                  onClick={() => hidePredefinedModel(provider.id, entry.name)}
+                                  title="Remove model"
+                                >
                                   <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                                 </button>
                               </div>
                             );
                           })}
-                        </div>
-                      )}
+
+                        {/* Custom Models */}
+                        {models.length > 0 && models.map((entry, i) => {
+                          // Support legacy plain-string entries
+                          const modelName = typeof entry === 'string' ? entry : entry.name;
+                          const modelScope = typeof entry === 'string' ? 'both' : entry.scope;
+                          const meta = SCOPE_META[modelScope] || SCOPE_META.both;
+                          return (
+                            <div key={`custom-${i}`} className="model-list-item">
+                              <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
+                              <span className="model-list-name" title={modelName}>{modelName}</span>
+                              {entry && typeof entry === 'object' && entry.enableThinking && (
+                                <span className="model-scope-badge" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Thinking</span>
+                              )}
+                              <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       {/* Add model row */}
-                      <div className="model-add-row">
+                      <div className="model-add-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
                         <button
                           type="button"
                           className="scope-toggle"
@@ -1187,11 +1372,22 @@ function App() {
                         </button>
                         <input
                           className="model-name-input"
-                          placeholder="model-id (e.g. gpt-4o)"
+                          placeholder="model-id (e.g. qwen3-max)"
                           value={newModelInputs[provider.id] || ''}
                           onChange={(e) => setNewModelInputs(prev => ({ ...prev, [provider.id]: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === 'Enter') addModel(provider.id); }}
                         />
+                        {provider.id === 'qwen3-cn' && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none', marginRight: '4px' }}>
+                            <input
+                              type="checkbox"
+                              checked={newModelThinking[provider.id] || false}
+                              onChange={(e) => setNewModelThinking(prev => ({ ...prev, [provider.id]: e.target.checked }))}
+                              style={{ width: '15px', height: '15px', accentColor: 'var(--accent)' }}
+                            />
+                            Thinking Mode
+                          </label>
+                        )}
                         <button
                           type="button"
                           className="model-add-btn"
@@ -1409,7 +1605,7 @@ function App() {
                   </div>
                 </div>
                 <div className="metric-stack">
-                  <div><span>Analysts</span><strong>Market, Social, News, Fundamentals</strong></div>
+                  <div><span>Analysts</span><strong>{ANALYST_SUMMARY_LABEL}</strong></div>
                   <div><span>Horizon</span><strong>{currentHorizon.label}</strong><small>{currentHorizon.detail}</small></div>
                   <div><span>Date</span><strong>{analysisDate}</strong><small>Analysis snapshot</small></div>
                   <div><span>Execution</span><strong>Paper disabled</strong><small>No orders will be submitted</small></div>
@@ -1431,32 +1627,47 @@ function App() {
                     <p>Reports appear here as agents complete their work.</p>
                   </div>
                 ) : (
-                  <>
-                    <div className="report-tabs">
-                      {availableReports.map(([key, label]) => (
-                        <button
-                          key={key}
-                          className={selectedReportKey === key ? 'active' : ''}
-                          onClick={() => setActiveReport(key)}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="report-body markdown-content">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {selectedFinalDecision?.markdown || selectedReportText}
-                      </ReactMarkdown>
-                      {selectedFinalDecision?.hiddenDecisionJson && (
-                        <pre
-                          hidden
-                          data-final-decision-json
-                        >
-                          {JSON.stringify(selectedFinalDecision.hiddenDecisionJson, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  </>
+                  <div className="report-accordion-container">
+                    {REPORT_GROUPS.map(group => {
+                      const activeGroupSections = group.sections
+                        .map(key => {
+                          const sectionMeta = REPORT_SECTIONS.find(s => s[0] === key);
+                          return {
+                            key,
+                            label: sectionMeta ? sectionMeta[1] : key,
+                            data: reports[key]
+                          };
+                        })
+                        .filter(s => s.data);
+
+                      if (activeGroupSections.length === 0) return null;
+
+                      return (
+                        <div key={group.id} className="report-group">
+                          <h3 className="report-group-title">
+                            <span className="report-group-icon">{group.icon}</span>
+                            {group.label}
+                          </h3>
+                          <div className="report-group-content">
+                            {activeGroupSections.map(section => {
+                              const isExpanded = isReportSectionExpanded(section.key, expandedSections);
+                              return (
+                                <ReportSection
+                                  key={section.key}
+                                  sectionKey={section.key}
+                                  label={section.label}
+                                  data={section.data}
+                                  isExpanded={isExpanded}
+                                  onToggle={toggleSection}
+                                  allReports={reports}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </>
             )}

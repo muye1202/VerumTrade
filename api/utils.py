@@ -4,6 +4,7 @@ from typing import Dict, Any
 from fastapi import WebSocket
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
 from cli.analysis_utils import _msg_type_and_content, _extract_tool_calls
@@ -15,18 +16,32 @@ REPORT_PAYLOAD_KEYS = [
     "market_report",
     "sentiment_report",
     "news_report",
+    "catalyst_report",
     "fundamentals_report",
     "market_ledger",
     "sentiment_ledger",
     "news_ledger",
+    "catalyst_ledger",
     "fundamentals_ledger",
+    "catalyst_event_bundle",
+    "catalyst_event_report_structured",
+    "catalyst_parse_telemetry",
+    "catalyst_evidence",
     "evidence_source_facts",
     "evidence_graph",
     "evidence_graph_audit",
     "decision_trace",
+    "trader_decision_brief",
+    "trade_setup_diagnosis",
+    "scenario_analysis",
+    "execution_plan_compiler",
+    "trader_self_audit",
+    "agent_reasoning_trace",
     "analyst_workbench_metrics",
     "analyst_tool_call_links",
     "analyst_tool_call_blocked_counts",
+    "tool_cache_metrics",
+    "vendor_telemetry",
     "investment_debate_state",
     "trader_investment_plan",
     "risk_debate_state",
@@ -42,6 +57,8 @@ REPORT_PAYLOAD_KEYS = [
 def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[str, Any]:
     """Build the persisted/API report payload from the final graph state."""
     state = final_state or {}
+    if "agent_reasoning_trace" not in state:
+        state = {**state, "agent_reasoning_trace": build_agent_reasoning_trace(state)}
     return {
         key: state.get(key)
         for key in REPORT_PAYLOAD_KEYS
@@ -113,6 +130,11 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    if req.qwen_enable_thinking is not None:
+        config["qwen_enable_thinking"] = req.qwen_enable_thinking
+        config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
+    if req.qwen_thinking_budget is not None:
+        config["qwen_thinking_budget"] = req.qwen_thinking_budget
     
     # Optional execution config
     if req.execution:
@@ -178,6 +200,14 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             reports["sentiment_report"] = chunk["sentiment_report"]
         if chunk.get("news_report"):
             reports["news_report"] = chunk["news_report"]
+        if chunk.get("catalyst_report"):
+            reports["catalyst_report"] = chunk["catalyst_report"]
+        if chunk.get("catalyst_event_bundle"):
+            reports["catalyst_event_bundle"] = chunk["catalyst_event_bundle"]
+        if chunk.get("catalyst_event_report_structured"):
+            reports["catalyst_event_report_structured"] = chunk["catalyst_event_report_structured"]
+        if chunk.get("catalyst_parse_telemetry"):
+            reports["catalyst_parse_telemetry"] = chunk["catalyst_parse_telemetry"]
         if chunk.get("fundamentals_report"):
             reports["fundamentals_report"] = chunk["fundamentals_report"]
 
@@ -189,6 +219,18 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
         if chunk.get("decision_trace"):
             reports["decision_trace"] = chunk["decision_trace"]
+        if chunk.get("trader_decision_brief"):
+            reports["trader_decision_brief"] = chunk["trader_decision_brief"]
+        if chunk.get("trade_setup_diagnosis"):
+            reports["trade_setup_diagnosis"] = chunk["trade_setup_diagnosis"]
+        if chunk.get("scenario_analysis"):
+            reports["scenario_analysis"] = chunk["scenario_analysis"]
+        if chunk.get("execution_plan_compiler"):
+            reports["execution_plan_compiler"] = chunk["execution_plan_compiler"]
+        if chunk.get("trader_self_audit"):
+            reports["trader_self_audit"] = chunk["trader_self_audit"]
+        if chunk.get("agent_reasoning_trace"):
+            reports["agent_reasoning_trace"] = chunk["agent_reasoning_trace"]
             
         # Debate State
         if chunk.get("investment_debate_state"):
@@ -215,7 +257,20 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             
         final_reports.update(reports)
         final_state = chunk
-        
+
+    if final_state:
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+        final_reports["agent_reasoning_trace"] = final_state["agent_reasoning_trace"]
+        await websocket.send_json(
+            {
+                "event": "chunk",
+                "updates": [],
+                "reports": {
+                    "agent_reasoning_trace": final_state["agent_reasoning_trace"],
+                },
+            }
+        )
+
     # Save real session to DB
     db = SessionLocal()
     try:
@@ -268,6 +323,11 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    if req.qwen_enable_thinking is not None:
+        config["qwen_enable_thinking"] = req.qwen_enable_thinking
+        config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
+    if req.qwen_thinking_budget is not None:
+        config["qwen_thinking_budget"] = req.qwen_thinking_budget
         
     graph = TradingAgentsGraph(
         req.analysts, config=config, debug=False
@@ -286,5 +346,8 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     final_state = None
     async for chunk in graph.graph.astream(init_agent_state, **args):
         final_state = chunk
-        
+
+    if final_state:
+        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+
     return final_state

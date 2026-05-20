@@ -8,6 +8,7 @@ from tradingagents.utils.market_session import (
 from tradingagents.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from tradingagents.agents.analysts.workbench import normalize_ledger
 from tradingagents.agents.utils.agent_runtime.evidence_graph import build_evidence_graph
+from tradingagents.graph.reasoning_trace import empty_agent_reasoning_trace
 
 
 class Propagator:
@@ -44,6 +45,9 @@ class Propagator:
             "analyst_tool_call_links": {},
             "analyst_tool_call_blocked_counts": {},
             "analyst_workbench_metrics": {},
+            "tool_result_cache": {},
+            "tool_cache_metrics": {},
+            "vendor_telemetry": [],
             "llm_metrics": {},
             "investment_debate_state": {"history": "", "current_response": "", "count": 0},
             "risk_debate_state": {
@@ -55,20 +59,36 @@ class Propagator:
             },
             "market_report": "",
             "fundamentals_report": "",
+            "catalyst_report": "",
             "sentiment_report": "",
             "news_report": "",
             "market_evidence": "",
             "fundamentals_evidence": "",
+            "catalyst_evidence": "",
             "sentiment_evidence": "",
             "news_evidence": "",
             "market_ledger": normalize_ledger("market"),
             "sentiment_ledger": normalize_ledger("sentiment"),
             "news_ledger": normalize_ledger("news"),
             "fundamentals_ledger": normalize_ledger("fundamentals"),
+            "catalyst_ledger": normalize_ledger("catalyst"),
+            "catalyst_event_bundle": {},
+            "catalyst_event_report_structured": {},
+            "catalyst_parse_telemetry": {},
             "evidence_source_facts": [],
             "evidence_graph": build_evidence_graph({}),
             "evidence_graph_audit": [],
             "decision_trace": {},
+            "trader_decision_brief": {},
+            "trade_setup_diagnosis": {},
+            "scenario_analysis": {},
+            "execution_plan_compiler": {},
+            "trader_self_audit": {},
+            "agent_reasoning_trace": empty_agent_reasoning_trace(
+                ticker=company_name,
+                trade_date=str(trade_date),
+                time_horizon=horizon,
+            ),
             "final_trade_decision": "",
             "final_trade_decision_structured": None,
             "final_trade_decision_validation_error": "",

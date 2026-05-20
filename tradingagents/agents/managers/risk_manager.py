@@ -38,10 +38,12 @@ def create_risk_manager(llm, memory):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
         sentiment_report = state["sentiment_report"]
+        catalyst_report = state.get("catalyst_report", "")
+        catalyst_structured = state.get("catalyst_event_report_structured", {})
         trader_plan = state.get("trader_investment_plan") or state["investment_plan"]
         trader_intent = _extract_trader_execution_intent(trader_plan)
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
+        curr_situation = f"{catalyst_report}\n\n{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
 
         past_memory_str = ""
@@ -79,6 +81,11 @@ def create_risk_manager(llm, memory):
                 settings["section_max_chars_response"],
             ),
             "reports": format_evidence_projection(state, "risk"),
+            "catalyst": cap_section(
+                "catalyst",
+                f"{catalyst_structured}\n\n{catalyst_report}",
+                settings["section_max_chars_response"],
+            ),
         }
         sections = cap_sections_with_soft_token_cap(
             sections_before, settings["soft_cap_tokens"]
@@ -134,6 +141,11 @@ Guidelines for Decision-Making:
 
 Reference evidence graph projection. Cite weakest assumptions and evidence IDs in the narrative; do not add them to the strict JSON:
 {sections["reports"]}
+
+Catalyst/Event-Risk context:
+{sections["catalyst"]}
+
+If catalyst risk is HIGH or CRITICAL, treat it as a conservative override signal: prefer HOLD, reduced sizing, wait-for-trigger, or execution freeze unless the risk is directly resolved in the evidence. If recommended_action is freeze_new_buys, reduce_position, exit_review, or risk_judge_review, explicitly address whether you follow or override it.
 
 Deliverables:
 - A clear and actionable recommendation: Buy, Sell, or Hold.

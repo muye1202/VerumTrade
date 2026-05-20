@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+
+import {
+  DEFAULT_ANALYSTS,
+  REPORT_SECTIONS,
+  ANALYST_SUMMARY_LABEL,
+  DEFAULT_EXPANDED_REPORT_SECTIONS,
+  isReportSectionExpanded,
+} from './analysisConfig.js';
+
+assert.deepEqual(DEFAULT_ANALYSTS, [
+  'catalyst',
+  'market',
+  'social',
+  'news',
+  'fundamentals',
+]);
+
+assert.deepEqual(REPORT_SECTIONS.slice(0, 5), [
+  ['catalyst_report', 'Catalyst'],
+  ['market_report', 'Market'],
+  ['sentiment_report', 'Sentiment'],
+  ['news_report', 'News'],
+  ['fundamentals_report', 'Fundamentals'],
+]);
+
+assert.equal(ANALYST_SUMMARY_LABEL, 'Catalyst, Market, Social, News, Fundamentals');
+
+assert.deepEqual(DEFAULT_EXPANDED_REPORT_SECTIONS, {});
+
+assert.equal(isReportSectionExpanded('catalyst_report', DEFAULT_EXPANDED_REPORT_SECTIONS), false);
+assert.equal(isReportSectionExpanded('decision_trace', DEFAULT_EXPANDED_REPORT_SECTIONS), false);
+assert.equal(isReportSectionExpanded('final_trade_decision', DEFAULT_EXPANDED_REPORT_SECTIONS), false);
+assert.equal(isReportSectionExpanded('decision_trace', { decision_trace: true }), true);
+assert.equal(isReportSectionExpanded('final_trade_decision', { final_trade_decision: false }), false);

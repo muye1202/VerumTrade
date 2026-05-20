@@ -8,7 +8,7 @@ from tradingagents.agents.analysts.workbench import normalize_ledger
 from tradingagents.agents.utils.agent_runtime.context_budget import cap_section, get_budget_settings
 
 
-EvidenceDomain = Literal["market", "sentiment", "news", "fundamentals"]
+EvidenceDomain = Literal["market", "sentiment", "news", "fundamentals", "catalyst"]
 EvidenceAudience = Literal["bull", "bear", "research_manager", "trader", "risk"]
 
 
@@ -75,7 +75,7 @@ class DecisionTrace(TypedDict, total=False):
     audit_issues: List[EvidenceAuditIssue]
 
 
-DOMAINS = ["market", "sentiment", "news", "fundamentals"]
+DOMAINS = ["catalyst", "market", "sentiment", "news", "fundamentals"]
 LOW_QUALITY = {"stale", "low_quality", "contradictory", "missing"}
 BULLISH_TERMS = {
     "above",
@@ -163,6 +163,72 @@ def _normalize_fact(raw: Any) -> EvidenceFact | None:
     return fact
 
 
+def _facts_from_catalyst_bundle(packet: dict[str, Any]) -> list[EvidenceFact]:
+    if not isinstance(packet, dict):
+        return []
+    if packet.get("bundle") != "CatalystEventBundle" and not (
+        "recent_events" in packet or "upcoming_events" in packet or "recent_filings" in packet
+    ):
+        return []
+
+    facts: list[EvidenceFact] = []
+    ticker = str(packet.get("ticker") or packet.get("symbol") or "").strip()
+    as_of = str(packet.get("as_of") or packet.get("date") or "").strip()
+
+    for raw_event in list(packet.get("recent_events") or []) + list(packet.get("upcoming_events") or []):
+        if not isinstance(raw_event, dict):
+            continue
+        event_id = str(raw_event.get("event_id") or raw_event.get("source_event_id") or "").strip()
+        claim = str(raw_event.get("title") or raw_event.get("summary") or "").strip()
+        if not event_id or not claim:
+            continue
+        fact = _normalize_fact(
+            {
+                "id": event_id,
+                "domain": "catalyst",
+                "claim": claim,
+                "text": str(raw_event.get("summary") or claim).strip(),
+                "source": raw_event.get("source") or "catalyst_event_bundle",
+                "section": raw_event.get("event_type") or "event",
+                "as_of": raw_event.get("event_time") or raw_event.get("detected_at") or as_of,
+                "confidence": raw_event.get("confidence", 0.75),
+                "quality": "normal",
+                "source_type": "vendor",
+                "source_ids": [ticker] if ticker else [],
+            }
+        )
+        if fact:
+            facts.append(fact)
+
+    for raw_filing in packet.get("recent_filings") or []:
+        if not isinstance(raw_filing, dict):
+            continue
+        filing_id = str(raw_filing.get("accession_number") or "").strip()
+        form = str(raw_filing.get("form_type") or "SEC filing").strip()
+        summary = str(raw_filing.get("filing_summary") or f"{form} filed").strip()
+        if not filing_id:
+            continue
+        fact = _normalize_fact(
+            {
+                "id": filing_id,
+                "domain": "catalyst",
+                "claim": summary,
+                "text": summary,
+                "source": raw_filing.get("primary_document_url") or "recent_sec_filings",
+                "section": form,
+                "as_of": raw_filing.get("filing_date") or as_of,
+                "confidence": raw_filing.get("materiality_score", 0.75),
+                "quality": "normal",
+                "source_type": "vendor",
+                "source_ids": [ticker] if ticker else [],
+            }
+        )
+        if fact:
+            facts.append(fact)
+
+    return facts
+
+
 def _json_objects_from_text(text: Any) -> list[dict[str, Any]]:
     content = str(text or "").strip()
     if not content:
@@ -190,6 +256,7 @@ def extract_evidence_facts_from_messages(messages: Any) -> list[EvidenceFact]:
     for message in messages or []:
         content = getattr(message, "content", message)
         for packet in _json_objects_from_text(content):
+            facts.extend(_facts_from_catalyst_bundle(packet))
             packet_facts = packet.get("facts")
             if not isinstance(packet_facts, list):
                 continue
@@ -493,6 +560,7 @@ def format_evidence_projection(
     limit = int(max_chars or settings["section_max_chars_report"] * 2)
     title = str(audience).replace("_", " ").title()
     lines = [f"# Evidence Graph Projection: {title}"]
+    _append_catalyst_risk_snapshot(lines, state or {})
     if audience == "bull":
         lines.append("Bullish inferences:")
         _append_inferences(lines, graph, stance="bullish")
@@ -521,6 +589,62 @@ def format_evidence_projection(
         _append_conflicts(lines, graph)
         _append_top_facts(lines, graph)
     return cap_section(f"evidence_projection_{audience}", "\n".join(lines), limit)
+
+
+def _append_catalyst_risk_snapshot(lines: list[str], state: Dict[str, Any]) -> None:
+    report = state.get("catalyst_event_report_structured") or {}
+    bundle = state.get("catalyst_event_bundle") or {}
+    if not isinstance(report, dict) or not report:
+        return
+    lines.append("CATALYST RISK SNAPSHOT")
+    lines.append(f"- rating: {report.get('event_risk_rating', 'UNKNOWN')}")
+    lines.append(f"- action: {report.get('recommended_action', 'continue_analysis')}")
+
+    events = [event for event in bundle.get("recent_events", []) or [] if isinstance(event, dict)]
+    if events:
+        lines.append("- top accepted events:")
+        for event in sorted(
+            events,
+            key=lambda item: float(item.get("materiality_score", 0.0) or 0.0),
+            reverse=True,
+        )[:3]:
+            lines.append(
+                "- {title}, relevance {relevance:.2f}, materiality {materiality:.2f}".format(
+                    title=str(event.get("title") or event.get("summary") or "accepted catalyst")[:140],
+                    relevance=float(event.get("relevance_score", 0.0) or 0.0),
+                    materiality=float(event.get("materiality_score", 0.0) or 0.0),
+                )
+            )
+
+    upcoming = report.get("near_term_catalysts") or []
+    if upcoming:
+        lines.append("- upcoming catalysts:")
+        for item in upcoming[:3]:
+            lines.append(f"- {str(item)[:160]}")
+
+    breaking = report.get("thesis_breaking_events") or []
+    if breaking:
+        lines.append("- thesis-breaking events:")
+        for item in breaking[:3]:
+            lines.append(f"- {str(item)[:160]}")
+
+    source_quality = bundle.get("source_quality") or {}
+    data_notes = list(report.get("data_quality_notes") or [])
+    for name, item in source_quality.items():
+        if isinstance(item, dict) and item.get("status") in {"degraded", "contaminated", "missing", "sparse", "failed"}:
+            data_notes.append(
+                f"{name} {item.get('status')}, score {float(item.get('contamination_score', 0.0) or 0.0):.2f}"
+            )
+    if data_notes:
+        lines.append("- data quality:")
+        for item in data_notes[:5]:
+            lines.append(f"- {str(item)[:180]}")
+
+    controls = report.get("risk_controls") or []
+    if controls:
+        lines.append("- risk controls:")
+        for item in controls[:4]:
+            lines.append(f"- {str(item)[:180]}")
 
 
 def _append_inferences(lines: list[str], graph: EvidenceGraph, *, stance: str | None = None, max_items: int = 6) -> None:
