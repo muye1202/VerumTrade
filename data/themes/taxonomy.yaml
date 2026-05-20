@@ -1,0 +1,831 @@
+# ============================================================
+# TradingAgents — Theme Taxonomy
+# ============================================================
+# This file seeds the Theme Graph and Supply-Chain Exposure Engine.
+#
+# To add a theme: copy an existing entry, give it a unique `id`,
+# and fill in chain nodes, edges, and seed_exposures.
+#
+# To override or extend an existing theme: create data/themes/overrides.yaml
+# with the same theme `id` and add/replace fields there.
+#
+# Node types:  theme_root | bottleneck | supply_layer | end_market | enabler
+# Exposure types: direct | indirect | second_order
+# ============================================================
+
+themes:
+
+  # ----------------------------------------------------------
+  # 1. AI Memory and Storage
+  # ----------------------------------------------------------
+  - id: ai_memory_storage
+    label: "AI memory and storage"
+    description: >
+      AI model training and inference demand is driving explosive growth in
+      high-bandwidth memory (HBM) and enterprise storage, creating a severe
+      bottleneck at the advanced memory tier.
+    chain:
+      - { id: ai_compute_demand, label: "AI compute demand", type: theme_root }
+      - { id: hbm_memory, label: "HBM and advanced memory", type: bottleneck, is_bottleneck: true }
+      - { id: enterprise_nand, label: "Enterprise SSD / NAND", type: supply_layer }
+      - { id: dc_storage_systems, label: "Data-center storage systems", type: end_market }
+      - { id: memory_equipment, label: "Memory fab equipment", type: enabler }
+    edges:
+      - [ai_compute_demand, hbm_memory]
+      - [hbm_memory, enterprise_nand]
+      - [enterprise_nand, dc_storage_systems]
+      - [memory_equipment, hbm_memory]
+    seed_exposures:
+      - ticker: MU
+        node: hbm_memory
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Only US producer of HBM; announced HBM3E ramp for NVDA and other hyperscalers"
+          - "Management cited 'strong and growing' HBM demand in recent earnings"
+          - "HBM revenue growing triple-digits year-over-year"
+      - ticker: WDC
+        node: enterprise_nand
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Enterprise SSD revenue acceleration driven by AI storage demand"
+          - "Management highlighted pricing power in enterprise NAND segment"
+      - ticker: STX
+        node: dc_storage_systems
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Nearline HDD demand growing as AI training datasets expand"
+          - "Seagate cited data-center customers pulling forward capacity"
+      - ticker: SMCI
+        node: dc_storage_systems
+        type: indirect
+        confidence: 0.72
+        evidence:
+          - "All-flash and NVMe storage server solutions for AI workloads"
+      - ticker: LRCX
+        node: memory_equipment
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Etch equipment critical for HBM stacking and NAND vertical layers"
+          - "Memory equipment revenue correlated with HBM capacity expansion"
+
+  # ----------------------------------------------------------
+  # 2. AI Optics and Networking
+  # ----------------------------------------------------------
+  - id: ai_optics_networking
+    label: "AI optics and networking"
+    description: >
+      AI cluster scale-out requires massive high-bandwidth optical interconnect.
+      Optical transceivers are the near-term bottleneck constraining cluster builds.
+    chain:
+      - { id: ai_cluster_scale, label: "AI cluster scale-out", type: theme_root }
+      - { id: optical_transceivers, label: "High-speed optical transceivers", type: bottleneck, is_bottleneck: true }
+      - { id: silicon_photonics, label: "Silicon photonics", type: supply_layer }
+      - { id: optical_components, label: "Optical components and lasers", type: supply_layer }
+      - { id: network_switches, label: "AI network switches", type: end_market }
+    edges:
+      - [ai_cluster_scale, optical_transceivers]
+      - [silicon_photonics, optical_transceivers]
+      - [optical_components, optical_transceivers]
+      - [optical_transceivers, network_switches]
+    seed_exposures:
+      - ticker: COHR
+        node: optical_transceivers
+        type: direct
+        confidence: 0.88
+        evidence:
+          - "Largest US optical transceiver vendor; 800G and 1.6T hyperscaler wins"
+          - "Datacom revenue growing strongly on AI data-center demand"
+      - ticker: LITE
+        node: optical_components
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Optical components and laser chips used in high-speed transceivers"
+          - "Management cited strong AI-related datacom demand"
+      - ticker: CIEN
+        node: network_switches
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Coherent optical networking for AI backbone infrastructure"
+          - "Hyperscaler capex driving demand for optical networking gear"
+      - ticker: VIAV
+        node: optical_components
+        type: direct
+        confidence: 0.72
+        evidence:
+          - "Optical test and measurement; network and cloud revenue growing"
+      - ticker: ANET
+        node: network_switches
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Ethernet switches for AI clusters; strong hyperscaler pipeline"
+          - "AI networking contributes to accelerating revenue growth"
+
+  # ----------------------------------------------------------
+  # 3. Data-center Power and Cooling
+  # ----------------------------------------------------------
+  - id: dc_power_cooling
+    label: "Data-center power and cooling"
+    description: >
+      AI GPU density is creating a power and thermal crisis in data centers.
+      Liquid cooling is the bottleneck — air cooling cannot handle modern AI racks.
+    chain:
+      - { id: ai_power_density, label: "AI rack power density surge", type: theme_root }
+      - { id: liquid_cooling, label: "Liquid and immersion cooling", type: bottleneck, is_bottleneck: true }
+      - { id: power_distribution, label: "Power distribution and UPS", type: supply_layer }
+      - { id: power_electronics, label: "Power conversion electronics", type: supply_layer }
+      - { id: thermal_management, label: "Thermal management systems", type: end_market }
+    edges:
+      - [ai_power_density, liquid_cooling]
+      - [ai_power_density, power_distribution]
+      - [power_distribution, power_electronics]
+      - [liquid_cooling, thermal_management]
+    seed_exposures:
+      - ticker: VRT
+        node: liquid_cooling
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Largest dedicated data-center thermal and power infrastructure vendor"
+          - "Liquid cooling backlog growing; management cited supply constraints"
+          - "AI customers accelerating liquid-cooling deployments"
+      - ticker: ETN
+        node: power_distribution
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Electrical components and power distribution for data centers"
+          - "Data center segment growing above company average"
+      - ticker: SMCI
+        node: liquid_cooling
+        type: indirect
+        confidence: 0.75
+        evidence:
+          - "Direct liquid-cooled server chassis for high-density GPU racks"
+      - ticker: GNRC
+        node: power_distribution
+        type: indirect
+        confidence: 0.68
+        evidence:
+          - "Backup power and standby generation for critical data center loads"
+      - ticker: AEIS
+        node: power_electronics
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Precision power conversion for semiconductor and data-center equipment"
+
+  # ----------------------------------------------------------
+  # 4. Grid Infrastructure
+  # ----------------------------------------------------------
+  - id: grid_infrastructure
+    label: "Grid infrastructure"
+    description: >
+      The combination of AI data-center load growth, EV adoption, and reshoring
+      has created a grid capacity crisis. High-voltage transformers have a
+      3-5 year lead time, making them the defining bottleneck.
+    chain:
+      - { id: electrification_demand, label: "Electrification and AI load growth", type: theme_root }
+      - { id: hv_transformers, label: "High-voltage transformers", type: bottleneck, is_bottleneck: true }
+      - { id: grid_construction, label: "Transmission line construction", type: supply_layer }
+      - { id: smart_grid, label: "Smart grid technology and metering", type: supply_layer }
+      - { id: grid_scale_storage, label: "Grid-scale storage", type: end_market }
+    edges:
+      - [electrification_demand, hv_transformers]
+      - [electrification_demand, grid_construction]
+      - [hv_transformers, grid_construction]
+      - [grid_construction, smart_grid]
+      - [smart_grid, grid_scale_storage]
+    seed_exposures:
+      - ticker: PWR
+        node: grid_construction
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Largest US utility and telecom construction contractor"
+          - "Backlog at record levels on grid investment cycle"
+      - ticker: ETN
+        node: hv_transformers
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Electrical components including transformers; grid segment growing"
+          - "Management cited multi-year transformer backlog"
+      - ticker: MYR
+        node: grid_construction
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Electrical construction for transmission and distribution"
+          - "Backlog growing on utility infrastructure spending"
+      - ticker: ITRI
+        node: smart_grid
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Smart meters and grid edge devices for utility modernization"
+          - "Revenue acceleration from utility smart-grid deployments"
+      - ticker: NXT
+        node: grid_scale_storage
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Solar tracker systems integrated into grid-scale energy projects"
+
+  # ----------------------------------------------------------
+  # 5. Nuclear and SMR Energy
+  # ----------------------------------------------------------
+  - id: nuclear_smr
+    label: "Nuclear and SMR energy"
+    description: >
+      AI data centers are driving utilities to pursue always-on, carbon-free
+      nuclear power. Small modular reactors (SMRs) and uranium enrichment
+      are the constrained layers.
+    chain:
+      - { id: carbon_free_baseload, label: "Carbon-free baseload demand", type: theme_root }
+      - { id: uranium_enrichment, label: "Enriched uranium fuel", type: bottleneck, is_bottleneck: true }
+      - { id: smr_development, label: "SMR design and manufacturing", type: bottleneck, is_bottleneck: true }
+      - { id: uranium_mining, label: "Uranium mining", type: supply_layer }
+      - { id: nuclear_services, label: "Nuclear engineering and services", type: end_market }
+    edges:
+      - [carbon_free_baseload, uranium_enrichment]
+      - [carbon_free_baseload, smr_development]
+      - [uranium_mining, uranium_enrichment]
+      - [uranium_enrichment, nuclear_services]
+      - [smr_development, nuclear_services]
+    seed_exposures:
+      - ticker: CEG
+        node: nuclear_services
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Largest US nuclear fleet operator; Three Mile Island restart signed with Microsoft"
+          - "Long-term power purchase agreements with hyperscalers"
+      - ticker: BWXT
+        node: smr_development
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Nuclear reactor components and fuel manufacturing for government and commercial"
+          - "SMR manufacturing contract wins accelerating"
+      - ticker: CCJ
+        node: uranium_mining
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Largest publicly traded uranium miner; rising contract prices"
+          - "Long-term utility contracts at prices above spot"
+      - ticker: LEU
+        node: uranium_enrichment
+        type: direct
+        confidence: 0.87
+        evidence:
+          - "Only commercial US uranium enrichment facility"
+          - "HALEU production critical for advanced and SMR reactor fuel"
+      - ticker: UEC
+        node: uranium_mining
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "US uranium mining with in-situ recovery operations"
+          - "Revenue growth from rising uranium contract prices"
+
+  # ----------------------------------------------------------
+  # 6. Robotics and Automation
+  # ----------------------------------------------------------
+  - id: robotics_automation
+    label: "Robotics and automation"
+    description: >
+      Labor shortages and AI advances are driving industrial, surgical, and
+      logistics robotics adoption. Precision actuators and machine vision
+      are the near-term bottleneck nodes.
+    chain:
+      - { id: labor_ai_demand, label: "Labor shortage and AI capability", type: theme_root }
+      - { id: actuators_sensors, label: "Precision actuators and sensors", type: bottleneck, is_bottleneck: true }
+      - { id: robotic_systems, label: "Robotic systems and platforms", type: supply_layer }
+      - { id: machine_vision, label: "Machine vision and perception", type: supply_layer }
+      - { id: automation_software, label: "Automation orchestration software", type: enabler }
+    edges:
+      - [labor_ai_demand, robotic_systems]
+      - [actuators_sensors, robotic_systems]
+      - [machine_vision, robotic_systems]
+      - [robotic_systems, automation_software]
+    seed_exposures:
+      - ticker: ISRG
+        node: robotic_systems
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Dominant surgical robotics platform with expanding procedure categories"
+          - "System placements and procedure growth both accelerating"
+      - ticker: CGNX
+        node: machine_vision
+        type: direct
+        confidence: 0.88
+        evidence:
+          - "Machine vision leader for factory automation and logistics"
+          - "Revenue recovering as capex cycle turns up"
+      - ticker: ROK
+        node: robotic_systems
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Industrial automation hardware and software; strong logistics robotics"
+      - ticker: ABB
+        node: actuators_sensors
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Industrial robot arms and precision drive systems"
+          - "Robotics and discrete automation segment growing"
+
+  # ----------------------------------------------------------
+  # 7. Defense Autonomy
+  # ----------------------------------------------------------
+  - id: defense_autonomy
+    label: "Defense autonomy"
+    description: >
+      Conflict in Ukraine and near-peer rivalry are accelerating defense
+      spending on unmanned systems and AI-enabled decision-making.
+      Drone platforms and edge AI for defense are the bottleneck nodes.
+    chain:
+      - { id: defense_ai_spending, label: "Defense autonomy spending", type: theme_root }
+      - { id: drone_systems, label: "Unmanned systems and drone platforms", type: bottleneck, is_bottleneck: true }
+      - { id: defense_ai_software, label: "AI decision and targeting software", type: bottleneck, is_bottleneck: true }
+      - { id: sensor_fusion, label: "Sensor fusion and EW systems", type: supply_layer }
+      - { id: satcom, label: "Tactical satellite communications", type: supply_layer }
+    edges:
+      - [defense_ai_spending, drone_systems]
+      - [defense_ai_spending, defense_ai_software]
+      - [sensor_fusion, drone_systems]
+      - [satcom, drone_systems]
+      - [defense_ai_software, drone_systems]
+    seed_exposures:
+      - ticker: KTOS
+        node: drone_systems
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Unmanned aerial and ground systems; growing DoD drone contracts"
+          - "Tactical Jet drone programs in production"
+      - ticker: PLTR
+        node: defense_ai_software
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "AI platform used by US military for targeting and logistics"
+          - "Defense revenue growing; classified and unclassified contracts expanding"
+      - ticker: LMT
+        node: drone_systems
+        type: indirect
+        confidence: 0.78
+        evidence:
+          - "F-35 and next-generation autonomy programs; drone wingman development"
+      - ticker: RTX
+        node: sensor_fusion
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Radar, EW, and sensor systems for autonomous platforms"
+      - ticker: RCAT
+        node: drone_systems
+        type: direct
+        confidence: 0.75
+        evidence:
+          - "Small tactical drones for military reconnaissance"
+          - "Defense drone revenue growing rapidly from small base"
+
+  # ----------------------------------------------------------
+  # 8. Cybersecurity
+  # ----------------------------------------------------------
+  - id: cybersecurity
+    label: "Cybersecurity"
+    description: >
+      AI-powered attacks and nation-state threats are expanding the addressable
+      market for security platforms. AI-native detection is the bottleneck
+      differentiator — it cannot be replicated quickly by incumbents.
+    chain:
+      - { id: threat_escalation, label: "AI-powered threat escalation", type: theme_root }
+      - { id: ai_native_detection, label: "AI-native threat detection", type: bottleneck, is_bottleneck: true }
+      - { id: endpoint_protection, label: "Endpoint and workload protection", type: supply_layer }
+      - { id: identity_access, label: "Identity and access management", type: supply_layer }
+      - { id: cloud_security, label: "Cloud and network security", type: end_market }
+    edges:
+      - [threat_escalation, ai_native_detection]
+      - [ai_native_detection, endpoint_protection]
+      - [ai_native_detection, identity_access]
+      - [endpoint_protection, cloud_security]
+      - [identity_access, cloud_security]
+    seed_exposures:
+      - ticker: CRWD
+        node: ai_native_detection
+        type: direct
+        confidence: 0.95
+        evidence:
+          - "Falcon AI platform with largest threat telemetry dataset"
+          - "ARR growth and net new ARR accelerating; module attach rates rising"
+      - ticker: PANW
+        node: ai_native_detection
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Cortex AI platform with platformization strategy gaining traction"
+          - "RPO growth and large deal momentum"
+      - ticker: S
+        node: ai_native_detection
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "AI-native architecture from the ground up; Purple AI platform"
+          - "ARR growth and expansion in enterprise accounts"
+      - ticker: ZS
+        node: cloud_security
+        type: direct
+        confidence: 0.88
+        evidence:
+          - "Zero-trust cloud security platform with strong federal business"
+      - ticker: CYBR
+        node: identity_access
+        type: direct
+        confidence: 0.83
+        evidence:
+          - "Privileged access management leader; identity security expansion"
+          - "SaaS transition driving ARR growth"
+
+  # ----------------------------------------------------------
+  # 9. Space Infrastructure
+  # ----------------------------------------------------------
+  - id: space_infrastructure
+    label: "Space infrastructure"
+    description: >
+      Satellite broadband, earth observation, and defense applications are
+      creating sustained demand for launch services and satellite manufacturing.
+      Low-cost launch capacity is the constraint.
+    chain:
+      - { id: space_commercialization, label: "Space commercialization demand", type: theme_root }
+      - { id: launch_capacity, label: "Affordable launch capacity", type: bottleneck, is_bottleneck: true }
+      - { id: satellite_manufacturing, label: "Satellite manufacturing", type: supply_layer }
+      - { id: ground_systems, label: "Ground systems and operations", type: supply_layer }
+      - { id: satellite_services, label: "Commercial satellite services", type: end_market }
+    edges:
+      - [space_commercialization, launch_capacity]
+      - [launch_capacity, satellite_manufacturing]
+      - [satellite_manufacturing, satellite_services]
+      - [ground_systems, satellite_services]
+    seed_exposures:
+      - ticker: RKLB
+        node: launch_capacity
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Electron launch vehicle with growing launch cadence"
+          - "Neutron medium-lift rocket in development; space systems revenue expanding"
+      - ticker: ASTS
+        node: satellite_manufacturing
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Direct-to-device broadband satellite constellation; BlueBird satellite launches"
+          - "Commercial service agreements with major US carriers"
+      - ticker: PL
+        node: satellite_services
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Daily earth-imaging constellation; government and commercial contracts"
+      - ticker: SATL
+        node: satellite_services
+        type: direct
+        confidence: 0.70
+        evidence:
+          - "High-resolution earth observation; growing government customer base"
+
+  # ----------------------------------------------------------
+  # 10. Quantum Computing
+  # ----------------------------------------------------------
+  - id: quantum_computing
+    label: "Quantum computing"
+    description: >
+      Quantum hardware is approaching commercial utility for optimization and
+      simulation. Stable qubit coherence is the defining technical bottleneck,
+      with only a handful of viable hardware approaches globally.
+    chain:
+      - { id: quantum_advantage, label: "Quantum advantage use cases", type: theme_root }
+      - { id: qubit_coherence, label: "Stable qubit and coherence technology", type: bottleneck, is_bottleneck: true }
+      - { id: quantum_hardware, label: "Quantum processing hardware", type: supply_layer }
+      - { id: cryogenic_systems, label: "Cryogenic and control systems", type: supply_layer }
+      - { id: quantum_software, label: "Quantum software and cloud access", type: end_market }
+    edges:
+      - [quantum_advantage, qubit_coherence]
+      - [qubit_coherence, quantum_hardware]
+      - [cryogenic_systems, quantum_hardware]
+      - [quantum_hardware, quantum_software]
+    seed_exposures:
+      - ticker: IONQ
+        node: qubit_coherence
+        type: direct
+        confidence: 0.90
+        evidence:
+          - "Trapped-ion qubits with leading coherence metrics"
+          - "Commercial cloud access and government research contracts"
+      - ticker: RGTI
+        node: qubit_coherence
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Superconducting qubit systems; cloud quantum computing service"
+      - ticker: QBTS
+        node: quantum_hardware
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Quantum annealing systems for optimization problems"
+          - "Commercial customer base growing"
+      - ticker: QUBT
+        node: quantum_software
+        type: direct
+        confidence: 0.70
+        evidence:
+          - "Quantum software and photonic systems development"
+
+  # ----------------------------------------------------------
+  # 11. Rare Earths and Critical Minerals
+  # ----------------------------------------------------------
+  - id: rare_earths_minerals
+    label: "Rare earths and critical minerals"
+    description: >
+      Defense systems, EVs, and clean energy require rare earth magnets, lithium,
+      and other critical minerals. Non-Chinese refining capacity is the defining
+      bottleneck — the US has almost no domestic refining today.
+    chain:
+      - { id: mineral_demand, label: "Defense, EV, and clean energy demand", type: theme_root }
+      - { id: rare_earth_refining, label: "Rare earth separation and refining", type: bottleneck, is_bottleneck: true }
+      - { id: critical_mineral_mining, label: "Critical mineral mining", type: supply_layer }
+      - { id: battery_materials, label: "Battery and magnet materials", type: supply_layer }
+      - { id: end_products, label: "Motors, batteries, and defense components", type: end_market }
+    edges:
+      - [mineral_demand, rare_earth_refining]
+      - [critical_mineral_mining, rare_earth_refining]
+      - [rare_earth_refining, battery_materials]
+      - [battery_materials, end_products]
+    seed_exposures:
+      - ticker: MP
+        node: critical_mineral_mining
+        type: direct
+        confidence: 0.93
+        evidence:
+          - "Only operating rare earth mine and separation facility in the US"
+          - "Building magnet manufacturing to capture downstream value"
+          - "Government contracts for domestic rare earth supply"
+      - ticker: ALB
+        node: battery_materials
+        type: direct
+        confidence: 0.88
+        evidence:
+          - "Largest publicly traded lithium producer; battery-grade lithium"
+          - "Long-term lithium supply agreements with major battery makers"
+      - ticker: SQM
+        node: critical_mineral_mining
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Low-cost lithium producer from Chile; iodine and fertilizer upside"
+      - ticker: UUUU
+        node: critical_mineral_mining
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Rare earth and uranium production; beneficiary of domestic supply policy"
+
+  # ----------------------------------------------------------
+  # 12. GLP-1 Supply Chain
+  # ----------------------------------------------------------
+  - id: glp1_supply_chain
+    label: "GLP-1 supply chain"
+    description: >
+      Insatiable GLP-1 drug demand has created a multi-year manufacturing
+      bottleneck. Fill-finish and aseptic capacity cannot be expanded quickly
+      — it takes 3-5 years to build and qualify a new fill-finish facility.
+    chain:
+      - { id: glp1_drug_demand, label: "GLP-1 obesity and diabetes demand", type: theme_root }
+      - { id: fill_finish_capacity, label: "Fill-finish and aseptic manufacturing", type: bottleneck, is_bottleneck: true }
+      - { id: api_manufacturing, label: "Active pharmaceutical ingredient manufacturing", type: supply_layer }
+      - { id: drug_delivery, label: "Drug delivery devices (pens, auto-injectors)", type: supply_layer }
+      - { id: cold_chain, label: "Cold chain logistics and distribution", type: end_market }
+    edges:
+      - [glp1_drug_demand, fill_finish_capacity]
+      - [glp1_drug_demand, api_manufacturing]
+      - [api_manufacturing, fill_finish_capacity]
+      - [fill_finish_capacity, drug_delivery]
+      - [drug_delivery, cold_chain]
+    seed_exposures:
+      - ticker: NVO
+        node: api_manufacturing
+        type: direct
+        confidence: 0.93
+        evidence:
+          - "GLP-1 originator; Ozempic and Wegovy supply constrained by manufacturing"
+          - "Multi-billion capex program to expand API and fill-finish"
+      - ticker: LLY
+        node: api_manufacturing
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Mounjaro and Zepbound GLP-1 drugs with supply outstripping demand"
+          - "Large-scale manufacturing expansion underway"
+      - ticker: AVTR
+        node: fill_finish_capacity
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Bioprocessing consumables and materials for GLP-1 fill-finish lines"
+          - "Biopharma revenue growing on GLP-1 customer demand"
+      - ticker: BDX
+        node: drug_delivery
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Autoinjector and pen device components for GLP-1 drug manufacturers"
+          - "Drug delivery segment growing with GLP-1 device volumes"
+      - ticker: STE
+        node: fill_finish_capacity
+        type: indirect
+        confidence: 0.72
+        evidence:
+          - "Sterilization services critical for GLP-1 aseptic fill-finish"
+
+  # ----------------------------------------------------------
+  # 13. Advanced Manufacturing
+  # ----------------------------------------------------------
+  - id: advanced_manufacturing
+    label: "Advanced manufacturing"
+    description: >
+      Reshoring of semiconductor, defense, and aerospace manufacturing
+      is driving demand for advanced machining and precision systems.
+      Process control and ultra-pure materials are the key bottleneck inputs.
+    chain:
+      - { id: reshoring_demand, label: "Reshoring and domestic manufacturing push", type: theme_root }
+      - { id: precision_materials, label: "Ultra-pure process materials", type: bottleneck, is_bottleneck: true }
+      - { id: cnc_equipment, label: "Advanced CNC and machining equipment", type: supply_layer }
+      - { id: quality_control, label: "Precision metrology and quality control", type: supply_layer }
+      - { id: digital_manufacturing, label: "Digital manufacturing and MES software", type: enabler }
+    edges:
+      - [reshoring_demand, precision_materials]
+      - [reshoring_demand, cnc_equipment]
+      - [precision_materials, quality_control]
+      - [cnc_equipment, quality_control]
+      - [quality_control, digital_manufacturing]
+    seed_exposures:
+      - ticker: ENTG
+        node: precision_materials
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Ultra-pure materials and filtration for semiconductor and advanced manufacturing"
+          - "Revenue growing with domestic fab build-out"
+      - ticker: ITW
+        node: cnc_equipment
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Precision fastening, testing, and manufacturing equipment"
+      - ticker: PH
+        node: cnc_equipment
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Motion and control systems for precision manufacturing"
+      - ticker: MKSI
+        node: precision_materials
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Process control instruments for semiconductor and advanced manufacturing"
+          - "Revenue correlated with fab construction activity"
+
+  # ----------------------------------------------------------
+  # 14. Semiconductor Equipment
+  # ----------------------------------------------------------
+  - id: semiconductor_equipment
+    label: "Semiconductor equipment"
+    description: >
+      AI and advanced chip demand is driving the largest semiconductor capacity
+      expansion in history. Lithography and advanced inspection equipment are
+      the defining bottlenecks — both have multi-year backlogs.
+    chain:
+      - { id: advanced_chip_demand, label: "Advanced chip demand (AI, HPC)", type: theme_root }
+      - { id: euv_lithography, label: "EUV and advanced lithography", type: bottleneck, is_bottleneck: true }
+      - { id: etch_deposition, label: "Etch and deposition equipment", type: supply_layer }
+      - { id: inspection_metrology, label: "Process inspection and metrology", type: bottleneck, is_bottleneck: true }
+      - { id: process_materials, label: "Process chemicals and materials", type: supply_layer }
+    edges:
+      - [advanced_chip_demand, euv_lithography]
+      - [advanced_chip_demand, etch_deposition]
+      - [etch_deposition, inspection_metrology]
+      - [euv_lithography, inspection_metrology]
+      - [process_materials, etch_deposition]
+    seed_exposures:
+      - ticker: ASML
+        node: euv_lithography
+        type: direct
+        confidence: 0.97
+        evidence:
+          - "Sole supplier of EUV lithography machines globally"
+          - "Multi-year backlog; leading-edge fabs cannot operate without ASML tools"
+      - ticker: LRCX
+        node: etch_deposition
+        type: direct
+        confidence: 0.93
+        evidence:
+          - "Leading etch and deposition equipment vendor for logic and memory"
+          - "WFE share growing with advanced node transitions"
+      - ticker: AMAT
+        node: etch_deposition
+        type: direct
+        confidence: 0.92
+        evidence:
+          - "Largest semiconductor equipment company by revenue"
+          - "Materials engineering for advanced packaging and gate-all-around"
+      - ticker: KLAC
+        node: inspection_metrology
+        type: direct
+        confidence: 0.93
+        evidence:
+          - "Process inspection and metrology leader; near-monopoly in some segments"
+          - "Revenue growing with defect density demands at advanced nodes"
+      - ticker: ENTG
+        node: process_materials
+        type: direct
+        confidence: 0.85
+        evidence:
+          - "Ultra-pure materials, filtration, and deposition precursors"
+          - "Revenue growth tied directly to fab utilization and construction"
+      - ticker: ONTO
+        node: inspection_metrology
+        type: direct
+        confidence: 0.80
+        evidence:
+          - "Advanced packaging inspection and metrology tools"
+          - "Revenue growing with chiplet and HBM packaging demand"
+
+  # ----------------------------------------------------------
+  # 15. Edge AI Hardware
+  # ----------------------------------------------------------
+  - id: edge_ai_hardware
+    label: "Edge AI hardware"
+    description: >
+      AI inference is moving to the edge — in cars, phones, factories, and
+      medical devices. Purpose-built edge AI chips with the right power
+      efficiency are the bottleneck constraining deployment speed.
+    chain:
+      - { id: edge_inference_demand, label: "AI inference at edge demand", type: theme_root }
+      - { id: edge_ai_chips, label: "Edge AI / NPU chips", type: bottleneck, is_bottleneck: true }
+      - { id: edge_compute_modules, label: "Edge compute modules and boards", type: supply_layer }
+      - { id: iot_sensors, label: "IoT sensors and connectivity", type: supply_layer }
+      - { id: edge_software, label: "Edge AI inference software", type: enabler }
+    edges:
+      - [edge_inference_demand, edge_ai_chips]
+      - [edge_ai_chips, edge_compute_modules]
+      - [iot_sensors, edge_compute_modules]
+      - [edge_compute_modules, edge_software]
+    seed_exposures:
+      - ticker: QCOM
+        node: edge_ai_chips
+        type: direct
+        confidence: 0.88
+        evidence:
+          - "Snapdragon X Elite NPU for on-device AI; Hexagon AI processor"
+          - "Edge AI chip revenue growing across mobile, PC, and auto segments"
+      - ticker: INTC
+        node: edge_ai_chips
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "Meteor Lake NPU for on-device AI; Gaudi for edge inference"
+          - "Edge AI design wins across industrial and PC markets"
+      - ticker: SYNA
+        node: edge_ai_chips
+        type: direct
+        confidence: 0.82
+        evidence:
+          - "Edge AI ICs for IoT, smart home, and industrial endpoints"
+          - "AI-enabled product line growing as a share of revenue"
+      - ticker: SLAB
+        node: iot_sensors
+        type: direct
+        confidence: 0.78
+        evidence:
+          - "IoT microcontrollers and wireless connectivity chips"
+          - "Industrial IoT revenue growing with factory automation"
+      - ticker: AMD
+        node: edge_ai_chips
+        type: indirect
+        confidence: 0.72
+        evidence:
+          - "Ryzen AI NPU in laptops; EPYC edge server accelerators"

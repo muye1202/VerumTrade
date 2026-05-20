@@ -31,3 +31,4 @@ uvicorn
 websockets
 pydantic
 sqlalchemy
+pyyaml
