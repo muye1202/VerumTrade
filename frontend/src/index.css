@@ -3756,3 +3756,31 @@ input:checked + .slider:before {
     flex-wrap: wrap;
   }
 }
+
+/* Model Visibility / Management Styles */
+.model-list-item.hidden {
+  opacity: 0.5;
+  border-style: dashed;
+  background: transparent;
+}
+.model-list-item.hidden .model-list-name {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+.model-visibility-btn {
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: color 0.18s, background 0.18s;
+  flex-shrink: 0;
+}
+.model-visibility-btn:hover {
+  color: var(--text);
+  background: var(--surface-muted);
+}
+

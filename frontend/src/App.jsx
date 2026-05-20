@@ -95,6 +95,40 @@ const BACKEND_URLS = {
   'openrouter': 'https://openrouter.ai/api/v1',
 };
 
+const getPredefinedModelsForProvider = (providerId) => {
+  const list = [];
+  const seen = new Set();
+  
+  SHALLOW_MODELS.forEach(m => {
+    const [pid, name] = m.value.split('|');
+    if (pid === providerId) {
+      const isDeep = DEEP_MODELS.some(dm => dm.value === m.value);
+      const scope = isDeep ? 'both' : 'shallow';
+      const key = `${pid}|${name}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ name, label: m.label, detail: m.detail, scope });
+      }
+    }
+  });
+
+  DEEP_MODELS.forEach(m => {
+    const [pid, name] = m.value.split('|');
+    if (pid === providerId) {
+      const isShallow = SHALLOW_MODELS.some(sm => sm.value === m.value);
+      const scope = isShallow ? 'both' : 'deep';
+      const key = `${pid}|${name}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({ name, label: m.label, detail: m.detail, scope });
+      }
+    }
+  });
+
+  return list;
+};
+
+
 const makeLog = (type, content) => ({
   id: `${Date.now()}-${Math.random()}`,
   type,
@@ -490,7 +524,13 @@ function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [hiddenPredefinedModels, setHiddenPredefinedModels] = useState(() => {
+    const saved = localStorage.getItem('hiddenPredefinedModels');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [newModelInputs, setNewModelInputs] = useState({});
+  const [newModelThinking, setNewModelThinking] = useState({});
 
   useEffect(() => {
     localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
@@ -503,6 +543,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('customModels', JSON.stringify(customModels));
   }, [customModels]);
+
+  useEffect(() => {
+    localStorage.setItem('hiddenPredefinedModels', JSON.stringify(hiddenPredefinedModels));
+  }, [hiddenPredefinedModels]);
 
   const allShallowModels = [...SHALLOW_MODELS];
   const allDeepModels = [...DEEP_MODELS];
@@ -519,8 +563,26 @@ function App() {
     });
   });
 
-  const availableShallowModels = allShallowModels.filter(m => activeProviders[m.value.split('|')[0]]);
-  const availableDeepModels = allDeepModels.filter(m => activeProviders[m.value.split('|')[0]]);
+  const availableShallowModels = allShallowModels
+    .filter(m => activeProviders[m.value.split('|')[0]])
+    .filter(m => !hiddenPredefinedModels.includes(m.value));
+
+  const availableDeepModels = allDeepModels
+    .filter(m => activeProviders[m.value.split('|')[0]])
+    .filter(m => !hiddenPredefinedModels.includes(m.value));
+
+  // Reset selected models if they are hidden or removed
+  useEffect(() => {
+    if (availableShallowModels.length > 0 && !availableShallowModels.some(m => m.value === shallowThinker)) {
+      setShallowThinker(availableShallowModels[0].value);
+    }
+  }, [availableShallowModels, shallowThinker]);
+
+  useEffect(() => {
+    if (availableDeepModels.length > 0 && !availableDeepModels.some(m => m.value === deepThinker)) {
+      setDeepThinker(availableDeepModels[0].value);
+    }
+  }, [availableDeepModels, deepThinker]);
   const [expandedSections, setExpandedSections] = useState(DEFAULT_EXPANDED_REPORT_SECTIONS);
   const toggleSection = useCallback((key) => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -603,7 +665,18 @@ function App() {
     const shallowVal = overrides.shallowThinker ?? shallowThinker;
     
     const [deepProvider, deepModel] = deepVal.split('|');
-    const [, shallowModel] = shallowVal.split('|');
+    const [shallowProvider, shallowModel] = shallowVal.split('|');
+
+    const isThinkingEnabled = (provider, modelName) => {
+      if (provider !== 'qwen3-cn') return false;
+      const qwenCustoms = customModels['qwen3-cn'] || [];
+      const customMatch = qwenCustoms.find(m => (typeof m === 'string' ? m : m.name) === modelName);
+      if (customMatch && typeof customMatch === 'object') {
+        return !!customMatch.enableThinking;
+      }
+      const lowerName = modelName.toLowerCase();
+      return lowerName.startsWith('qwen3-max') || lowerName.includes('thinking') || lowerName.startsWith('qwq');
+    };
 
     return {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
@@ -617,6 +690,8 @@ function App() {
       time_horizon: normalizeHorizonValue(overrides.timeHorizon ?? timeHorizon),
       skip_completed_analysts: false,
       mock: false,
+      qwen_enable_thinking: isThinkingEnabled(deepProvider, deepModel) || isThinkingEnabled(shallowProvider, shallowModel),
+      qwen_thinking_budget: 7000,
       execution: {
         enabled: false,
         provider: 'alpaca',
@@ -813,6 +888,14 @@ function App() {
     </div>
   );
 
+  const handleDeepThinkerChange = (val) => {
+    setDeepThinker(val);
+  };
+
+  const handleShallowThinkerChange = (val) => {
+    setShallowThinker(val);
+  };
+
   const renderConfigStrip = () => (
     <div className="config-strip">
       <div className="config-card">
@@ -823,7 +906,7 @@ function App() {
           <span className="config-label">Shallow Thinker</span>
           <CustomSelect
             value={shallowThinker}
-            onChange={(val) => setShallowThinker(val)}
+            onChange={handleShallowThinkerChange}
             options={availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS}
             disabled={isRunning}
             title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === shallowThinker)?.label || 'Select'}
@@ -839,7 +922,7 @@ function App() {
           <span className="config-label">Deep Thinker</span>
           <CustomSelect
             value={deepThinker}
-            onChange={(val) => setDeepThinker(val)}
+            onChange={handleDeepThinkerChange}
             options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
             disabled={isRunning}
             title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
@@ -893,11 +976,13 @@ function App() {
     const name = (newModelInputs[providerId] || '').trim();
     if (!name) return;
     const scope = newModelScope[providerId] || 'both';
+    const enableThinking = providerId === 'qwen3-cn' ? !!newModelThinking[providerId] : false;
     setCustomModels(prev => ({
       ...prev,
-      [providerId]: [...(prev[providerId] || []), { name, scope }],
+      [providerId]: [...(prev[providerId] || []), { name, scope, enableThinking }],
     }));
     setNewModelInputs(prev => ({ ...prev, [providerId]: '' }));
+    setNewModelThinking(prev => ({ ...prev, [providerId]: false }));
   };
 
   const deleteModel = (providerId, index) => {
@@ -906,6 +991,17 @@ function App() {
       [providerId]: (prev[providerId] || []).filter((_, i) => i !== index),
     }));
   };
+
+  const hidePredefinedModel = (providerId, modelName) => {
+    const key = `${providerId}|${modelName}`;
+    setHiddenPredefinedModels(prev => [...prev, key]);
+  };
+
+  const showPredefinedModel = (providerId, modelName) => {
+    const key = `${providerId}|${modelName}`;
+    setHiddenPredefinedModels(prev => prev.filter(k => k !== key));
+  };
+
 
   const renderSettings = () => {
     const PROVIDERS = [
@@ -935,6 +1031,7 @@ function App() {
             const models = customModels[provider.id] || [];
             const scope = newModelScope[provider.id] || 'both';
             const scopeMeta = SCOPE_META[scope];
+            const predefined = getPredefinedModelsForProvider(provider.id);
 
             return (
               <div key={provider.id} className={`provider-card ${isActive ? 'active' : ''}`}>
@@ -983,36 +1080,60 @@ function App() {
                       </button>
                     </div>
 
-                    {/* Custom Models section */}
+                    {/* Unified Models section */}
                     <div className="custom-models-section">
                       <div className="custom-models-header">
-                        <span className="custom-models-title">Custom Models</span>
-                        <span className="custom-models-hint">Model IDs added here appear in the agent selectors above.</span>
+                        <span className="custom-models-title">Models Configuration</span>
+                        <span className="custom-models-hint">Remove default models or manage custom ones.</span>
                       </div>
 
-                      {/* Existing models list */}
-                      {models.length > 0 && (
-                        <div className="model-list">
-                          {models.map((entry, i) => {
-                            // Support legacy plain-string entries
-                            const modelName = typeof entry === 'string' ? entry : entry.name;
-                            const modelScope = typeof entry === 'string' ? 'both' : entry.scope;
-                            const meta = SCOPE_META[modelScope] || SCOPE_META.both;
+                      <div className="model-list">
+                        {/* Predefined Models */}
+                        {predefined
+                          .filter(entry => !hiddenPredefinedModels.includes(`${provider.id}|${entry.name}`))
+                          .map((entry, idx) => {
+                            const meta = SCOPE_META[entry.scope] || SCOPE_META.both;
                             return (
-                              <div key={i} className="model-list-item">
+                              <div key={`predefined-${idx}`} className="model-list-item">
                                 <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
-                                <span className="model-list-name">{modelName}</span>
-                                <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
+                                <span className="model-list-name" title={entry.name}>
+                                  {entry.label} <small style={{ color: 'var(--faint)', fontFamily: 'inherit' }}>({entry.name})</small>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="model-delete-btn"
+                                  onClick={() => hidePredefinedModel(provider.id, entry.name)}
+                                  title="Remove model"
+                                >
                                   <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                                 </button>
                               </div>
                             );
                           })}
-                        </div>
-                      )}
+
+                        {/* Custom Models */}
+                        {models.length > 0 && models.map((entry, i) => {
+                          // Support legacy plain-string entries
+                          const modelName = typeof entry === 'string' ? entry : entry.name;
+                          const modelScope = typeof entry === 'string' ? 'both' : entry.scope;
+                          const meta = SCOPE_META[modelScope] || SCOPE_META.both;
+                          return (
+                            <div key={`custom-${i}`} className="model-list-item">
+                              <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
+                              <span className="model-list-name" title={modelName}>{modelName}</span>
+                              {entry && typeof entry === 'object' && entry.enableThinking && (
+                                <span className="model-scope-badge" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Thinking</span>
+                              )}
+                              <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       {/* Add model row */}
-                      <div className="model-add-row">
+                      <div className="model-add-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
                         <button
                           type="button"
                           className="scope-toggle"
@@ -1024,11 +1145,22 @@ function App() {
                         </button>
                         <input
                           className="model-name-input"
-                          placeholder="model-id (e.g. gpt-4o)"
+                          placeholder="model-id (e.g. qwen3-max)"
                           value={newModelInputs[provider.id] || ''}
                           onChange={(e) => setNewModelInputs(prev => ({ ...prev, [provider.id]: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === 'Enter') addModel(provider.id); }}
                         />
+                        {provider.id === 'qwen3-cn' && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none', marginRight: '4px' }}>
+                            <input
+                              type="checkbox"
+                              checked={newModelThinking[provider.id] || false}
+                              onChange={(e) => setNewModelThinking(prev => ({ ...prev, [provider.id]: e.target.checked }))}
+                              style={{ width: '15px', height: '15px', accentColor: 'var(--accent)' }}
+                            />
+                            Thinking Mode
+                          </label>
+                        )}
                         <button
                           type="button"
                           className="model-add-btn"

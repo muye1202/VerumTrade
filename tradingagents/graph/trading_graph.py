@@ -487,7 +487,8 @@ class TradingAgentsGraph:
                     return True
                 if name.startswith("qwq"):
                     return True
-                return False
+                # Allow override if thinking mode is explicitly enabled via config
+                return True
 
             def _qwen_requires_stream(model_name: str) -> bool:
                 """Some DashScope models require stream mode regardless of thinking flags."""

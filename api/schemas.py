@@ -23,6 +23,8 @@ class AnalysisRequest(BaseModel):
     skip_completed_analysts: bool = Field(default=False, description="Whether to skip already completed analysts")
     execution: Optional[ExecutionSettings] = None
     mock: bool = Field(default=False, description="If true, bypass LLM and return mock stream")
+    qwen_enable_thinking: Optional[bool] = Field(default=None, description="Whether Qwen thinking mode is enabled")
+    qwen_thinking_budget: Optional[int] = Field(default=None, description="Qwen thinking budget")
 
 class AnalysisResponse(BaseModel):
     status: str

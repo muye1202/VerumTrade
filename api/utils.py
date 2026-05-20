@@ -130,6 +130,11 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    if req.qwen_enable_thinking is not None:
+        config["qwen_enable_thinking"] = req.qwen_enable_thinking
+        config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
+    if req.qwen_thinking_budget is not None:
+        config["qwen_thinking_budget"] = req.qwen_thinking_budget
     
     # Optional execution config
     if req.execution:
@@ -318,6 +323,11 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    if req.qwen_enable_thinking is not None:
+        config["qwen_enable_thinking"] = req.qwen_enable_thinking
+        config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
+    if req.qwen_thinking_budget is not None:
+        config["qwen_thinking_budget"] = req.qwen_thinking_budget
         
     graph = TradingAgentsGraph(
         req.analysts, config=config, debug=False
