@@ -23,3 +23,22 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_schema_migrations():
+    """Apply incremental schema changes that SQLAlchemy create_all doesn't handle.
+
+    create_all only creates missing tables; it never alters existing ones.
+    Any new column added to a model must be migrated here explicitly.
+    """
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(analysis_sessions)"))
+        existing_columns = {row[1] for row in result}
+
+        if "status" not in existing_columns:
+            # Existing rows are all completed runs (saved only after finishing).
+            conn.execute(text(
+                "ALTER TABLE analysis_sessions ADD COLUMN status VARCHAR DEFAULT 'completed'"
+            ))
+            conn.commit()

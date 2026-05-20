@@ -74,11 +74,50 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     all_logs = []
     final_reports = {}
 
+    # --- Create the session record immediately so artifacts survive interruptions ---
+    ticker_label = f"MOCK {req.ticker}" if req.mock else req.ticker
+    session_id = None
+    _create_db = SessionLocal()
+    try:
+        db_record = AnalysisSession(
+            ticker=ticker_label,
+            analysis_date=req.analysis_date,
+            time_horizon=req.time_horizon,
+            logs=[],
+            reports={},
+            status="running",
+        )
+        _create_db.add(db_record)
+        _create_db.commit()
+        _create_db.refresh(db_record)
+        session_id = db_record.id
+    except Exception as e:
+        print(f"Error creating session record: {e}")
+    finally:
+        _create_db.close()
+
+    def _flush(status: str = "running") -> None:
+        """Persist the current in-memory logs and reports to the DB record."""
+        if session_id is None:
+            return
+        db = SessionLocal()
+        try:
+            record = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+            if record:
+                record.logs = json.loads(json.dumps(all_logs, default=str))
+                record.reports = json.loads(json.dumps(final_reports, default=str))
+                record.status = status
+                db.commit()
+        except Exception as e:
+            print(f"Error flushing session {session_id}: {e}")
+        finally:
+            db.close()
+
     if req.mock:
         await websocket.send_json({"event": "system", "content": f"MOCK MODE: Starting mock stream for {req.ticker}..."})
         await asyncio.sleep(1)
         await websocket.send_json({
-            "event": "chunk", 
+            "event": "chunk",
             "updates": [{"event": "message", "type": "Reasoning", "content": "I am gathering data..."}]
         })
         await asyncio.sleep(1)
@@ -93,28 +132,10 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             "reports": {"market_report": "### Mock Market Report\nEverything is going up."}
         })
         await asyncio.sleep(1)
-        
-        final_reports = {"market_report": "### Mock Market Report\nEverything is going up."}
-        
-        # Save mock session to DB for testing UI
-        db = SessionLocal()
-        try:
-            safe_logs = json.loads(json.dumps(all_logs, default=str))
-            safe_reports = json.loads(json.dumps(final_reports, default=str))
-            db_session = AnalysisSession(
-                ticker=f"MOCK {req.ticker}",
-                analysis_date=req.analysis_date,
-                time_horizon=req.time_horizon,
-                logs=safe_logs,
-                reports=safe_reports,
-            )
-            db.add(db_session)
-            db.commit()
-        except Exception as e:
-            print(f"Error saving mock history: {e}")
-        finally:
-            db.close()
-            
+
+        final_reports["market_report"] = "### Mock Market Report\nEverything is going up."
+        _flush("completed")
+
         return {"final_trade_decision": f"MOCK BUY {req.ticker}"}
 
     config = DEFAULT_CONFIG.copy()
@@ -163,100 +184,110 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     
     seen_messages = 0
     final_state = None
-    
-    await websocket.send_json({"event": "system", "content": "Starting analysis stream..."})
-    
-    async for chunk in graph.graph.astream(init_agent_state, **args):
-        messages = chunk.get("messages") or []
-        new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
-        seen_messages = len(messages)
-        
-        chunk_updates = []
-        for msg in new_messages:
-            msg_type, content = _msg_type_and_content(msg)
-            
-            update_item = {
-                "event": "message",
-                "type": msg_type,
-                "content": content
-            }
-            chunk_updates.append(update_item)
-            all_logs.append(update_item)
-            
-            for tool_name, tool_args in _extract_tool_calls(msg):
-                tool_item = {
-                    "event": "tool_call",
-                    "tool": tool_name,
-                    "args": tool_args
-                }
-                chunk_updates.append(tool_item)
-                all_logs.append(tool_item)
-        
-        reports = {}
-        # Analyst Team
-        if chunk.get("market_report"):
-            reports["market_report"] = chunk["market_report"]
-        if chunk.get("sentiment_report"):
-            reports["sentiment_report"] = chunk["sentiment_report"]
-        if chunk.get("news_report"):
-            reports["news_report"] = chunk["news_report"]
-        if chunk.get("catalyst_report"):
-            reports["catalyst_report"] = chunk["catalyst_report"]
-        if chunk.get("catalyst_event_bundle"):
-            reports["catalyst_event_bundle"] = chunk["catalyst_event_bundle"]
-        if chunk.get("catalyst_event_report_structured"):
-            reports["catalyst_event_report_structured"] = chunk["catalyst_event_report_structured"]
-        if chunk.get("catalyst_parse_telemetry"):
-            reports["catalyst_parse_telemetry"] = chunk["catalyst_parse_telemetry"]
-        if chunk.get("fundamentals_report"):
-            reports["fundamentals_report"] = chunk["fundamentals_report"]
 
-        if chunk.get("evidence_source_facts"):
-            reports["evidence_source_facts"] = chunk["evidence_source_facts"]
-        if chunk.get("evidence_graph"):
-            reports["evidence_graph"] = chunk["evidence_graph"]
-        if chunk.get("evidence_graph_audit"):
-            reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
-        if chunk.get("decision_trace"):
-            reports["decision_trace"] = chunk["decision_trace"]
-        if chunk.get("trader_decision_brief"):
-            reports["trader_decision_brief"] = chunk["trader_decision_brief"]
-        if chunk.get("trade_setup_diagnosis"):
-            reports["trade_setup_diagnosis"] = chunk["trade_setup_diagnosis"]
-        if chunk.get("scenario_analysis"):
-            reports["scenario_analysis"] = chunk["scenario_analysis"]
-        if chunk.get("execution_plan_compiler"):
-            reports["execution_plan_compiler"] = chunk["execution_plan_compiler"]
-        if chunk.get("trader_self_audit"):
-            reports["trader_self_audit"] = chunk["trader_self_audit"]
-        if chunk.get("agent_reasoning_trace"):
-            reports["agent_reasoning_trace"] = chunk["agent_reasoning_trace"]
-            
-        # Debate State
-        if chunk.get("investment_debate_state"):
-            reports["investment_debate_state"] = chunk["investment_debate_state"]
-            
-        # Trading Team
-        if chunk.get("trader_investment_plan"):
-            reports["trader_investment_plan"] = chunk["trader_investment_plan"]
-            
-        # Risk State
-        if chunk.get("risk_debate_state"):
-            reports["risk_debate_state"] = chunk["risk_debate_state"]
-            
-        if chunk.get("final_trade_decision"):
-            reports["final_trade_decision"] = chunk["final_trade_decision"]
-            
-        if chunk_updates or reports:
-            payload = {
-                "event": "chunk",
-                "updates": chunk_updates,
-                "reports": reports
-            }
-            await websocket.send_json(payload)
-            
-        final_reports.update(reports)
-        final_state = chunk
+    await websocket.send_json({"event": "system", "content": "Starting analysis stream..."})
+
+    try:
+        async for chunk in graph.graph.astream(init_agent_state, **args):
+            messages = chunk.get("messages") or []
+            new_messages = messages[seen_messages:] if seen_messages <= len(messages) else []
+            seen_messages = len(messages)
+
+            chunk_updates = []
+            for msg in new_messages:
+                msg_type, content = _msg_type_and_content(msg)
+
+                update_item = {
+                    "event": "message",
+                    "type": msg_type,
+                    "content": content
+                }
+                chunk_updates.append(update_item)
+                all_logs.append(update_item)
+
+                for tool_name, tool_args in _extract_tool_calls(msg):
+                    tool_item = {
+                        "event": "tool_call",
+                        "tool": tool_name,
+                        "args": tool_args
+                    }
+                    chunk_updates.append(tool_item)
+                    all_logs.append(tool_item)
+
+            reports = {}
+            # Analyst Team
+            if chunk.get("market_report"):
+                reports["market_report"] = chunk["market_report"]
+            if chunk.get("sentiment_report"):
+                reports["sentiment_report"] = chunk["sentiment_report"]
+            if chunk.get("news_report"):
+                reports["news_report"] = chunk["news_report"]
+            if chunk.get("catalyst_report"):
+                reports["catalyst_report"] = chunk["catalyst_report"]
+            if chunk.get("catalyst_event_bundle"):
+                reports["catalyst_event_bundle"] = chunk["catalyst_event_bundle"]
+            if chunk.get("catalyst_event_report_structured"):
+                reports["catalyst_event_report_structured"] = chunk["catalyst_event_report_structured"]
+            if chunk.get("catalyst_parse_telemetry"):
+                reports["catalyst_parse_telemetry"] = chunk["catalyst_parse_telemetry"]
+            if chunk.get("fundamentals_report"):
+                reports["fundamentals_report"] = chunk["fundamentals_report"]
+
+            if chunk.get("evidence_source_facts"):
+                reports["evidence_source_facts"] = chunk["evidence_source_facts"]
+            if chunk.get("evidence_graph"):
+                reports["evidence_graph"] = chunk["evidence_graph"]
+            if chunk.get("evidence_graph_audit"):
+                reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
+            if chunk.get("decision_trace"):
+                reports["decision_trace"] = chunk["decision_trace"]
+            if chunk.get("trader_decision_brief"):
+                reports["trader_decision_brief"] = chunk["trader_decision_brief"]
+            if chunk.get("trade_setup_diagnosis"):
+                reports["trade_setup_diagnosis"] = chunk["trade_setup_diagnosis"]
+            if chunk.get("scenario_analysis"):
+                reports["scenario_analysis"] = chunk["scenario_analysis"]
+            if chunk.get("execution_plan_compiler"):
+                reports["execution_plan_compiler"] = chunk["execution_plan_compiler"]
+            if chunk.get("trader_self_audit"):
+                reports["trader_self_audit"] = chunk["trader_self_audit"]
+            if chunk.get("agent_reasoning_trace"):
+                reports["agent_reasoning_trace"] = chunk["agent_reasoning_trace"]
+
+            # Debate State
+            if chunk.get("investment_debate_state"):
+                reports["investment_debate_state"] = chunk["investment_debate_state"]
+
+            # Trading Team
+            if chunk.get("trader_investment_plan"):
+                reports["trader_investment_plan"] = chunk["trader_investment_plan"]
+
+            # Risk State
+            if chunk.get("risk_debate_state"):
+                reports["risk_debate_state"] = chunk["risk_debate_state"]
+
+            if chunk.get("final_trade_decision"):
+                reports["final_trade_decision"] = chunk["final_trade_decision"]
+
+            if chunk_updates or reports:
+                payload = {
+                    "event": "chunk",
+                    "updates": chunk_updates,
+                    "reports": reports
+                }
+                await websocket.send_json(payload)
+
+            final_reports.update(reports)
+            final_state = chunk
+
+            # Flush to DB whenever a new report section arrives so partial
+            # results survive an interruption.
+            if reports:
+                _flush()
+
+    except Exception:
+        _flush("interrupted")
+        raise
 
     if final_state:
         final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
@@ -271,38 +302,11 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             }
         )
 
-    # Save real session to DB
-    db = SessionLocal()
-    try:
-        # Round-trip through json.dumps/loads to coerce any non-serializable Python
-        # objects (LangChain messages, datetimes, Pydantic models, etc.) to plain
-        # strings before SQLAlchemy tries to persist them as JSON.
-        safe_logs = json.loads(json.dumps(all_logs, default=str))
-        if final_state:
-            final_reports.update(build_analysis_reports_payload(final_state))
-        safe_reports = json.loads(json.dumps(final_reports, default=str))
+    # Final flush: merge full state payload and mark completed.
+    if final_state:
+        final_reports.update(build_analysis_reports_payload(final_state))
+    _flush("completed")
 
-        db_session = AnalysisSession(
-            ticker=req.ticker,
-            analysis_date=req.analysis_date,
-            time_horizon=req.time_horizon,
-            logs=safe_logs,
-            reports=safe_reports,
-        )
-        db.add(db_session)
-        db.commit()
-    except Exception as e:
-        print(f"Error saving history: {e}")
-        try:
-            await websocket.send_json({
-                "event": "system",
-                "content": f"Warning: session could not be saved to history: {e}",
-            })
-        except Exception:
-            pass
-    finally:
-        db.close()
-        
     return final_state
 
 async def run_analysis_sync(req) -> Dict[str, Any]:
@@ -314,11 +318,11 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     requested_depth = req.research_depth
     debate_cap = int(config.get("max_debate_rounds_cap", requested_depth))
     risk_cap = int(config.get("max_risk_rounds_cap", requested_depth))
-    
+
     config["max_debate_rounds"] = min(requested_depth, debate_cap)
     config["max_risk_discuss_rounds"] = min(requested_depth, risk_cap)
     config["max_recur_limit"] = max(config.get("max_recur_limit", 100), requested_depth * 120)
-    
+
     config["quick_think_llm"] = req.shallow_thinker
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
@@ -328,13 +332,13 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
     if req.qwen_thinking_budget is not None:
         config["qwen_thinking_budget"] = req.qwen_thinking_budget
-        
+
     graph = TradingAgentsGraph(
         req.analysts, config=config, debug=False
     )
-    
+
     portfolio_ctx = fetch_portfolio_context(req.ticker)
-    
+
     init_agent_state = graph.propagator.create_initial_state(
         req.ticker,
         req.analysis_date,
@@ -342,12 +346,50 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         time_horizon=req.time_horizon,
     )
     args = graph.propagator.get_graph_args()
-    
-    final_state = None
-    async for chunk in graph.graph.astream(init_agent_state, **args):
-        final_state = chunk
 
-    if final_state:
-        final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+    # Create session record immediately
+    session_id = None
+    _create_db = SessionLocal()
+    try:
+        db_record = AnalysisSession(
+            ticker=req.ticker,
+            analysis_date=req.analysis_date,
+            time_horizon=req.time_horizon,
+            logs=[],
+            reports={},
+            status="running",
+        )
+        _create_db.add(db_record)
+        _create_db.commit()
+        _create_db.refresh(db_record)
+        session_id = db_record.id
+    except Exception as e:
+        print(f"Error creating session record: {e}")
+    finally:
+        _create_db.close()
+
+    final_state = None
+    status = "interrupted"
+    try:
+        async for chunk in graph.graph.astream(init_agent_state, **args):
+            final_state = chunk
+        status = "completed"
+    finally:
+        if final_state:
+            final_state["agent_reasoning_trace"] = build_agent_reasoning_trace(final_state)
+        # Persist whatever we have, completed or not
+        if session_id is not None:
+            db = SessionLocal()
+            try:
+                record = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+                if record:
+                    reports = build_analysis_reports_payload(final_state) if final_state else {}
+                    record.reports = json.loads(json.dumps(reports, default=str))
+                    record.status = status
+                    db.commit()
+            except Exception as e:
+                print(f"Error saving sync session {session_id}: {e}")
+            finally:
+                db.close()
 
     return final_state

@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import analysis, history
-from api.database import engine, Base
+from api.database import engine, Base, run_schema_migrations
 import api.models
 
-# Create DB tables
+# Create DB tables (new installs) then apply incremental column migrations (upgrades)
 Base.metadata.create_all(bind=engine)
+run_schema_migrations()
 
 app = FastAPI(
     title="TradingAgents API",
