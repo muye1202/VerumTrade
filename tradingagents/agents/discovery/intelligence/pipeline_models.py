@@ -7,6 +7,8 @@ Data structures and types representing the discovery pipeline intelligence model
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from tradingagents.agents.discovery.theme_engine.models import ThemeExposureCandidate
+
 
 DEFAULT_SCREENING_UNIVERSE = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
@@ -212,6 +214,7 @@ class IntelligenceResult:
     vendor_calls_by_stage: Dict[str, Any] = field(default_factory=dict)
     data_quality_summary: Dict[str, Any] = field(default_factory=dict)
     filter_relaxations_applied: List[str] = field(default_factory=list)
+    theme_candidates: List[ThemeExposureCandidate] = field(default_factory=list)
     discovery_track: str = "enricher"  # "enricher" | "anomaly_scan" | "dual_track"
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""

@@ -16,6 +16,7 @@ from .market_policy_llm import build_llm_bias_profile
 from .track_a_enrichment import Stage1BatchEnricher
 from .candidate_scoring import Stage2Scorer
 from .technical_momentum_metrics import TechnicalMomentumScanner
+from tradingagents.agents.discovery.theme_engine.theme_scanner import ThemeScanner
 
 
 class IntelligenceScanner:
@@ -36,6 +37,7 @@ class IntelligenceScanner:
         self.stage2_scorer = Stage2Scorer(config=config)
         self.anomaly_scanner = MomentumAnomalyScanner(config=config)
         self.pre_stage0_builder = PreStage0IntelligenceBuilder(config=config)
+        self.theme_scanner = ThemeScanner(llm=llm, config=config)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _pre_stage0_cache_cfg(self, ttl_hours: int) -> Dict[str, Any]:
@@ -258,6 +260,30 @@ class IntelligenceScanner:
                     if str(t).strip().upper() not in excluded_set
                 ]
 
+        # Stage -1: Theme-driven discovery
+        theme_candidates = []
+        theme_injected_tickers = []
+        try:
+            theme_candidates = self.theme_scanner.scan(trade_date)
+            # Inject high-confidence theme tickers into universe if not already present
+            _min_theme_conf = float(
+                ((self.config.get("theme_engine") or {}).get("min_injection_confidence", 0.70))
+            )
+            existing = set(str(t).upper() for t in prefiltered_universe)
+            for c in theme_candidates:
+                if c.exposure_confidence >= _min_theme_conf and c.ticker not in existing:
+                    theme_injected_tickers.append(c.ticker)
+                    existing.add(c.ticker)
+            if theme_injected_tickers:
+                prefiltered_universe = list(prefiltered_universe) + theme_injected_tickers
+                self.logger.info(
+                    "Stage -1: injected %d theme tickers into universe: %s",
+                    len(theme_injected_tickers),
+                    theme_injected_tickers[:20],
+                )
+        except Exception as _e:
+            self.logger.warning("Stage -1 theme scan failed (non-fatal): %s", _e)
+
         # ----- Track routing -----
         track = str(discovery_track).strip().lower()
         if track in {"", "auto", "bias"}:
@@ -282,6 +308,7 @@ class IntelligenceScanner:
                 llm_bias_profile=llm_bias_profile,
                 indicator_availability=indicator_availability,
                 anomaly_scan_policy=anomaly_policy,
+                theme_candidates=theme_candidates,
             )
         elif track == "dual_track":
             track_a_universe, track_b_universe = self._dual_track_universe_split(
@@ -297,6 +324,7 @@ class IntelligenceScanner:
                 stage2_hard_filter_overrides=stage2_hard_filter_overrides,
                 sector_weight_multipliers=sector_weight_multipliers,
                 anomaly_scan_policy=anomaly_policy,
+                theme_candidates=theme_candidates,
             )
         else:
             enricher_max = int(((allocation_policy.get("max_tickers") or {}).get("enricher", len(ordered_universe) or 250)))
@@ -309,6 +337,7 @@ class IntelligenceScanner:
                 stage2_weight_tilts=stage2_weight_tilts,
                 stage2_hard_filter_overrides=stage2_hard_filter_overrides,
                 sector_weight_multipliers=sector_weight_multipliers,
+                theme_candidates=theme_candidates,
             )
 
     # ------------------------------------------------------------------
@@ -328,6 +357,7 @@ class IntelligenceScanner:
         sector_weight_multipliers: Optional[Dict[str, float]] = None,
         shared_ohlcv_cache: Optional[Dict[str, str]] = None,
         prefetch_metrics: Optional[Dict[str, Any]] = None,
+        theme_candidates=None,
     ) -> IntelligenceResult:
         import time
 
@@ -403,6 +433,7 @@ class IntelligenceScanner:
             },
             data_quality_summary=data_quality_summary,
             filter_relaxations_applied=list(stage2_meta.get("filter_relaxations_applied") or []),
+            theme_candidates=list(theme_candidates or []),
             discovery_track="enricher",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -432,6 +463,7 @@ class IntelligenceScanner:
         anomaly_scan_policy: Optional[Dict[str, Any]] = None,
         shared_ohlcv_cache: Optional[Dict[str, str]] = None,
         prefetch_metrics: Optional[Dict[str, Any]] = None,
+        theme_candidates=None,
     ) -> IntelligenceResult:
         import time
 
@@ -473,6 +505,7 @@ class IntelligenceScanner:
                 "stage0": dict(self.technical_scanner.get_stage0_last_metrics()),
                 "track_b_prefetch": dict(track_b_metrics or {}),
             },
+            theme_candidates=list(theme_candidates or []),
             discovery_track="anomaly_scan",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -503,6 +536,7 @@ class IntelligenceScanner:
         stage2_hard_filter_overrides: Optional[Dict[str, Any]] = None,
         sector_weight_multipliers: Optional[Dict[str, float]] = None,
         anomaly_scan_policy: Optional[Dict[str, Any]] = None,
+        theme_candidates=None,
     ) -> IntelligenceResult:
         """Run Track A (enricher) and Track B (anomaly scans) sequentially.
 
@@ -544,6 +578,7 @@ class IntelligenceScanner:
             sector_weight_multipliers=sector_weight_multipliers,
             shared_ohlcv_cache=shared_ohlcv_cache,
             prefetch_metrics={**shared_prefetch_metrics, "shared_for_dual_track": True},
+            theme_candidates=theme_candidates,
         )
         result_b = self._run_track_b(
             track_b_universe,
@@ -555,6 +590,7 @@ class IntelligenceScanner:
             anomaly_scan_policy=anomaly_scan_policy,
             shared_ohlcv_cache=shared_ohlcv_cache,
             prefetch_metrics={**shared_prefetch_metrics, "shared_for_dual_track": True},
+            theme_candidates=theme_candidates,
         )
 
         merged = IntelligenceResult(
@@ -574,6 +610,7 @@ class IntelligenceScanner:
             },
             data_quality_summary=dict(result_a.data_quality_summary or {}),
             filter_relaxations_applied=list(result_a.filter_relaxations_applied or []),
+            theme_candidates=list(theme_candidates or []),
             discovery_track="dual_track",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),

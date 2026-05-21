@@ -32,3 +32,6 @@ scripts/
 .vscode
 
 scripts
+
+# Theme engine evidence cache
+data/themes/.evidence_cache/

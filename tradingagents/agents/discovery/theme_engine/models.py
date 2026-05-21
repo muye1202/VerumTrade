@@ -149,3 +149,16 @@ class ThemeExposureCandidate:
             "theme_id": self.theme_id,
             "node_id": self.node_id,
         }
+
+
+@dataclass
+class EvidenceItem:
+    """One piece of evidence for a ticker-theme relationship."""
+    ticker: str
+    theme_id: str
+    source: str          # "rss" | "yfinance_news" | "alpha_vantage"
+    headline: str
+    url: str = ""
+    date: str = ""       # ISO date string YYYY-MM-DD
+    relevance_score: float = 0.0  # 0.0-1.0, keyword match score
+    snippet: str = ""    # brief text snippet if available
