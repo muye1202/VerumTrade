@@ -17,6 +17,7 @@ from .track_a_enrichment import Stage1BatchEnricher
 from .candidate_scoring import Stage2Scorer
 from .technical_momentum_metrics import TechnicalMomentumScanner
 from tradingagents.agents.discovery.theme_engine.theme_scanner import ThemeScanner
+from tradingagents.agents.discovery.theme_engine.exposure_scorer import ExposureScorer
 
 
 class IntelligenceScanner:
@@ -38,6 +39,7 @@ class IntelligenceScanner:
         self.anomaly_scanner = MomentumAnomalyScanner(config=config)
         self.pre_stage0_builder = PreStage0IntelligenceBuilder(config=config)
         self.theme_scanner = ThemeScanner(llm=llm, config=config)
+        self.exposure_scorer = ExposureScorer(llm=llm, config=config)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _pre_stage0_cache_cfg(self, ttl_hours: int) -> Dict[str, Any]:
@@ -265,6 +267,27 @@ class IntelligenceScanner:
         theme_injected_tickers = []
         try:
             theme_candidates = self.theme_scanner.scan(trade_date)
+
+            # Step 4: LLM re-scoring of theme exposure candidates
+            if theme_candidates:
+                _policy_mode = str(
+                    (self.config.get("discovery") or {}).get("policy_mode", "off")
+                ).strip().lower()
+                _allow_scorer_llm = _policy_mode not in {"off", "cached_only"}
+                _cache_metrics: dict = {}
+                try:
+                    theme_candidates = self.exposure_scorer.score(
+                        candidates=theme_candidates,
+                        trade_date=trade_date,
+                        allow_llm_call=_allow_scorer_llm,
+                        cache_config=self._pre_stage0_cache_cfg(ttl_hours=24),
+                        metrics=_cache_metrics,
+                    )
+                except Exception as _score_err:
+                    self.logger.warning(
+                        "Step 4 exposure scoring failed (non-fatal): %s", _score_err
+                    )
+
             # Inject high-confidence theme tickers into universe if not already present
             _min_theme_conf = float(
                 ((self.config.get("theme_engine") or {}).get("min_injection_confidence", 0.70))

@@ -22,6 +22,7 @@ from .models import (
 from .taxonomy import ThemeTaxonomyLoader, load_taxonomy
 from .evidence_collector import ThemeEvidenceCollector
 from .theme_scanner import ThemeScanner
+from .exposure_scorer import ExposureScorer
 
 __all__ = [
     "ThemeNode",
@@ -33,4 +34,5 @@ __all__ = [
     "load_taxonomy",
     "ThemeEvidenceCollector",
     "ThemeScanner",
+    "ExposureScorer",
 ]
