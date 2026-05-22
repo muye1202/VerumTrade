@@ -17,6 +17,7 @@ import {
 } from './transcriptDisplay';
 import EvidenceGraphPanel from './EvidenceGraphPanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
+import ThemeCandidatesPanel from './ThemeCandidatesPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -42,6 +43,11 @@ const DISCOVERY_TRACKS = [
 const CATALYST_MODES = [
   { value: 'daily_calendar', label: 'Daily Calendar', detail: 'Default' },
   { value: 'per_ticker_calendar', label: 'Per Ticker', detail: 'Slower' },
+];
+
+const SCAN_MODES = [
+  { value: 'seed_only',     label: 'Seed Only',     detail: 'Instant, no network' },
+  { value: 'with_evidence', label: 'With Evidence', detail: 'Live headlines' },
 ];
 
 const LEGACY_HORIZON_VALUES = {
@@ -521,6 +527,8 @@ function App() {
   const [mainPageMode, setMainPageMode] = useState('single');
   const [discoveryTrack, setDiscoveryTrack] = useState(DISCOVERY_TRACKS[0].value);
   const [catalystMode, setCatalystMode] = useState(CATALYST_MODES[0].value);
+  const [scanMode, setScanMode] = useState(SCAN_MODES[0].value);
+  const [discoveryStage, setDiscoveryStage] = useState(null); // -1 | 0 | 1 | null
   const [activeSessionType, setActiveSessionType] = useState('single');
 
   const [apiKeys, setApiKeys] = useState(() => {
@@ -814,6 +822,8 @@ function App() {
       analysis_date: overrides.analysisDate ?? analysisDate,
       discovery_track: overrides.discoveryTrack ?? discoveryTrack,
       discovery_catalyst_mode: overrides.catalystMode ?? catalystMode,
+      scan_mode: overrides.scanMode ?? scanMode,
+      policy_mode: 'off',
       analysts: [],
       research_depth: 1,
       llm_provider: deepProvider,
@@ -838,6 +848,8 @@ function App() {
     setAnalysisDate(payload.analysis_date);
     setDiscoveryTrack(payload.discovery_track);
     setCatalystMode(payload.discovery_catalyst_mode);
+    setScanMode(payload.scan_mode ?? SCAN_MODES[0].value);
+    setDiscoveryStage(null);
     setActiveSessionId(null);
     setActiveMode('analysis');
     setActiveSessionType('discovery');
@@ -890,14 +902,35 @@ function App() {
         return;
       }
 
+      if (data.event === 'stage') {
+        const arrow = data.status === 'started' ? '▶' : '✓';
+        const stageNum = data.stage < 0 ? '-1' : String(data.stage);
+        setLogs((prev) => [...prev, makeLog('system', `${arrow} Stage ${stageNum}: ${data.label}`)]);
+        if (data.status === 'started') setDiscoveryStage(data.stage);
+        if (data.status === 'completed' && data.stage === 1) setDiscoveryStage(null);
+        return;
+      }
+
+      if (data.event === 'theme_candidates') {
+        setReports((prev) => ({ ...prev, theme_candidates_json: data.candidates }));
+        return;
+      }
+
       if (data.event === 'completed') {
+        setDiscoveryStage(null);
         setIsRunning(false);
-        setLogs((prev) => [...prev, makeLog('system', `Discovery pipeline completed.`)]);
+        const tickerCount = (data.tickers || []).length;
+        const themeCount = data.candidate_count || 0;
+        setLogs((prev) => [
+          ...prev,
+          makeLog('system', `Discovery complete — ${tickerCount} ticker${tickerCount !== 1 ? 's' : ''} found, ${themeCount} theme signal${themeCount !== 1 ? 's' : ''}.`),
+        ]);
         fetchHistory();
         return;
       }
 
       if (data.event === 'error') {
+        setDiscoveryStage(null);
         setIsRunning(false);
         setErrorMessage(data.content);
         setLogs((prev) => [...prev, makeLog('system', `Error: ${data.content}`)]);
@@ -1084,6 +1117,21 @@ function App() {
                 value={catalystMode}
                 onChange={(val) => setCatalystMode(val)}
                 options={CATALYST_MODES}
+                disabled={isRunning}
+              />
+            </div>
+          </div>
+
+          <div className="config-card">
+            <div className="config-card-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.5 2C6.81 2 3 5.81 3 10.5S6.81 19 11.5 19h.5v3c4.86-2.34 8-7 8-11.5C20 5.81 16.19 2 11.5 2zm1 14.5h-2v-2h2v2zm0-4h-2c0-3.25 3-3 3-5 0-1.1-.9-2-2-2s-2 .9-2 2h-2c0-2.21 1.79-4 4-4s4 1.79 4 4c0 2.5-3 2.75-3 5z"/></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Scan Mode</span>
+              <CustomSelect
+                value={scanMode}
+                onChange={(val) => setScanMode(val)}
+                options={SCAN_MODES}
                 disabled={isRunning}
               />
             </div>
@@ -1596,7 +1644,79 @@ function App() {
           </section>
 
           <section className="inspector-panel">
-            {activeMode === 'analysis' && (
+            {activeMode === 'analysis' && activeSessionType === 'discovery' && (
+              <>
+                <div className="panel-header">
+                  <div>
+                    <h2>Discovery pipeline</h2>
+                    <p>Stage progress and theme signals.</p>
+                  </div>
+                </div>
+
+                {/* Pipeline stage progress bar */}
+                <div style={{ padding: '0 16px 16px' }}>
+                  {[
+                    { stage: -1, label: 'Theme Engine' },
+                    { stage: 0,  label: 'Universe Screen' },
+                    { stage: 1,  label: 'Enrich & Score' },
+                  ].map(({ stage, label }) => {
+                    const isDone = discoveryStage !== null && stage < discoveryStage;
+                    const isActive = discoveryStage === stage;
+                    const isPending = discoveryStage === null || stage > discoveryStage;
+                    return (
+                      <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{
+                          width: '20px', height: '20px', borderRadius: '50%',
+                          flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '10px', fontWeight: 700,
+                          background: isDone
+                            ? 'color-mix(in srgb, var(--accent) 20%, transparent)'
+                            : isActive
+                            ? 'var(--accent)'
+                            : 'var(--surface-muted)',
+                          border: `1px solid ${isDone || isActive ? 'var(--accent)' : 'var(--border)'}`,
+                          color: isActive ? 'var(--accent-ink)' : isDone ? 'var(--accent)' : 'var(--muted)',
+                        }}>
+                          {isDone ? '✓' : stage < 0 ? '−1' : stage}
+                        </div>
+                        <span style={{
+                          fontSize: '12px',
+                          color: isDone ? 'var(--text)' : isActive ? 'var(--accent)' : 'var(--muted)',
+                          fontWeight: isActive ? 600 : 400,
+                        }}>
+                          {label}
+                        </span>
+                        {isActive && isRunning && (
+                          <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--accent)' }}>running…</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Live theme signals preview while running */}
+                {reports.theme_candidates_json && reports.theme_candidates_json.length > 0 && (
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Theme Signals
+                    </div>
+                    <ThemeCandidatesPanel
+                      candidates={reports.theme_candidates_json}
+                      isStreaming={isRunning}
+                    />
+                  </div>
+                )}
+
+                <div className="metric-stack" style={{ marginTop: '8px' }}>
+                  <div><span>Track</span><strong>{DISCOVERY_TRACKS.find(t => t.value === discoveryTrack)?.label}</strong></div>
+                  <div><span>Scan Mode</span><strong>{SCAN_MODES.find(s => s.value === scanMode)?.label}</strong></div>
+                  <div><span>Date</span><strong>{analysisDate}</strong></div>
+                </div>
+              </>
+            )}
+
+            {activeMode === 'analysis' && activeSessionType !== 'discovery' && (
               <>
                 <div className="panel-header">
                   <div>
@@ -1621,12 +1741,29 @@ function App() {
                     <p>Generated sections for the active ticker.</p>
                   </div>
                 </div>
-                {availableReports.length === 0 ? (
+
+                {/* Theme Signals section — discovery sessions only */}
+                {activeSessionType === 'discovery' && reports.theme_candidates_json && (
+                  <div className="report-group" style={{ marginBottom: '8px' }}>
+                    <h3 className="report-group-title">
+                      <span className="report-group-icon">🔭</span>
+                      Theme Signals
+                    </h3>
+                    <div className="report-group-content" style={{ padding: '12px 16px' }}>
+                      <ThemeCandidatesPanel
+                        candidates={reports.theme_candidates_json}
+                        isStreaming={false}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {availableReports.length === 0 && !reports.theme_candidates_json ? (
                   <div className="empty-state compact">
                     <h3>Reports pending</h3>
                     <p>Reports appear here as agents complete their work.</p>
                   </div>
-                ) : (
+                ) : availableReports.length > 0 ? (
                   <div className="report-accordion-container">
                     {REPORT_GROUPS.map(group => {
                       const activeGroupSections = group.sections
@@ -1668,7 +1805,7 @@ function App() {
                       );
                     })}
                   </div>
-                )}
+                ) : null}
               </>
             )}
 

@@ -216,6 +216,16 @@ class StockDiscoveryGraph:
 
             self.logger.info(f"Discovery complete. Found {len(result['tickers'])} recommendations")
 
+            # Extract theme_candidates from the IntelligenceResult so the API
+            # layer can stream them without re-running ThemeScanner.
+            _intelligence = result.get("intelligence")
+            _theme_cands = []
+            if _intelligence is not None and hasattr(_intelligence, "theme_candidates"):
+                try:
+                    _theme_cands = [c.to_dict() for c in (_intelligence.theme_candidates or [])]
+                except Exception:
+                    pass
+
             return DiscoveryResult(
                 tickers=result["tickers"],
                 report=result["report"],
@@ -229,6 +239,7 @@ class StockDiscoveryGraph:
                     "vendor_calls_by_stage": result.get("vendor_calls_by_stage", {}),
                     "data_quality_summary": result.get("data_quality_summary", {}),
                     "filter_relaxations_applied": result.get("filter_relaxations_applied", []),
+                    "theme_candidates": _theme_cands,
                 },
             )
 
