@@ -699,6 +699,12 @@ h1 {
   backdrop-filter: blur(14px);
   transition: background 0.22s, border-color 0.22s, transform 0.18s, box-shadow 0.22s;
   cursor: default;
+  position: relative;  /* establish stacking context so z-index works */
+  z-index: 1;
+}
+
+.config-card:has(.gemini-custom-select .gemini-dropdown-menu) {
+  z-index: 100;  /* lift the card whose dropdown is open above all siblings */
 }
 
 .config-card:hover {
@@ -795,6 +801,7 @@ h1 {
   top: calc(100% + 8px);
   left: 0;
   right: auto;
+  z-index: 1000;
 }
 
 .icon-btn, .text-btn {
