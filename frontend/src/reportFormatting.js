@@ -27,6 +27,118 @@ const formatIntent = (value) => (
   String(value).replace(/_/g, ' ').replace(/^\w/, (char) => char.toUpperCase())
 );
 
+const asObject = (value) => (
+  value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+);
+
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
+const catalystHasDecisionUsefulEvents = (structured) => {
+  const score = Number(structured.catalyst_score);
+  return (
+    Number.isFinite(score) && score >= 0.45
+  ) || asArray(structured.near_term_catalysts).length > 0
+    || asArray(structured.recent_material_events).length > 0
+    || asArray(structured.thesis_supporting_events).length > 0
+    || asArray(structured.thesis_breaking_events).length > 0;
+};
+
+const collectMissingCatalystSources = (bundle) => (
+  Object.entries(asObject(bundle.source_quality))
+    .filter(([, source]) => asObject(source).status === 'missing')
+    .map(([name]) => name)
+);
+
+const getCatalystDiagnosis = ({ telemetry, structured, bundle, evidenceText }) => {
+  const bundleQuality = asObject(bundle.bundle_quality);
+  const missingSources = collectMissingCatalystSources(bundle);
+  const fallbackMode = String(structured.fallback_mode || '');
+  const qualityGate = String(bundleQuality.quality_gate || '');
+  const acceptedEventCount = Number(bundleQuality.accepted_event_count);
+  const evidenceRows = asArray(structured.evidence_table);
+  const dataQualityNotes = asArray(structured.data_quality_notes);
+  const hasSparseEvidence = evidenceRows.length === 0 && !String(evidenceText || '').trim();
+  const parseFailed = telemetry.parse_ok === false || fallbackMode.includes('parse_failed');
+  const sparseFetch = (
+    qualityGate === 'failed'
+    || qualityGate === 'sparse'
+    || (!Number.isNaN(acceptedEventCount) && acceptedEventCount === 0)
+    || missingSources.length >= 2
+    || fallbackMode === 'insufficient_data'
+  );
+  const noDecisionUsefulCatalyst = (
+    fallbackMode === 'valid_low_materiality'
+    || (!catalystHasDecisionUsefulEvents(structured) && (hasSparseEvidence || evidenceRows.length > 0))
+  );
+  const shouldShow = (
+    parseFailed
+    || sparseFetch
+    || noDecisionUsefulCatalyst
+    || Boolean(fallbackMode)
+    || dataQualityNotes.length > 0
+  );
+
+  if (!shouldShow) return null;
+  if (parseFailed) return 'Parse failure';
+  if (sparseFetch) return 'Fetch/source data sparse';
+  if (noDecisionUsefulCatalyst) return 'No decision-useful catalyst';
+  return 'Data-quality note';
+};
+
+export const buildCatalystDiagnosticsData = (reports = {}) => {
+  const hasCatalystFields = [
+    'catalyst_report',
+    'catalyst_event_bundle',
+    'catalyst_event_report_structured',
+    'catalyst_parse_telemetry',
+    'catalyst_evidence',
+  ].some((key) => reports[key] !== undefined && reports[key] !== null && reports[key] !== '');
+
+  if (!hasCatalystFields) return null;
+
+  const telemetry = asObject(reports.catalyst_parse_telemetry);
+  const structured = asObject(reports.catalyst_event_report_structured);
+  const bundle = asObject(reports.catalyst_event_bundle);
+  const evidenceText = reports.catalyst_evidence;
+  const diagnosis = getCatalystDiagnosis({ telemetry, structured, bundle, evidenceText });
+
+  if (!diagnosis) return null;
+
+  const bundleQuality = asObject(bundle.bundle_quality);
+  const missingSources = collectMissingCatalystSources(bundle);
+  const notes = asArray(structured.data_quality_notes);
+  const fallbackMode = structured.fallback_mode;
+  const evidenceRows = asArray(structured.evidence_table);
+
+  return {
+    summary: {
+      primary_diagnosis: diagnosis,
+      parse_status: telemetry.parse_ok === true ? 'passed' : telemetry.parse_ok === false ? 'failed' : 'not reported',
+      parse_failure_stage: telemetry.failure_stage || null,
+      parse_exception: telemetry.exception || null,
+      fallback_mode: fallbackMode || null,
+      recommended_action: structured.recommended_action || null,
+      bundle_quality_gate: bundleQuality.quality_gate || null,
+      accepted_catalyst_events: bundleQuality.accepted_event_count ?? null,
+      missing_sources: missingSources,
+      structured_evidence_rows: evidenceRows.length,
+      evidence_summary_present: Boolean(String(evidenceText || '').trim()),
+    },
+    data_quality_notes: notes,
+    raw: {
+      catalyst_parse_telemetry: Object.keys(telemetry).length ? telemetry : null,
+      catalyst_event_bundle_quality: Object.keys(bundleQuality).length || missingSources.length
+        ? {
+            bundle_quality: bundleQuality,
+            source_quality: asObject(bundle.source_quality),
+          }
+        : null,
+      catalyst_event_report_structured: Object.keys(structured).length ? structured : null,
+      catalyst_evidence: String(evidenceText || '').trim() || null,
+    },
+  };
+};
+
 const formatMoney = (value) => {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return String(value);

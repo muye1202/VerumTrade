@@ -9,15 +9,20 @@ import {
   REPORT_GROUPS,
   isReportSectionExpanded,
 } from './analysisConfig';
-import { formatFinalDecisionReport } from './reportFormatting';
+import {
+  buildCatalystDiagnosticsData,
+  formatFinalDecisionReport,
+} from './reportFormatting';
 import {
   getRetrievedInfoTitle,
   getTranscriptMessagePresentation,
   groupTranscriptLogs,
 } from './transcriptDisplay';
 import EvidenceGraphPanel from './EvidenceGraphPanel';
+import DecisionTracePanel from './DecisionTracePanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
+import CatalystDiagnosticsPanel from './CatalystDiagnosticsPanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -303,6 +308,9 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
 
   const reportText = renderReportText(data) || '';
   const finalDecision = sectionKey === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
+  const catalystDiagnostics = sectionKey === 'catalyst_report'
+    ? buildCatalystDiagnosticsData(allReports)
+    : null;
 
   return (
     <div className="report-section expanded">
@@ -310,6 +318,8 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
       <div className="report-section-body markdown-content">
         {sectionKey === 'evidence_graph' ? (
           <EvidenceGraphPanel data={data} />
+        ) : sectionKey === 'decision_trace' ? (
+          <DecisionTracePanel trace={data} evidenceGraph={allReports?.evidence_graph} />
         ) : sectionKey === 'agent_reasoning_trace' ? (
           <TraderReasoningPanel data={data} />
         ) : sectionKey === 'trader_investment_plan' ? (
@@ -326,10 +336,17 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
             )}
           </>
         ) : (
-          <ReportMarkdown
-            markdown={finalDecision?.markdown || reportText}
-            hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
-          />
+          <>
+            <ReportMarkdown
+              markdown={finalDecision?.markdown || reportText}
+              hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+            />
+            {catalystDiagnostics && (
+              <div className="report-subpanel">
+                <CatalystDiagnosticsPanel data={catalystDiagnostics} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
