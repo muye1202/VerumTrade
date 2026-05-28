@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/bool_trader.svg" alt="OpenTrace" width="300">
+  <img src="assets/logo.svg" alt="OpenTrace" width="300">
 
   <p><em>An open-source multi-agent AI trading framework where each agentic analyst follows a structured reasoning graph, with visible reasoning traces and decision traces from evidence to final trade proposal.</em></p>
 
@@ -11,7 +11,7 @@
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
   </p>
 
-  <img src="demos/INTC_demo_preview.gif" alt="TradingAgents INTC demo preview" width="100%">
+  <img src="demos/INTC_demo_preview.gif" alt="OpenTrace INTC demo preview" width="100%">
 </div>
 
 ---
@@ -20,7 +20,7 @@
 |:--|:--|
 | [🚀 Quick Start — Web App](#-quick-start--web-app) | Launch the browser-based UI in minutes |
 | [💻 Quick Start — CLI](#-quick-start--cli) | Run analyses from the terminal |
-| [🐍 Python API](#-python-api-programmatic) | Use TradingAgents in your own scripts |
+| [🐍 Python API](#-python-api-programmatic) | Use OpenTrace in your own scripts |
 | [⚙️ Configuration](#%EF%B8%8F-configuration) | LLM providers, data vendors, and tuning knobs |
 | [🏗️ Architecture](#%EF%B8%8F-architecture) | How the autonomous agent teams collaborate |
 
@@ -41,8 +41,8 @@ The web interface is the easiest way to get started. It launches a **React + Vit
 ### Step 1 — Clone & install
 
 ```bash
-git clone https://github.com/TauricResearch/TradingAgents.git
-cd TradingAgents
+git clone https://github.com/muye1202/OpenTrace.git
+cd OpenTrace
 
 # Option A — pip (editable install)
 pip install -e .
@@ -242,7 +242,7 @@ TRADINGAGENTS_CONTEXT_BUDGET_MODE=adaptive
 
 ## 🏗️ Architecture
 
-TradingAgents is built on **LangGraph** — each agent is a node in a directed workflow graph. Here is the full pipeline:
+OpenTrace is built on **LangGraph** — each agent is a node in a directed workflow graph. Here is the full pipeline:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -388,7 +388,7 @@ Supports three tracks: **Enricher** (swing trade), **Anomaly Scan** (intraday/ne
 ## 📁 Project Structure
 
 ```
-TradingAgents/
+OpenTrace/
 ├── api/                            # FastAPI backend (REST API)
 │   ├── main.py                     # App entry, CORS, DB init
 │   ├── routes/                     # /api/analysis, /api/history, /api/discovery
@@ -460,7 +460,7 @@ This project is built upon the open-source [TradingAgents](https://github.com/ta
 
 ## ⚠️ Disclaimer
 
-TradingAgents is a **research and educational tool**. It is not financial advice. Always paper-trade first and understand the risks before using real money. The authors are not responsible for any financial losses incurred through the use of this software.
+OpenTrace is a **research and educational tool**. It is not financial advice. Always paper-trade first and understand the risks before using real money. The authors are not responsible for any financial losses incurred through the use of this software.
 
 ---
 

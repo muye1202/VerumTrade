@@ -1546,7 +1546,7 @@ function App() {
         <button className="brand" onClick={newChat}>
           <span className="brand-mark"><LogoIcon /></span>
           <span>
-            <strong>Boolean Trader</strong>
+            <strong>OpenTrace</strong>
             <small>Agentic stock analysis</small>
           </span>
         </button>
