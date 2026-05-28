@@ -1,37 +1,58 @@
-.venv
-results
-docs
-env/
+# ─── Python ─────────────────────────────────────────────────
 __pycache__/
-.DS_Store
-*.csv
-src/
-!frontend/src
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ─── Environment / Secrets ──────────────────────────────────
+.env
+
+# ─── Project Artifacts ──────────────────────────────────────
+results/
+docs/
+tests/
+scripts/
+data_cache/
+execution_logs/
+journal/
 eval_results/
 eval_data/
-*.egg-info/
-.env
-tests
+*.db
+
+# ─── Temp / scratch files ──────────────────────────────────
 tmp_*
-journal
-execution_logs/
-data_cache
+scratch/*
 verify_*
 check_*
 test_*
 *_test
-
-*.mp4
-scratch/*
-*.db
-scripts/
-
 *.test.*
 
-.claude
-.vscode
+# ─── Frontend ───────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
 
-scripts
+# ─── Data / media ──────────────────────────────────────────
+*.csv
+*.mp4
+*.log
 
-# Theme engine evidence cache
+# ─── Source (top-level src/ is not project code) ────────────
+src/
+!frontend/src
+
+# ─── OS & editors ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+
+# ─── Theme engine evidence cache ───────────────────────────
 data/themes/.evidence_cache/

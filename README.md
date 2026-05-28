@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="assets/bool_trader.svg" alt="Boolean — AIStockTrader" width="300">
+  <img src="assets/bool_trader.svg" alt="OpenTrace" width="300">
 
-  <!-- <h1>Boolean Trader</h1> -->
-  <p><em>A sophisticated multi-agentic AI framework where autonomous teams of LLM specialists research, debate, and execute stock trades with institutional-grade rigor.</em></p>
+  <p><em>An open-source multi-agent AI trading framework where each agentic analyst follows a structured reasoning graph, with visible reasoning traces and decision traces from evidence to final trade proposal.</em></p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-≥3.10-green.svg" alt="Python">
+    <img src="https://img.shields.io/badge/Node.js-≥18-green.svg" alt="Node.js">
     <img src="https://img.shields.io/badge/Framework-LangGraph-7c3aed.svg" alt="LangGraph">
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
   </p>
@@ -18,90 +18,99 @@
 
 | | |
 |:--|:--|
-| [🚀 Getting Started](#-getting-started) | Install, configure API keys, and run your first analysis |
-| [📖 User Guide](#-user-guide) | Everything you need to use TradingAgents day-to-day |
-| [🏗️ Architecture](#-architecture) | How the autonomous agent teams and execution layers collaborate |
+| [🚀 Quick Start — Web App](#-quick-start--web-app) | Launch the browser-based UI in minutes |
+| [💻 Quick Start — CLI](#-quick-start--cli) | Run analyses from the terminal |
+| [🐍 Python API](#-python-api-programmatic) | Use TradingAgents in your own scripts |
+| [⚙️ Configuration](#%EF%B8%8F-configuration) | LLM providers, data vendors, and tuning knobs |
+| [🏗️ Architecture](#%EF%B8%8F-architecture) | How the autonomous agent teams collaborate |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start — Web App
 
-### 📦 Install
+The web interface is the easiest way to get started. It launches a **React + Vite** frontend and a **FastAPI** backend.
 
-> [!NOTE]
-> Requires **Python 3.10 or newer**. An API key for at least one LLM provider is the only hard requirement to begin.
+### Prerequisites
+
+| Tool | Version | Check |
+|:--|:--|:--|
+| Python | ≥ 3.10 | `python --version` |
+| Node.js | ≥ 18 | `node --version` |
+| npm | ≥ 9 | `npm --version` |
+
+### Step 1 — Clone & install
 
 ```bash
-# Clone the repo
 git clone https://github.com/TauricResearch/TradingAgents.git
 cd TradingAgents
 
 # Option A — pip (editable install)
 pip install -e .
 
-# Option B — uv (faster)
+# Option B — uv (faster, if you have uv installed)
 uv sync
 ```
 
-Editable installs also provide the `tradingagents` console command for CLI workflows.
+### Step 2 — Configure API keys
 
-### 🔑 Set up your API keys
-
-Create a `.env` file in the repo root (it is git-ignored). Add whichever keys you need:
-
-```env
-# ─── LLM Providers (pick at least one) ───
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=anthropic-...
-GOOGLE_API_KEY=AIza...
-DEEPSEEK_API_KEY=sk-...
-DASHSCOPE_API_KEY=sk-...          # Qwen / DashScope
-ZHIPUAI_API_KEY=...               # GLM / ZhipuAI
-OPENROUTER_API_KEY=sk-or-...      # OpenRouter
-
-# ─── Market Data (optional — extends available data sources) ───
-ALPHA_VANTAGE_API_KEY=...
-TWELVE_DATA_API_KEY=...
-
-# ─── Alpaca Brokerage (optional — required for paper / live trading) ───
-APCA_API_KEY_ID=...
-APCA_API_SECRET_KEY=...
-APCA_API_BASE_URL=https://paper-api.alpaca.markets/v2
+```bash
+# Copy the template
+cp .env.example .env        # Linux / macOS
+copy .env.example .env       # Windows
 ```
 
+Open `.env` and paste in at least one LLM provider key (OpenAI, Anthropic, Google, DeepSeek, etc.). That's all you need — market data from Yahoo Finance works with no key at all.
+
 > [!TIP]
-> Yahoo Finance works out of the box with **no key at all**, so you can start analysing stocks right away even without a data-vendor key.
+> See [`.env.example`](.env.example) for every supported key and what it does.
+
+### Step 3 — Install frontend dependencies
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### Step 4 — Launch
+
+Open **two terminals** from the project root:
+
+**Terminal 1 — Backend (FastAPI)**
+```bash
+uvicorn api.main:app --reload
+```
+
+**Terminal 2 — Frontend (Vite)**
+```bash
+cd frontend
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+> [!NOTE]
+> Alternatively, you can use `python run.py` which starts both the backend and frontend in a single terminal. However, separate terminals give you better visibility into logs.
 
 ---
 
-## 📖 User Guide
+## 💻 Quick Start — CLI
 
-### 🖥️ Running the Web Interface (Quick Start)
+The interactive CLI walks you through every setting step by step — no config files to edit.
 
-The easiest way to use the application is via the modern web interface.
+### Prerequisites
+
+Same as above ([Python ≥ 3.10](#prerequisites)), plus the editable install:
 
 ```bash
-# Windows
-start.bat
-
-# Mac / Linux
-./start.sh
+pip install -e .
 ```
 
-*(After dependencies are installed, you can run `python run.py` directly).*
-
-This script automatically launches both the backend API and the frontend UI in a single terminal window. Once running, open your browser to [http://localhost:5173](http://localhost:5173) (or whichever port Vite provides).
-
-> [!NOTE]
-> **First-time setup:** If you haven't installed dependencies yet, run start.bat (Windows) or ./start.sh (Mac/Linux) first. These scripts will create the Python virtual environment, set up your .env file, and install all required Node.js and Python packages.
-
-### 💻 Running a single-stock analysis (CLI)
-
-The interactive CLI walks you through every choice step by step — this is the recommended way to start:
+### Single-stock analysis
 
 ```bash
 python -m cli.main analyze
-# or, after pip install -e .
+# or, after editable install:
 tradingagents analyze
 ```
 
@@ -109,27 +118,43 @@ You'll be prompted to pick:
 
 | Prompt | What it does |
 |:--|:--|
-| **Ticker** | The stock symbol to analyse (e.g. `NVDA`) |
-| **Date** | The analysis date in `YYYY-MM-DD` format |
-| **Analysts** | Which specialist agents to include — Market, Social, News, Fundamentals. Pick any combination |
-| **Research depth** | How many debate rounds the agents run: **Shallow** (fast) · **Medium** · **Deep** (most thorough) |
-| **LLM Provider** | Which AI backend to use: Google, Qwen, DeepSeek, GLM, OpenRouter, and more |
-| **Models** | One quick-thinking model (used by most agents) and one deep-thinking model (used by the judges) |
+| **Ticker** | Stock symbol(s) to analyse (e.g. `NVDA`, `AAPL`) |
+| **Date** | Analysis date in `YYYY-MM-DD` format |
+| **Analysts** | Which specialist agents to include — Market, Social, News, Fundamentals |
+| **Research depth** | How many debate rounds: **Shallow** (fast) · **Medium** · **Deep** (thorough) |
+| **LLM Provider** | Which AI backend: OpenAI, Google, Anthropic, DeepSeek, Qwen, GLM, OpenRouter, Ollama |
+| **Models** | Quick-thinking model (analysts) and deep-thinking model (judges) |
 | **Execution** | Analysis only, or also place a paper trade via Alpaca |
 
-A live terminal dashboard streams agent progress, tool calls, and the growing report in real time. All outputs are saved automatically to `results/stocks/{date}/{ticker}/` when the run finishes.
+A live terminal dashboard streams agent progress, tool calls, and the growing report in real time. Results are saved to `results/stocks/{date}/{ticker}/`.
 
-### 📊 Running a portfolio analysis
+### Portfolio analysis
 
 ```bash
 python -m cli.main analyze-portfolio
+# or
+tradingagents analyze-portfolio
 ```
 
-This mode pulls your current Alpaca positions, runs a **triage step** to decide which stocks most need attention right now, then performs full multi-agent analysis on the ones that matter. Stocks that are skipped get a lightweight "HOLD" entry. You can optionally let the system execute trades on your behalf (paper trading by default).
+Pulls your Alpaca positions, runs a **triage step** to identify which stocks most need attention, then performs full multi-agent analysis on those. Remaining stocks get a lightweight "HOLD" entry.
 
-### 🐍 Running from Python (programmatic)
+### Stock discovery
 
-For scripting or integration, skip the CLI entirely:
+The CLI also supports **AI-powered stock discovery** — the system screens for promising stocks using multi-factor scoring, then runs deep analysis on the top candidates.
+
+### Journal
+
+```bash
+tradingagents journal
+```
+
+Track trade outcomes and build agent memory. See [`journal_cli/README.md`](journal_cli/README.md) for details.
+
+---
+
+## 🐍 Python API (programmatic)
+
+For scripting or integration, skip the UI entirely:
 
 ```python
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -139,9 +164,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"]      = "openai"
-config["deep_think_llm"]    = "gpt-4o-mini"
-config["quick_think_llm"]   = "gpt-4o-mini"
+config["llm_provider"]      = "google"          # or "openai", "anthropic", "deepseek", etc.
+config["deep_think_llm"]    = "gemini-2.5-flash"
+config["quick_think_llm"]   = "gemini-2.0-flash"
 
 ta = TradingAgentsGraph(config=config)
 
@@ -150,28 +175,24 @@ state, decision = ta.propagate("NVDA", "2024-05-10")
 print(decision)
 ```
 
-### ⚙️ Configuration cheat-sheet
+---
 
-All defaults live in `tradingagents/default_config.py`. Here are the knobs people change most often:
+## ⚙️ Configuration
+
+All defaults live in [`tradingagents/default_config.py`](tradingagents/default_config.py). Here are the knobs you'll use most:
+
+### LLM settings
 
 | Key | What it controls | Example values |
 |:--|:--|:--|
-| `llm_provider` | Which LLM backend to use | `openai` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` |
-| `deep_think_llm` / `quick_think_llm` | Model names for judges vs. analysts | `"o4-mini"` · `"gpt-4o-mini"` |
-| `max_debate_rounds` | How many Bull ↔ Bear rounds | `1` (fast) … `5` (thorough) |
-| `data_vendors` | Where market data comes from | See table below |
-| `alpaca_execution.enabled` | Turn trading on / off | `true` / `false` |
-| `alpaca_execution.paper_trading` | Paper vs. live | `true` (safe default) |
+| `llm_provider` | Which LLM backend to use | `openai` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` · `ollama` |
+| `deep_think_llm` | Model for judges & managers | `"o4-mini"` · `"gemini-2.5-flash"` · `"claude-sonnet-4-20250514"` |
+| `quick_think_llm` | Model for analysts & researchers | `"gpt-4o-mini"` · `"gemini-2.0-flash"` |
+| `max_debate_rounds` | Bull ↔ Bear debate rounds | `1` (fast) … `5` (thorough) |
 
-**Content limit mode**
+### Data vendor options
 
-- `TRADINGAGENTS_CONTEXT_BUDGET_MODE=off` disables all content-length limiting globally (both prompt truncation and tool-output compaction).
-- Other modes:
-  - `adaptive` (default): cap prompt sections and apply a soft token budget.
-  - `compact`: stronger compression for tighter context windows.
-- Warning: `off` can reintroduce provider 400 errors when request context exceeds model limits.
-
-**Data vendor options** — configured per category:
+Configured per category in the `data_vendors` dict:
 
 | Category | Available sources |
 |:--|:--|
@@ -181,12 +202,18 @@ All defaults live in `tradingagents/default_config.py`. Here are the knobs peopl
 | `news_data` | `alpha_vantage` · `openai` · `google` · `local` |
 
 > [!TIP]
-> If a vendor is unavailable at runtime the system automatically falls back to the next option in the list — nothing crashes.
-> Twelve Data free tier currently allows 800 credits/day and 8 requests/minute; fallback helps keep analysis resilient when limits are hit.
+> If a vendor is unavailable at runtime the system automatically falls back to the next option — nothing crashes.
 
-### 📈 Supported order types
+### Trade execution
 
-When execution is enabled, the agents can recommend any of these:
+| Key | What it controls | Default |
+|:--|:--|:--|
+| `alpaca_execution.enabled` | Turn trading on / off | `false` |
+| `alpaca_execution.paper_trading` | Paper vs. live | `true` |
+| `alpaca_execution.position_size_pct` | Default position size | `0.10` (10%) |
+| `alpaca_execution.max_concentration_pct` | Max single-stock concentration | `0.20` (20%) |
+
+### Supported order types
 
 | Order type | Description |
 |:--|:--|
@@ -196,88 +223,117 @@ When execution is enabled, the agents can recommend any of these:
 | `STOP_LIMIT` | Triggers a limit order once the stock hits a stop price |
 | `TRAILING_STOP` | Stop that moves with the stock price, locking in gains |
 
+### Context budget mode
+
+Controls how prompts are compressed to fit within model context windows:
+
+| Mode | Behaviour |
+|:--|:--|
+| `adaptive` (default) | Cap prompt sections and apply a soft token budget |
+| `compact` | Stronger compression for tighter context windows |
+| `off` | No limiting — ⚠️ may cause 400 errors on models with strict limits |
+
+Set via `.env`:
+```env
+TRADINGAGENTS_CONTEXT_BUDGET_MODE=adaptive
+```
+
 ---
 
 ## 🏗️ Architecture
 
-TradingAgents is built on **LangGraph** — each agent is a node in a directed workflow graph, and the edges between them define the order of operations. Here is the full pipeline:
+TradingAgents is built on **LangGraph** — each agent is a node in a directed workflow graph. Here is the full pipeline:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       📊 Market Data Layer                          │
-│   Alpaca  ·  Yahoo Finance  ·  Alpha Vantage  ·  Google  ·  Local   │
-│                  (automatic fallback between sources)               │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                │  price · news · fundamentals · sentiment
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    🔍 I. Analyst Team                              │
-│                                                                     │
-│   ┌────────────┐  ┌────────────┐  ┌──────────┐  ┌───────────────┐   │
-│   │  Market    │→ │  Social    │→ │  News    │→ │ Fundamentals  │   │
-│   │  Analyst   │  │  Analyst   │  │  Analyst │  │   Analyst     │   │
-│   └────────────┘  └────────────┘  └──────────┘  └───────────────┘   │
-│        Each specialist agent calls data tools in a loop, then       │
-│        writes a focused report. Uses the quick-thinking LLM.        │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                │  four analyst reports
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                 💬 II. Research Team Decision                      │
-│                                                                     │
-│          ┌──────────────┐  ◄──►  ┌──────────────┐                   │
-│          │ Bull         │        │ Bear         │                   │
-│          │ Researcher   │        │ Researcher   │                   │
-│          └──────┬───────┘        └──────┬───────┘                   │
-│                 │                       │                           │
-│                 ▼───────────────────────▼                           │
-│          ┌────────────────────────────────┐                         │
-│          │      Research Manager          │  ← deep-thinking LLM    │
-│          │  Judges the debate, writes     │                         │
-│          │  the investment decision       │                         │
-│          └────────────────┬───────────────┘                         │
-└───────────────────────────┼─────────────────────────────────────────┘
-                            │  investment decision
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     📝 III. Trading Team Plan                       │
-│                                                                     │
-│          ┌────────────────────────────────┐                         │
-│          │            Trader              │                         │
-│          │  Synthesizes research into a   │                         │
-│          │  concrete investment plan with │                         │
-│          │  order type & quantity details │                         │
-│          └────────────────┬───────────────┘                         │
-└───────────────────────────┼─────────────────────────────────────────┘
-                            │  proposed plan
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│               ⚖️  IV. Risk Management Team Decision                 │
-│                                                                     │
-│     ┌───────────┐   ┌─────────┐   ┌───────────┐                     │
-│     │  Risky    │◄──│ Neutral │──►│  Safe     │                     │
-│     │  Analyst  │   │ Analyst │   │  Analyst  │                     │
-│     └───────────┘   └─────────┘   └───────────┘                     │
-│                         │                                           │
-│                         ▼                                           │
-│          ┌────────────────────────────────┐                         │
-│          │       Portfolio Manager        │  ← deep-thinking LLM    │
-│          │  Final risk-aware decision     │                         │
-│          │  with position-sizing & limits │                         │
-│          └────────────────┬───────────────┘                         │
-└───────────────────────────┼─────────────────────────────────────────┘
-                            │  final structured decision
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                  💰 V. Execution Layer                             │
-│                                                                     │
-│          ┌────────────────────────────────┐                         │
-│          │       Alpaca Executor          │                         │
-│          │  Places paper or live orders   │                         │
-│          │  Enforces concentration caps   │                         │
-│          │  and position-size guardrails  │                         │
-│          └────────────────────────────────┘                         │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          📊 Market Data Layer                            │
+│  Alpaca · Yahoo Finance · Alpha Vantage · Twelve Data · Finnhub · Local  │
+│                   (automatic fallback between sources)                   │
+│                                                                          │
+│  Tools: stock data · indicators · VWAP · options flow · dark pool ·      │
+│         short interest · news · SEC filings · insider transactions        │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │  price · news · fundamentals · sentiment
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       🔍 I. Analyst Team                                 │
+│                                                                          │
+│  ┌───────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  ┌────────────┐  │
+│  │ Catalyst  │→ │  Market  │→ │  Social  │→ │  News  │→ │Fundamentals│  │
+│  │  Event    │  │  Analyst │  │  Analyst │  │ Analyst│  │  Analyst   │  │
+│  │  Analyst  │  │          │  │          │  │        │  │            │  │
+│  └───────────┘  └──────────┘  └──────────┘  └────────┘  └────────────┘  │
+│       Each specialist calls data tools in a loop, then writes            │
+│       a focused report. Uses the quick-thinking LLM.                     │
+│       (Any combination of analysts can be selected.)                     │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │  analyst reports
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   🔗 Evidence Graph Synthesis                             │
+│       Extracts key facts from all analyst reports and builds             │
+│       a structured evidence graph for downstream agents.                 │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │  evidence graph + reports
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    💬 II. Research Team Decision                          │
+│                                                                          │
+│           ┌──────────────┐  ◄──►  ┌──────────────┐                       │
+│           │    Bull      │        │    Bear      │                       │
+│           │  Researcher  │        │  Researcher  │                       │
+│           └──────┬───────┘        └──────┬───────┘                       │
+│                  │   (multi-round debate) │                              │
+│                  ▼───────────────────────▼                               │
+│           ┌────────────────────────────────┐                             │
+│           │      Research Manager          │  ← deep-thinking LLM        │
+│           │  Judges the debate, writes     │                             │
+│           │  the investment decision       │                             │
+│           └────────────────┬───────────────┘                             │
+└────────────────────────────┼────────────────────────────────────────────┘
+                             │  investment decision
+                             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                      📝 III. Trading Team Plan                           │
+│                                                                          │
+│           ┌────────────────────────────────┐                             │
+│           │            Trader              │                             │
+│           │  Synthesizes research into a   │                             │
+│           │  concrete investment plan with │                             │
+│           │  order type & quantity details │                             │
+│           └────────────────┬───────────────┘                             │
+└────────────────────────────┼────────────────────────────────────────────┘
+                             │  proposed plan
+                             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                ⚖️  IV. Risk Management Team Decision                      │
+│                                                                          │
+│      ┌───────────┐   ┌─────────┐   ┌───────────┐                        │
+│      │Aggressive │──►│ Neutral │◄──│Conservative│                       │
+│      │  Analyst  │   │ Analyst │   │  Analyst   │                       │
+│      └─────┬─────┘   └────┬────┘   └─────┬─────┘                        │
+│            └──── (multi-round cycle) ─────┘                              │
+│                        │                                                 │
+│                        ▼                                                 │
+│           ┌────────────────────────────────┐                             │
+│           │         Risk Judge             │  ← deep-thinking LLM        │
+│           │  Final risk-aware decision     │                             │
+│           │  with position-sizing & limits │                             │
+│           └────────────────┬───────────────┘                             │
+└────────────────────────────┼────────────────────────────────────────────┘
+                             │  final structured decision
+                             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       💰 V. Execution Layer                              │
+│                                                                          │
+│           ┌────────────────────────────────┐                             │
+│           │       Alpaca Executor          │                             │
+│           │  Places paper or live orders   │                             │
+│           │  Enforces concentration caps   │                             │
+│           │  and position-size guardrails  │                             │
+│           │  Decision guard validation     │                             │
+│           └────────────────────────────────┘                             │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 🧠 Two tiers of LLM
@@ -286,14 +342,27 @@ Every agent in the system uses one of two model slots:
 
 | Tier | Used by | Why |
 |:--|:--|:--|
-| **Quick-thinking** | Market / Social / News / Fundamentals Analysts, Bull & Bear Researchers, Trader, Risk Debaters | Speed and cost — these agents run many times and don't need heavy reasoning |
+| **Quick-thinking** | Catalyst / Market / Social / News / Fundamentals Analysts, Bull & Bear Researchers, Trader, Risk Debaters | Speed and cost — these agents run many times and don't need heavy reasoning |
 | **Deep-thinking** | Research Manager, Risk Judge, Portfolio Triage Agent | These are the key decision points where accuracy matters most; a stronger model pays off here |
 
 You set both in one place (`deep_think_llm` and `quick_think_llm`) and the system routes them automatically.
 
 ### 🗄️ Data layer
 
-All market-data tool calls go through a single routing layer (`dataflows/interface.py`). You pick a preferred vendor per category in your config; if that vendor is unavailable the system silently tries the next one. Supported sources include Alpaca, Yahoo Finance, Alpha Vantage, Google News, and local cached files.
+All market-data tool calls go through a single routing layer ([`dataflows/interface.py`](tradingagents/dataflows/interface.py)). You pick a preferred vendor per category in your config; if that vendor is unavailable the system silently tries the next one.
+
+Each analyst has access to a curated set of data tools:
+
+| Analyst | Key tools |
+|:--|:--|
+| **Catalyst Event** | Catalyst event bundle, company news window, SEC filings, insider transactions, price action |
+| **Market** | Stock data, indicators, VWAP, options flow, dark pool volume, short interest |
+| **Social** | News, company news window, news sentiment |
+| **News** | News, company news window, global news, news sentiment, SEC filings |
+| **Fundamentals** | Fundamentals, balance sheet, cash flow, income statement, insider sentiment & transactions |
+
+> [!TIP]
+> When `enable_bundle_tools` is on (default), each analyst also gets a one-shot "bundle" tool that fetches all key data in a single call, reducing LLM turns and latency.
 
 ### 💾 Memory and learning
 
@@ -301,4 +370,100 @@ Each agent team has its own **vector-store memory** (backed by ChromaDB). After 
 
 ### 📁 Portfolio mode extras
 
-When you run portfolio analysis, an additional **Triage Agent** runs first. It scans all your positions and picks the ones that need the most attention right now — based on breaking news, unusual price moves, concentration risk, and more. Only those stocks go through the full multi-agent pipeline; everything else gets a quick "HOLD" recommendation. This keeps costs and run-time in check even with large portfolios.
+When you run portfolio analysis, an additional **Triage Agent** runs first. It scans all your positions and picks the ones that need the most attention right now — based on breaking news, unusual price moves, concentration risk, and more. Only those stocks go through the full multi-agent pipeline; everything else gets a quick "HOLD" recommendation.
+
+### 🔎 Stock Discovery mode
+
+The discovery pipeline runs independently of the main analysis graph:
+
+1. **Stage 0 — Catalyst prefilter**: Screens for upcoming earnings, FDA events, and macro catalysts
+2. **Stage 1 — Multi-factor enrichment**: Technical momentum metrics, relative strength, volume analysis across the screening universe
+3. **Stage 2 — Candidate scoring**: Composite ranking with configurable relaxation rules
+4. **Deep analysis**: Top candidates are fed into the full TradingAgentsGraph for multi-agent analysis
+
+Supports three tracks: **Enricher** (swing trade), **Anomaly Scan** (intraday/next-day), and **Dual-Track** (merged).
+
+---
+
+## 📁 Project Structure
+
+```
+TradingAgents/
+├── api/                            # FastAPI backend (REST API)
+│   ├── main.py                     # App entry, CORS, DB init
+│   ├── routes/                     # /api/analysis, /api/history, /api/discovery
+│   ├── schemas.py                  # Request / response Pydantic models
+│   └── database.py                 # SQLAlchemy engine + migrations
+├── cli/                            # Interactive terminal interface (Typer + Rich)
+│   ├── main.py                     # CLI entry point & live dashboard
+│   ├── analysis_utils.py           # Single-stock analysis workflow
+│   ├── portfolio_analysis_utils.py # Portfolio analysis workflow
+│   ├── discovery_utils.py          # Stock discovery workflow
+│   └── journal_cli.py             # Trade journal subcommands
+├── frontend/                       # React + Vite web interface
+│   └── src/
+│       ├── App.jsx                 # Main application component
+│       ├── index.css               # Styles
+│       ├── providerConfig.js       # LLM provider definitions
+│       ├── analysisConfig.js       # Analysis config UI
+│       └── *Panel.jsx              # Specialized UI panels (evidence graph, etc.)
+├── tradingagents/                  # Core framework
+│   ├── agents/
+│   │   ├── analysts/               # Market, Social, News, Fundamentals, Catalyst Event
+│   │   ├── researchers/            # Bull & Bear researchers
+│   │   ├── trader/                 # Trader agent + decision brief generator
+│   │   ├── risk_mgmt/              # Aggressive, Conservative, Neutral risk debaters
+│   │   ├── managers/               # Research Manager & Risk Manager (judges)
+│   │   ├── portfolio/              # Triage agent for portfolio mode
+│   │   ├── discovery/              # Stock discovery intelligence pipeline
+│   │   │   ├── intelligence/       # Prefilters, scoring, anomaly scans, feature matrix
+│   │   │   └── theme_engine/       # Macro theme scanner & exposure scoring
+│   │   ├── journal/                # Trade journal: ingestion, evaluation, learning
+│   │   └── utils/
+│   │       ├── agent_runtime/      # States, evidence graph, context budget, tool cache
+│   │       ├── market_data/        # VWAP, options flow, dark pool, short interest tools
+│   │       ├── memory/             # ChromaDB-backed vector-store memory
+│   │       └── llm/                # LLM concurrency control & metrics
+│   ├── dataflows/
+│   │   ├── interface.py            # Unified data routing (vendor fallback)
+│   │   └── vendors/                # Alpaca, Yahoo, Alpha Vantage, Twelve Data, Finnhub, SEC, etc.
+│   ├── execution/
+│   │   ├── alpaca_executor.py      # Paper & live order execution with guardrails
+│   │   ├── decision_guard.py       # Pre-execution validation & market snapshot
+│   │   └── portfolio_context.py    # Fetch current positions & account state
+│   ├── graph/
+│   │   ├── trading_graph.py        # Main LangGraph workflow orchestrator
+│   │   ├── setup.py                # Graph node wiring & edge definitions
+│   │   ├── stock_discovery.py      # Discovery pipeline graph
+│   │   ├── batch_analysis.py       # Multi-ticker batch analysis
+│   │   ├── portfolio_analyzer.py   # Portfolio-mode orchestrator
+│   │   ├── provider_settings.py    # Per-provider API key & URL resolution
+│   │   ├── signal_processing.py    # Decision extraction & structured output
+│   │   └── reasoning_trace.py      # Agent reasoning trace builder
+│   ├── schemas/                    # Catalyst event models
+│   └── default_config.py           # All configuration defaults
+├── journal_cli/                    # Journal daemon scripts & import tools
+├── data/themes/                    # Theme engine taxonomy & evidence cache
+├── .env.example                    # Template for environment variables
+├── pyproject.toml                  # Python package metadata & dependencies
+├── run.py                          # Launch backend + frontend together
+└── README.md
+```
+
+---
+
+## 🤝 Credits & Acknowledgments
+
+This project is built upon the open-source [TradingAgents](https://github.com/tauricresearch/tradingagents) framework developed by Tauric Research. We are grateful to the original authors for their pioneering work on multi-agent LLM systems for financial analysis and trading.
+
+---
+
+## ⚠️ Disclaimer
+
+TradingAgents is a **research and educational tool**. It is not financial advice. Always paper-trade first and understand the risks before using real money. The authors are not responsible for any financial losses incurred through the use of this software.
+
+---
+
+## 📄 License
+
+[Apache License 2.0](LICENSE) — see the [LICENSE](LICENSE) file for details.
