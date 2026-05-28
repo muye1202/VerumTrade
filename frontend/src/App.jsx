@@ -9,13 +9,17 @@ import {
   REPORT_GROUPS,
   isReportSectionExpanded,
 } from './analysisConfig';
-import { formatFinalDecisionReport } from './reportFormatting';
+import {
+  buildCatalystDiagnosticsData,
+  formatFinalDecisionReport,
+} from './reportFormatting';
 import {
   getRetrievedInfoTitle,
   getTranscriptMessagePresentation,
   groupTranscriptLogs,
 } from './transcriptDisplay';
 import EvidenceGraphPanel from './EvidenceGraphPanel';
+import DecisionTracePanel from './DecisionTracePanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
 import {
@@ -53,7 +57,7 @@ const CATALYST_MODES = [
 ];
 
 const SCAN_MODES = [
-  { value: 'seed_only',     label: 'Seed Only',     detail: 'Instant, no network' },
+  { value: 'seed_only', label: 'Seed Only', detail: 'Instant, no network' },
   { value: 'with_evidence', label: 'With Evidence', detail: 'Live headlines' },
 ];
 
@@ -73,21 +77,21 @@ const getHorizonMeta = (value) => (
 );
 
 const MODES = [
-  { 
-    id: 'analysis', 
-    label: 'Analysis', 
+  {
+    id: 'analysis',
+    label: 'Analysis',
     description: 'Run the agent pipeline',
     icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
   },
-  { 
-    id: 'reports', 
-    label: 'Reports', 
+  {
+    id: 'reports',
+    label: 'Reports',
     description: 'Read generated findings',
     icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
   },
-  { 
-    id: 'execution', 
-    label: 'Execution', 
+  {
+    id: 'execution',
+    label: 'Execution',
     description: 'Paper-trade controls',
     icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
   },
@@ -186,8 +190,8 @@ const ToolGroupMessage = ({ tools }) => {
   return (
     <div className="tool-group-row">
       <button className="tool-group-chip" onClick={() => setExpanded(e => !e)}>
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style={{flexShrink:0}}>
-          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0014.4 3h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 9.47c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style={{ flexShrink: 0 }}>
+          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0014.4 3h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 9.47c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
         </svg>
         <span className="tg-count">{tools.length} tool call{tools.length > 1 ? 's' : ''}</span>
         <span className="tg-names">{preview}</span>
@@ -214,8 +218,8 @@ const RetrievedInfoGroupMessage = ({ items }) => {
   return (
     <div className="retrieved-info-row">
       <button className="retrieved-info-chip" onClick={() => setExpanded(e => !e)}>
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style={{flexShrink:0}}>
-          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style={{ flexShrink: 0 }}>
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z" />
         </svg>
         <span className="ri-count">{items.length} retrieved info item{items.length > 1 ? 's' : ''}</span>
         <span className="ri-preview">{preview}</span>
@@ -283,9 +287,9 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
       <span className="report-section-label">{label}</span>
       <span className="report-section-chevron">
         {isExpanded ? (
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" /></svg>
         ) : (
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" /></svg>
         )}
       </span>
     </button>
@@ -301,6 +305,9 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
 
   const reportText = renderReportText(data) || '';
   const finalDecision = sectionKey === 'final_trade_decision' ? formatFinalDecisionReport(reportText) : null;
+  const catalystDiagnostics = sectionKey === 'catalyst_report'
+    ? buildCatalystDiagnosticsData(allReports)
+    : null;
 
   return (
     <div className="report-section expanded">
@@ -308,6 +315,8 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
       <div className="report-section-body markdown-content">
         {sectionKey === 'evidence_graph' ? (
           <EvidenceGraphPanel data={data} />
+        ) : sectionKey === 'decision_trace' ? (
+          <DecisionTracePanel trace={data} evidenceGraph={allReports?.evidence_graph} />
         ) : sectionKey === 'agent_reasoning_trace' ? (
           <TraderReasoningPanel data={data} />
         ) : sectionKey === 'trader_investment_plan' ? (
@@ -324,10 +333,17 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
             )}
           </>
         ) : (
-          <ReportMarkdown
-            markdown={finalDecision?.markdown || reportText}
-            hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
-          />
+          <>
+            <ReportMarkdown
+              markdown={finalDecision?.markdown || reportText}
+              hiddenDecisionJson={finalDecision?.hiddenDecisionJson}
+            />
+            {catalystDiagnostics && (
+              <div className="report-subpanel">
+                <CatalystDiagnosticsPanel data={catalystDiagnostics} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -352,7 +368,7 @@ const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
 
   return (
     <div className={`gemini-custom-select ${disabled ? 'disabled' : ''}`} ref={containerRef}>
-      <button 
+      <button
         className={`gemini-select-trigger ${isOpen ? 'active' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         type="button"
@@ -360,7 +376,7 @@ const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
         {icon && <span className="select-icon">{icon}</span>}
         <span className="select-label">{title || selectedOption.label}</span>
         <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="chevron">
-          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {isOpen && !disabled && (
@@ -381,7 +397,7 @@ const CustomSelect = ({ value, onChange, options, disabled, icon, title }) => {
               </div>
               {value === opt.value && (
                 <svg className="check-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                 </svg>
               )}
             </button>
@@ -421,14 +437,14 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
     const month = viewDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const days = [];
     for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} className="cal-empty" />);
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const isSelected = value === dateStr;
       const isToday = new Date().toISOString().split('T')[0] === dateStr;
-      
+
       days.push(
         <button
           key={d}
@@ -442,7 +458,7 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
     }
     return (
       <div className="cal-grid">
-        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="cal-header-day">{d}</div>)}
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d} className="cal-header-day">{d}</div>)}
         {days}
       </div>
     );
@@ -450,7 +466,7 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
 
   return (
     <div className={`gemini-custom-select ${disabled ? 'disabled' : ''}`} ref={containerRef}>
-      <button 
+      <button
         className={`gemini-select-trigger ${isOpen ? 'active' : ''}`}
         onClick={() => {
           if (disabled) return;
@@ -460,8 +476,8 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
         type="button"
       >
         <span className="select-icon">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{marginRight: 6}}>
-            <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ marginRight: 6 }}>
+            <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z" />
           </svg>
         </span>
         <span className="select-label">{displayDate}</span>
@@ -470,11 +486,11 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
         <div className="gemini-dropdown-menu calendar-menu">
           <div className="cal-header">
             <button type="button" className="cal-nav" onClick={() => changeMonth(-1)}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z" /></svg>
             </button>
             <strong>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(viewDate)}</strong>
             <button type="button" className="cal-nav" onClick={() => changeMonth(1)}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" /></svg>
             </button>
           </div>
           {renderCalendar()}
@@ -486,9 +502,9 @@ const CustomDatePicker = ({ value, onChange, disabled }) => {
 
 const LogoIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -537,7 +553,7 @@ function App() {
     const saved = localStorage.getItem('providerEndpoints');
     return normalizeProviderEndpoints(saved ? JSON.parse(saved) : createDefaultProviderEndpoints());
   });
-  
+
   const [activeProviders, setActiveProviders] = useState(() => {
     const saved = localStorage.getItem('activeProviders');
     return saved ? JSON.parse(saved) : { openai: true, anthropic: true, 'qwen3-cn': true, deepseek: true, glm: true, openrouter: true };
@@ -578,16 +594,16 @@ function App() {
 
   const allShallowModels = [...SHALLOW_MODELS];
   const allDeepModels = [...DEEP_MODELS];
-  
+
   Object.entries(customModels).forEach(([providerId, models]) => {
     if (!Array.isArray(models)) return;
     models.forEach(entry => {
       // Support legacy plain-string entries and new {name, scope} objects
       const modelName = typeof entry === 'string' ? entry : entry.name;
-      const scope     = typeof entry === 'string' ? 'both' : (entry.scope || 'both');
+      const scope = typeof entry === 'string' ? 'both' : (entry.scope || 'both');
       const item = { value: `${providerId}|${modelName}`, label: modelName, detail: 'Custom' };
-      if (scope !== 'deep'    && !allShallowModels.some(m => m.value === item.value)) allShallowModels.push(item);
-      if (scope !== 'shallow' && !allDeepModels.some(m => m.value === item.value))    allDeepModels.push(item);
+      if (scope !== 'deep' && !allShallowModels.some(m => m.value === item.value)) allShallowModels.push(item);
+      if (scope !== 'shallow' && !allDeepModels.some(m => m.value === item.value)) allDeepModels.push(item);
     });
   });
 
@@ -686,7 +702,7 @@ function App() {
   const createPayload = (overrides = {}) => {
     const deepVal = overrides.deepThinker ?? selectedDeepThinker;
     const shallowVal = overrides.shallowThinker ?? selectedShallowThinker;
-    
+
     const [deepProvider, deepModel] = deepVal.split('|');
     const [shallowProvider, shallowModel] = shallowVal.split('|');
 
@@ -765,8 +781,8 @@ function App() {
               const rawType = (update.type || 'agent').toLowerCase();
               const frontendType = rawType === 'user' ? 'user'
                 : rawType === 'system' ? 'system'
-                : rawType === 'toolresult' ? 'tool_output'
-                : 'agent';
+                  : rawType === 'toolresult' ? 'tool_output'
+                    : 'agent';
               setLogs((prev) => [
                 ...prev,
                 makeLog(frontendType, update.content),
@@ -813,7 +829,7 @@ function App() {
   const createDiscoveryPayload = (overrides = {}) => {
     const deepVal = overrides.deepThinker ?? selectedDeepThinker;
     const shallowVal = overrides.shallowThinker ?? selectedShallowThinker;
-    
+
     const [deepProvider, deepModel] = deepVal.split('|');
     const [, shallowModel] = shallowVal.split('|');
 
@@ -857,7 +873,7 @@ function App() {
     setActiveMode('analysis');
     setActiveSessionType('discovery');
     setErrorMessage('');
-    
+
     const trackLabel = DISCOVERY_TRACKS.find(t => t.value === payload.discovery_track)?.label || 'Discovery';
     setLogs([makeLog('user', `Start ${trackLabel} discovery pipeline for ${payload.analysis_date}.`)]);
     setReports({});
@@ -885,8 +901,8 @@ function App() {
               const rawType = (update.type || 'agent').toLowerCase();
               const frontendType = rawType === 'user' ? 'user'
                 : rawType === 'system' ? 'system'
-                : rawType === 'toolresult' ? 'tool_output'
-                : 'agent';
+                  : rawType === 'toolresult' ? 'tool_output'
+                    : 'agent';
               setLogs((prev) => [
                 ...prev,
                 makeLog(frontendType, update.content),
@@ -998,8 +1014,8 @@ function App() {
             const rawType = (log.type || 'agent').toLowerCase();
             const frontendType = rawType === 'user' ? 'user'
               : rawType === 'system' ? 'system'
-              : rawType === 'toolresult' ? 'tool_output'
-              : 'agent';
+                : rawType === 'toolresult' ? 'tool_output'
+                  : 'agent';
             return { id, type: frontendType, content: log.content || '' };
           }
           // Fallback for any logs already in frontend format (type but no event)
@@ -1028,12 +1044,12 @@ function App() {
           >
             {isRunning ? (
               <>
-                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M6 6h12v12H6z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M6 6h12v12H6z" /></svg>
                 Stop Discovery
               </>
             ) : (
               <>
-                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
                 Start AI Discovery
               </>
             )}
@@ -1068,11 +1084,11 @@ function App() {
             />
             {isRunning ? (
               <button className="submit-circle danger" onClick={handleStop}>
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z" /></svg>
               </button>
             ) : (
               <button className="submit-circle primary" onClick={() => startAnalysis()} disabled={!ticker.trim()}>
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
               </button>
             )}
           </div>
@@ -1087,7 +1103,7 @@ function App() {
         <div className="config-strip">
           <div className="config-card">
             <div className="config-card-icon horizon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" /></svg>
             </div>
             <div className="config-card-body">
               <span className="config-label">Track</span>
@@ -1102,7 +1118,7 @@ function App() {
 
           <div className="config-card">
             <div className="config-card-icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>
             </div>
             <div className="config-card-body">
               <span className="config-label">Catalyst Filter</span>
@@ -1117,7 +1133,7 @@ function App() {
 
           <div className="config-card">
             <div className="config-card-icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.5 2C6.81 2 3 5.81 3 10.5S6.81 19 11.5 19h.5v3c4.86-2.34 8-7 8-11.5C20 5.81 16.19 2 11.5 2zm1 14.5h-2v-2h2v2zm0-4h-2c0-3.25 3-3 3-5 0-1.1-.9-2-2-2s-2 .9-2 2h-2c0-2.21 1.79-4 4-4s4 1.79 4 4c0 2.5-3 2.75-3 5z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.5 2C6.81 2 3 5.81 3 10.5S6.81 19 11.5 19h.5v3c4.86-2.34 8-7 8-11.5C20 5.81 16.19 2 11.5 2zm1 14.5h-2v-2h2v2zm0-4h-2c0-3.25 3-3 3-5 0-1.1-.9-2-2-2s-2 .9-2 2h-2c0-2.21 1.79-4 4-4s4 1.79 4 4c0 2.5-3 2.75-3 5z" /></svg>
             </div>
             <div className="config-card-body">
               <span className="config-label">Scan Mode</span>
@@ -1132,7 +1148,7 @@ function App() {
 
           <div className="config-card">
             <div className="config-card-icon date">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z" /></svg>
             </div>
             <div className="config-card-body">
               <span className="config-label">Date</span>
@@ -1146,7 +1162,7 @@ function App() {
 
           <div className="config-card">
             <div className="config-card-icon deep">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z" /></svg>
             </div>
             <div className="config-card-body">
               <span className="config-label">Deep Thinker</span>
@@ -1167,7 +1183,7 @@ function App() {
       <div className="config-strip">
         <div className="config-card">
           <div className="config-card-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.05.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.05.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z" /></svg>
           </div>
           <div className="config-card-body">
             <span className="config-label">Shallow Thinker</span>
@@ -1183,7 +1199,7 @@ function App() {
 
         <div className="config-card">
           <div className="config-card-icon deep">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z" /></svg>
           </div>
           <div className="config-card-body">
             <span className="config-label">Deep Thinker</span>
@@ -1199,7 +1215,7 @@ function App() {
 
         <div className="config-card">
           <div className="config-card-icon date">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z" /></svg>
           </div>
           <div className="config-card-body">
             <span className="config-label">Analysis Date</span>
@@ -1213,7 +1229,7 @@ function App() {
 
         <div className="config-card">
           <div className="config-card-icon horizon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" /></svg>
           </div>
           <div className="config-card-body">
             <span className="config-label">Time Horizon</span>
@@ -1318,9 +1334,9 @@ function App() {
     }));
 
     const SCOPE_META = {
-      both:    { label: 'Both',    color: '#4285f4' },
+      both: { label: 'Both', color: '#4285f4' },
       shallow: { label: 'Shallow', color: '#9b72cb' },
-      deep:    { label: 'Deep',    color: '#d96570' },
+      deep: { label: 'Deep', color: '#d96570' },
     };
 
     return (
@@ -1366,7 +1382,7 @@ function App() {
                   <div className="provider-info">
                     <h3>{provider.name}</h3>
                     <a href={provider.url} target="_blank" rel="noreferrer" className="get-key-chip">
-                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" /></svg>
                       Get API Key
                     </a>
                   </div>
@@ -1384,7 +1400,7 @@ function App() {
                   <div className="provider-body">
                     {/* API Key input */}
                     <div className="api-key-field">
-                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.65 10A5.99 5.99 0 007 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 005.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.65 10A5.99 5.99 0 007 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 005.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" /></svg>
                       <input
                         type={showApiKey[provider.id] ? 'text' : 'password'}
                         className="api-key-input"
@@ -1399,15 +1415,15 @@ function App() {
                         title={showApiKey[provider.id] ? 'Hide key' : 'Reveal key'}
                       >
                         {showApiKey[provider.id] ? (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" /></svg>
                         ) : (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" /></svg>
                         )}
                       </button>
                     </div>
 
                     <div className="api-key-field">
-                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 000 10h4v-1.9H7A3.1 3.1 0 013.9 12zm4.1 1h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 010 6.2h-4V17h4a5 5 0 000-10z"/></svg>
+                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 000 10h4v-1.9H7A3.1 3.1 0 013.9 12zm4.1 1h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 010 6.2h-4V17h4a5 5 0 000-10z" /></svg>
                       <input
                         type="url"
                         className="api-key-input"
@@ -1442,7 +1458,7 @@ function App() {
                                   onClick={() => hidePredefinedModel(provider.id, entry.name)}
                                   title="Remove model"
                                 >
-                                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
                                 </button>
                               </div>
                             );
@@ -1462,7 +1478,7 @@ function App() {
                                 <span className="model-scope-badge" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Thinking</span>
                               )}
                               <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
-                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
                               </button>
                             </div>
                           );
@@ -1504,7 +1520,7 @@ function App() {
                           onClick={() => addModel(provider.id)}
                           disabled={!(newModelInputs[provider.id] || '').trim()}
                         >
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
                           Add
                         </button>
                       </div>
@@ -1572,7 +1588,7 @@ function App() {
                     <small>{(item.time_horizon || '').replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
                   </button>
                   <button className="history-delete-btn" onClick={(e) => deleteHistoryItem(e, item.id)} title="Delete session">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/></svg>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z" /></svg>
                   </button>
                 </div>
               ))
@@ -1581,13 +1597,13 @@ function App() {
         </section>
 
         <div style={{ marginTop: 'auto' }}>
-          <button 
-            className={`mode-item ${activeMode === 'settings' ? 'active' : ''}`} 
+          <button
+            className={`mode-item ${activeMode === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveMode('settings')}
             style={{ width: '100%', marginBottom: '8px' }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" /></svg>
               Settings
             </span>
           </button>
@@ -1637,271 +1653,271 @@ function App() {
             {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
             <div className="content-grid">
-          <section className="conversation-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Transcript</h2>
-                <p>Agent activity and intermediate reasoning stream.</p>
-              </div>
-            </div>
-            <div className="message-list">
-              {logs.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No active thread</h3>
-                  <p>Choose a ticker or open a previous analysis from history.</p>
-                </div>
-              ) : (
-                processedLogs.map((log) => {
-                  // System status → subtle centered pill
-                  if (log.type === 'system') {
-                    return (
-                      <div key={log.id} className="status-line">
-                        <span className="status-dot" />
-                        <span>{log.content}</span>
-                      </div>
-                    );
-                  }
-                  // Grouped tool calls → compact collapsible chip
-                  if (log.type === 'tool_group') {
-                    return <ToolGroupMessage key={log.id} tools={log.tools} />;
-                  }
-
-                  if (log.type === 'retrieved_info_group') {
-                    return <RetrievedInfoGroupMessage key={log.id} items={log.items} />;
-                  }
-                  
-                  // Hide completely empty messages
-                  if (!log.content || log.content.trim() === '') {
-                    return null;
-                  }
-
-
-                  // User & agent messages → full bubbles
-                  const presentation = getTranscriptMessagePresentation(log.type);
-                  return (
-                    <article key={log.id} className={`message ${log.type} ${presentation.side}`}>
-                      <TranscriptAvatar avatar={presentation.avatar} label={presentation.label} />
-                      <div className="message-bubble">
-                        <div className="message-meta">{presentation.label}</div>
-                        {log.type === 'user'
-                          ? <p>{log.content}</p>
-                          : <CollapsibleContent content={log.content} />
-                        }
-                      </div>
-                    </article>
-                  );
-                })
-              )}
-              {isRunning && (
-                <div className="live-activity-bar">
-                  <span className="activity-pulse-dot" />
-                  <span>Agents working</span>
-                  {toolCallCount > 0 && (
-                    <span className="activity-calls">{toolCallCount} tool call{toolCallCount !== 1 ? 's' : ''}</span>
-                  )}
-                </div>
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </section>
-
-          <section className="inspector-panel">
-            {activeMode === 'analysis' && activeSessionType === 'discovery' && (
-              <>
+              <section className="conversation-panel">
                 <div className="panel-header">
                   <div>
-                    <h2>Discovery pipeline</h2>
-                    <p>Stage progress and theme signals.</p>
+                    <h2>Transcript</h2>
+                    <p>Agent activity and intermediate reasoning stream.</p>
                   </div>
                 </div>
-
-                {/* Pipeline stage progress bar */}
-                <div style={{ padding: '0 16px 16px' }}>
-                  {[
-                    { stage: -1, label: 'Theme Engine' },
-                    { stage: 0,  label: 'Universe Screen' },
-                    { stage: 1,  label: 'Enrich & Score' },
-                  ].map(({ stage, label }) => {
-                    const isDone = discoveryStage !== null && stage < discoveryStage;
-                    const isActive = discoveryStage === stage;
-                    return (
-                      <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <div style={{
-                          width: '20px', height: '20px', borderRadius: '50%',
-                          flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '10px', fontWeight: 700,
-                          background: isDone
-                            ? 'color-mix(in srgb, var(--accent) 20%, transparent)'
-                            : isActive
-                            ? 'var(--accent)'
-                            : 'var(--surface-muted)',
-                          border: `1px solid ${isDone || isActive ? 'var(--accent)' : 'var(--border)'}`,
-                          color: isActive ? 'var(--accent-ink)' : isDone ? 'var(--accent)' : 'var(--muted)',
-                        }}>
-                          {isDone ? '✓' : stage < 0 ? '−1' : stage}
-                        </div>
-                        <span style={{
-                          fontSize: '12px',
-                          color: isDone ? 'var(--text)' : isActive ? 'var(--accent)' : 'var(--muted)',
-                          fontWeight: isActive ? 600 : 400,
-                        }}>
-                          {label}
-                        </span>
-                        {isActive && isRunning && (
-                          <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--accent)' }}>running…</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Live theme signals preview while running */}
-                {reports.theme_candidates_json && reports.theme_candidates_json.length > 0 && (
-                  <div style={{ padding: '0 16px 16px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Theme Signals
+                <div className="message-list">
+                  {logs.length === 0 ? (
+                    <div className="empty-state">
+                      <h3>No active thread</h3>
+                      <p>Choose a ticker or open a previous analysis from history.</p>
                     </div>
-                    <ThemeCandidatesPanel
-                      candidates={reports.theme_candidates_json}
-                      isStreaming={isRunning}
-                    />
-                  </div>
-                )}
-
-                <div className="metric-stack" style={{ marginTop: '8px' }}>
-                  <div><span>Track</span><strong>{DISCOVERY_TRACKS.find(t => t.value === discoveryTrack)?.label}</strong></div>
-                  <div><span>Scan Mode</span><strong>{SCAN_MODES.find(s => s.value === scanMode)?.label}</strong></div>
-                  <div><span>Date</span><strong>{analysisDate}</strong></div>
-                </div>
-              </>
-            )}
-
-            {activeMode === 'analysis' && activeSessionType !== 'discovery' && (
-              <>
-                <div className="panel-header">
-                  <div>
-                    <h2>Session summary</h2>
-                    <p>Current pipeline scope for this ticker.</p>
-                  </div>
-                </div>
-                <div className="metric-stack">
-                  <div><span>Analysts</span><strong>{ANALYST_SUMMARY_LABEL}</strong></div>
-                  <div><span>Horizon</span><strong>{currentHorizon.label}</strong><small>{currentHorizon.detail}</small></div>
-                  <div><span>Date</span><strong>{analysisDate}</strong><small>Analysis snapshot</small></div>
-                  <div><span>Execution</span><strong>Paper disabled</strong><small>No orders will be submitted</small></div>
-                </div>
-              </>
-            )}
-
-            {activeMode === 'reports' && (
-              <>
-                <div className="panel-header">
-                  <div>
-                    <h2>Report</h2>
-                    <p>Generated sections for the active ticker.</p>
-                  </div>
-                </div>
-
-                {/* Theme Signals section — discovery sessions only */}
-                {activeSessionType === 'discovery' && reports.theme_candidates_json && (
-                  <div className="report-group" style={{ marginBottom: '8px' }}>
-                    <h3 className="report-group-title">
-                      <span className="report-group-icon">🔭</span>
-                      Theme Signals
-                    </h3>
-                    <div className="report-group-content" style={{ padding: '12px 16px' }}>
-                      <ThemeCandidatesPanel
-                        candidates={reports.theme_candidates_json}
-                        isStreaming={false}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {availableReports.length === 0 && !reports.theme_candidates_json ? (
-                  <div className="empty-state compact">
-                    <h3>Reports pending</h3>
-                    <p>Reports appear here as agents complete their work.</p>
-                  </div>
-                ) : availableReports.length > 0 ? (
-                  <div className="report-accordion-container">
-                    {REPORT_GROUPS.map(group => {
-                      const activeGroupSections = group.sections
-                        .map(key => {
-                          const sectionMeta = REPORT_SECTIONS.find(s => s[0] === key);
-                          return {
-                            key,
-                            label: sectionMeta ? sectionMeta[1] : key,
-                            data: reports[key]
-                          };
-                        })
-                        .filter(s => s.data);
-
-                      if (activeGroupSections.length === 0) return null;
-
-                      return (
-                        <div key={group.id} className="report-group">
-                          <h3 className="report-group-title">
-                            <span className="report-group-icon">{group.icon}</span>
-                            {group.label}
-                          </h3>
-                          <div className="report-group-content">
-                            {activeGroupSections.map(section => {
-                              const isExpanded = isReportSectionExpanded(section.key, expandedSections);
-                              return (
-                                <ReportSection
-                                  key={section.key}
-                                  sectionKey={section.key}
-                                  label={section.label}
-                                  data={section.data}
-                                  isExpanded={isExpanded}
-                                  onToggle={toggleSection}
-                                  allReports={reports}
-                                />
-                              );
-                            })}
+                  ) : (
+                    processedLogs.map((log) => {
+                      // System status → subtle centered pill
+                      if (log.type === 'system') {
+                        return (
+                          <div key={log.id} className="status-line">
+                            <span className="status-dot" />
+                            <span>{log.content}</span>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </>
-            )}
+                        );
+                      }
+                      // Grouped tool calls → compact collapsible chip
+                      if (log.type === 'tool_group') {
+                        return <ToolGroupMessage key={log.id} tools={log.tools} />;
+                      }
 
-            {activeMode === 'execution' && (
-              <>
-                <div className="panel-header">
-                  <div>
-                    <h2>Execution guardrails</h2>
-                    <p>Trading controls stay visible without enabling live orders.</p>
-                  </div>
+                      if (log.type === 'retrieved_info_group') {
+                        return <RetrievedInfoGroupMessage key={log.id} items={log.items} />;
+                      }
+
+                      // Hide completely empty messages
+                      if (!log.content || log.content.trim() === '') {
+                        return null;
+                      }
+
+
+                      // User & agent messages → full bubbles
+                      const presentation = getTranscriptMessagePresentation(log.type);
+                      return (
+                        <article key={log.id} className={`message ${log.type} ${presentation.side}`}>
+                          <TranscriptAvatar avatar={presentation.avatar} label={presentation.label} />
+                          <div className="message-bubble">
+                            <div className="message-meta">{presentation.label}</div>
+                            {log.type === 'user'
+                              ? <p>{log.content}</p>
+                              : <CollapsibleContent content={log.content} />
+                            }
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                  {isRunning && (
+                    <div className="live-activity-bar">
+                      <span className="activity-pulse-dot" />
+                      <span>Agents working</span>
+                      {toolCallCount > 0 && (
+                        <span className="activity-calls">{toolCallCount} tool call{toolCallCount !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                  )}
+                  <div ref={logsEndRef} />
                 </div>
-                <div className="execution-card">
-                  <strong>Paper execution is off</strong>
-                  <p>The UI sends execution.enabled=false. Enablement should require an explicit backend permission check before any broker action.</p>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
+              </section>
+
+              <section className="inspector-panel">
+                {activeMode === 'analysis' && activeSessionType === 'discovery' && (
+                  <>
+                    <div className="panel-header">
+                      <div>
+                        <h2>Discovery pipeline</h2>
+                        <p>Stage progress and theme signals.</p>
+                      </div>
+                    </div>
+
+                    {/* Pipeline stage progress bar */}
+                    <div style={{ padding: '0 16px 16px' }}>
+                      {[
+                        { stage: -1, label: 'Theme Engine' },
+                        { stage: 0, label: 'Universe Screen' },
+                        { stage: 1, label: 'Enrich & Score' },
+                      ].map(({ stage, label }) => {
+                        const isDone = discoveryStage !== null && stage < discoveryStage;
+                        const isActive = discoveryStage === stage;
+                        return (
+                          <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <div style={{
+                              width: '20px', height: '20px', borderRadius: '50%',
+                              flexShrink: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '10px', fontWeight: 700,
+                              background: isDone
+                                ? 'color-mix(in srgb, var(--accent) 20%, transparent)'
+                                : isActive
+                                  ? 'var(--accent)'
+                                  : 'var(--surface-muted)',
+                              border: `1px solid ${isDone || isActive ? 'var(--accent)' : 'var(--border)'}`,
+                              color: isActive ? 'var(--accent-ink)' : isDone ? 'var(--accent)' : 'var(--muted)',
+                            }}>
+                              {isDone ? '✓' : stage < 0 ? '−1' : stage}
+                            </div>
+                            <span style={{
+                              fontSize: '12px',
+                              color: isDone ? 'var(--text)' : isActive ? 'var(--accent)' : 'var(--muted)',
+                              fontWeight: isActive ? 600 : 400,
+                            }}>
+                              {label}
+                            </span>
+                            {isActive && isRunning && (
+                              <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--accent)' }}>running…</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Live theme signals preview while running */}
+                    {reports.theme_candidates_json && reports.theme_candidates_json.length > 0 && (
+                      <div style={{ padding: '0 16px 16px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          Theme Signals
+                        </div>
+                        <ThemeCandidatesPanel
+                          candidates={reports.theme_candidates_json}
+                          isStreaming={isRunning}
+                        />
+                      </div>
+                    )}
+
+                    <div className="metric-stack" style={{ marginTop: '8px' }}>
+                      <div><span>Track</span><strong>{DISCOVERY_TRACKS.find(t => t.value === discoveryTrack)?.label}</strong></div>
+                      <div><span>Scan Mode</span><strong>{SCAN_MODES.find(s => s.value === scanMode)?.label}</strong></div>
+                      <div><span>Date</span><strong>{analysisDate}</strong></div>
+                    </div>
+                  </>
+                )}
+
+                {activeMode === 'analysis' && activeSessionType !== 'discovery' && (
+                  <>
+                    <div className="panel-header">
+                      <div>
+                        <h2>Session summary</h2>
+                        <p>Current pipeline scope for this ticker.</p>
+                      </div>
+                    </div>
+                    <div className="metric-stack">
+                      <div><span>Analysts</span><strong>{ANALYST_SUMMARY_LABEL}</strong></div>
+                      <div><span>Horizon</span><strong>{currentHorizon.label}</strong><small>{currentHorizon.detail}</small></div>
+                      <div><span>Date</span><strong>{analysisDate}</strong><small>Analysis snapshot</small></div>
+                      <div><span>Execution</span><strong>Paper disabled</strong><small>No orders will be submitted</small></div>
+                    </div>
+                  </>
+                )}
+
+                {activeMode === 'reports' && (
+                  <>
+                    <div className="panel-header">
+                      <div>
+                        <h2>Report</h2>
+                        <p>Generated sections for the active ticker.</p>
+                      </div>
+                    </div>
+
+                    {/* Theme Signals section — discovery sessions only */}
+                    {activeSessionType === 'discovery' && reports.theme_candidates_json && (
+                      <div className="report-group" style={{ marginBottom: '8px' }}>
+                        <h3 className="report-group-title">
+                          <span className="report-group-icon">🔭</span>
+                          Theme Signals
+                        </h3>
+                        <div className="report-group-content" style={{ padding: '12px 16px' }}>
+                          <ThemeCandidatesPanel
+                            candidates={reports.theme_candidates_json}
+                            isStreaming={false}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {availableReports.length === 0 && !reports.theme_candidates_json ? (
+                      <div className="empty-state compact">
+                        <h3>Reports pending</h3>
+                        <p>Reports appear here as agents complete their work.</p>
+                      </div>
+                    ) : availableReports.length > 0 ? (
+                      <div className="report-accordion-container">
+                        {REPORT_GROUPS.map(group => {
+                          const activeGroupSections = group.sections
+                            .map(key => {
+                              const sectionMeta = REPORT_SECTIONS.find(s => s[0] === key);
+                              return {
+                                key,
+                                label: sectionMeta ? sectionMeta[1] : key,
+                                data: reports[key]
+                              };
+                            })
+                            .filter(s => s.data);
+
+                          if (activeGroupSections.length === 0) return null;
+
+                          return (
+                            <div key={group.id} className="report-group">
+                              <h3 className="report-group-title">
+                                <span className="report-group-icon">{group.icon}</span>
+                                {group.label}
+                              </h3>
+                              <div className="report-group-content">
+                                {activeGroupSections.map(section => {
+                                  const isExpanded = isReportSectionExpanded(section.key, expandedSections);
+                                  return (
+                                    <ReportSection
+                                      key={section.key}
+                                      sectionKey={section.key}
+                                      label={section.label}
+                                      data={section.data}
+                                      isExpanded={isExpanded}
+                                      onToggle={toggleSection}
+                                      allReports={reports}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+
+                {activeMode === 'execution' && (
+                  <>
+                    <div className="panel-header">
+                      <div>
+                        <h2>Execution guardrails</h2>
+                        <p>Trading controls stay visible without enabling live orders.</p>
+                      </div>
+                    </div>
+                    <div className="execution-card">
+                      <strong>Paper execution is off</strong>
+                      <p>The UI sends execution.enabled=false. Enablement should require an explicit backend permission check before any broker action.</p>
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
           </>
         ) : (
           <div className="welcome-container">
             <div className="welcome-hero">
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
                 <div className="segmented-modes" style={{ display: 'flex', width: '380px', padding: '6px', borderRadius: '24px', background: 'var(--surface-strong)', boxShadow: 'var(--shadow)' }}>
-                  <button 
-                    className={`segmented-item ${mainPageMode === 'single' ? 'active' : ''}`} 
-                    onClick={() => setMainPageMode('single')} 
+                  <button
+                    className={`segmented-item ${mainPageMode === 'single' ? 'active' : ''}`}
+                    onClick={() => setMainPageMode('single')}
                     style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
                   >
                     Single Ticker
                   </button>
-                  <button 
-                    className={`segmented-item ${mainPageMode === 'discovery' ? 'active' : ''}`} 
-                    onClick={() => setMainPageMode('discovery')} 
+                  <button
+                    className={`segmented-item ${mainPageMode === 'discovery' ? 'active' : ''}`}
+                    onClick={() => setMainPageMode('discovery')}
                     style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
                   >
                     Stock Discovery
@@ -1928,7 +1944,7 @@ function App() {
                     <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
                       <span className="suggestion-row-icon">{icon}</span>
                       <span className="suggestion-row-text">{label}</span>
-                      <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+                      <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" /></svg>
                     </button>
                   ))}
                 </div>
