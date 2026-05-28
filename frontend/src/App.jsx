@@ -18,6 +18,13 @@ import {
 import EvidenceGraphPanel from './EvidenceGraphPanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
+import {
+  PROVIDER_DEFAULTS,
+  buildProviderSettingsPayload,
+  createDefaultProviderEndpoints,
+  getProviderBaseUrl,
+  normalizeProviderEndpoints,
+} from './providerConfig';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
@@ -102,15 +109,6 @@ const DEEP_MODELS = [
   { value: 'anthropic|claude-opus-4-6', label: 'Claude 4.6 Opus', detail: 'Maximum capability' },
   { value: 'anthropic|claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', detail: 'Balanced performance' },
 ];
-
-const BACKEND_URLS = {
-  'openai': 'http://192.168.123.81:8045/v1',
-  'qwen3-cn': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  'deepseek': 'https://api.deepseek.com/v1',
-  'glm': 'https://open.bigmodel.cn/api/paas/v4',
-  'anthropic': 'http://ai.tachira.cn/api',
-  'openrouter': 'https://openrouter.ai/api/v1',
-};
 
 const getPredefinedModelsForProvider = (providerId) => {
   const list = [];
@@ -533,12 +531,16 @@ function App() {
 
   const [apiKeys, setApiKeys] = useState(() => {
     const saved = localStorage.getItem('apiKeys');
-    return saved ? JSON.parse(saved) : { openai: '', anthropic: '', 'qwen3-cn': '', deepseek: '', glm: '' };
+    return saved ? JSON.parse(saved) : { openai: '', anthropic: '', 'qwen3-cn': '', deepseek: '', glm: '', openrouter: '' };
+  });
+  const [providerEndpoints, setProviderEndpoints] = useState(() => {
+    const saved = localStorage.getItem('providerEndpoints');
+    return normalizeProviderEndpoints(saved ? JSON.parse(saved) : createDefaultProviderEndpoints());
   });
   
   const [activeProviders, setActiveProviders] = useState(() => {
     const saved = localStorage.getItem('activeProviders');
-    return saved ? JSON.parse(saved) : { openai: true, anthropic: true, 'qwen3-cn': true, deepseek: true, glm: true };
+    return saved ? JSON.parse(saved) : { openai: true, anthropic: true, 'qwen3-cn': true, deepseek: true, glm: true, openrouter: true };
   });
 
   const [customModels, setCustomModels] = useState(() => {
@@ -557,6 +559,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
   }, [apiKeys]);
+
+  useEffect(() => {
+    localStorage.setItem('providerEndpoints', JSON.stringify(providerEndpoints));
+  }, [providerEndpoints]);
 
   useEffect(() => {
     localStorage.setItem('activeProviders', JSON.stringify(activeProviders));
@@ -593,18 +599,12 @@ function App() {
     .filter(m => activeProviders[m.value.split('|')[0]])
     .filter(m => !hiddenPredefinedModels.includes(m.value));
 
-  // Reset selected models if they are hidden or removed
-  useEffect(() => {
-    if (availableShallowModels.length > 0 && !availableShallowModels.some(m => m.value === shallowThinker)) {
-      setShallowThinker(availableShallowModels[0].value);
-    }
-  }, [availableShallowModels, shallowThinker]);
-
-  useEffect(() => {
-    if (availableDeepModels.length > 0 && !availableDeepModels.some(m => m.value === deepThinker)) {
-      setDeepThinker(availableDeepModels[0].value);
-    }
-  }, [availableDeepModels, deepThinker]);
+  const selectedShallowThinker = availableShallowModels.some(m => m.value === shallowThinker)
+    ? shallowThinker
+    : availableShallowModels[0]?.value || shallowThinker;
+  const selectedDeepThinker = availableDeepModels.some(m => m.value === deepThinker)
+    ? deepThinker
+    : availableDeepModels[0]?.value || deepThinker;
   const [expandedSections, setExpandedSections] = useState(DEFAULT_EXPANDED_REPORT_SECTIONS);
   const toggleSection = useCallback((key) => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -618,6 +618,7 @@ function App() {
   const [isPending, startTransition] = useTransition();
   const wsRef = useRef(null);
   const logsEndRef = useRef(null);
+  const providerSettingsFileRef = useRef(null);
 
   const hasConversation = logs.length > 0 || Object.keys(reports).length > 0 || Boolean(activeSessionId);
   const currentHorizon = getHorizonMeta(timeHorizon);
@@ -683,8 +684,8 @@ function App() {
   };
 
   const createPayload = (overrides = {}) => {
-    const deepVal = overrides.deepThinker ?? deepThinker;
-    const shallowVal = overrides.shallowThinker ?? shallowThinker;
+    const deepVal = overrides.deepThinker ?? selectedDeepThinker;
+    const shallowVal = overrides.shallowThinker ?? selectedShallowThinker;
     
     const [deepProvider, deepModel] = deepVal.split('|');
     const [shallowProvider, shallowModel] = shallowVal.split('|');
@@ -706,7 +707,8 @@ function App() {
       analysts: [...DEFAULT_ANALYSTS],
       research_depth: overrides.researchDepth ?? researchDepth,
       llm_provider: deepProvider,
-      backend_url: BACKEND_URLS[deepProvider] || null,
+      backend_url: getProviderBaseUrl(deepProvider, providerEndpoints),
+      provider_settings: buildProviderSettingsPayload({ apiKeys, providerEndpoints }),
       shallow_thinker: shallowModel,
       deep_thinker: deepModel,
       time_horizon: normalizeHorizonValue(overrides.timeHorizon ?? timeHorizon),
@@ -809,8 +811,8 @@ function App() {
   };
 
   const createDiscoveryPayload = (overrides = {}) => {
-    const deepVal = overrides.deepThinker ?? deepThinker;
-    const shallowVal = overrides.shallowThinker ?? shallowThinker;
+    const deepVal = overrides.deepThinker ?? selectedDeepThinker;
+    const shallowVal = overrides.shallowThinker ?? selectedShallowThinker;
     
     const [deepProvider, deepModel] = deepVal.split('|');
     const [, shallowModel] = shallowVal.split('|');
@@ -827,7 +829,8 @@ function App() {
       analysts: [],
       research_depth: 1,
       llm_provider: deepProvider,
-      backend_url: BACKEND_URLS[deepProvider] || null,
+      backend_url: getProviderBaseUrl(deepProvider, providerEndpoints),
+      provider_settings: buildProviderSettingsPayload({ apiKeys, providerEndpoints }),
       shallow_thinker: shallowModel,
       deep_thinker: deepModel,
       execution: {
@@ -853,7 +856,6 @@ function App() {
     setActiveSessionId(null);
     setActiveMode('analysis');
     setActiveSessionType('discovery');
-    setActiveReport('discovery_report');
     setErrorMessage('');
     
     const trackLabel = DISCOVERY_TRACKS.find(t => t.value === payload.discovery_track)?.label || 'Discovery';
@@ -964,7 +966,6 @@ function App() {
     setErrorMessage('');
     setActiveMode('analysis');
     setActiveSessionType(mainPageMode);
-    setActiveReport(mainPageMode === 'discovery' ? 'discovery_report' : 'market_report');
     setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
   };
 
@@ -1080,14 +1081,6 @@ function App() {
     );
   };
 
-  const handleDeepThinkerChange = (val) => {
-    setDeepThinker(val);
-  };
-
-  const handleShallowThinkerChange = (val) => {
-    setShallowThinker(val);
-  };
-
   const renderConfigStrip = () => {
     if (mainPageMode === 'discovery') {
       return (
@@ -1158,11 +1151,11 @@ function App() {
             <div className="config-card-body">
               <span className="config-label">Deep Thinker</span>
               <CustomSelect
-                value={deepThinker}
+                value={selectedDeepThinker}
                 onChange={(val) => setDeepThinker(val)}
                 options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
                 disabled={isRunning}
-                title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
+                title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === selectedDeepThinker)?.label || 'Select'}
               />
             </div>
           </div>
@@ -1179,11 +1172,11 @@ function App() {
           <div className="config-card-body">
             <span className="config-label">Shallow Thinker</span>
             <CustomSelect
-              value={shallowThinker}
+              value={selectedShallowThinker}
               onChange={(val) => setShallowThinker(val)}
               options={availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS}
               disabled={isRunning}
-              title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === shallowThinker)?.label || 'Select'}
+              title={(availableShallowModels.length > 0 ? availableShallowModels : SHALLOW_MODELS).find(m => m.value === selectedShallowThinker)?.label || 'Select'}
             />
           </div>
         </div>
@@ -1195,11 +1188,11 @@ function App() {
           <div className="config-card-body">
             <span className="config-label">Deep Thinker</span>
             <CustomSelect
-              value={deepThinker}
+              value={selectedDeepThinker}
               onChange={(val) => setDeepThinker(val)}
               options={availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS}
               disabled={isRunning}
-              title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === deepThinker)?.label || 'Select'}
+              title={(availableDeepModels.length > 0 ? availableDeepModels : DEEP_MODELS).find(m => m.value === selectedDeepThinker)?.label || 'Select'}
             />
           </div>
         </div>
@@ -1272,20 +1265,57 @@ function App() {
     setHiddenPredefinedModels(prev => [...prev, key]);
   };
 
-  const showPredefinedModel = (providerId, modelName) => {
-    const key = `${providerId}|${modelName}`;
-    setHiddenPredefinedModels(prev => prev.filter(k => k !== key));
+  const exportProviderSettings = () => {
+    const payload = {
+      providerEndpoints,
+      apiKeys,
+      activeProviders,
+      customModels,
+      hiddenPredefinedModels,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'boolean-trader-provider-settings.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importProviderSettings = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (parsed.providerEndpoints) {
+        setProviderEndpoints(normalizeProviderEndpoints(parsed.providerEndpoints));
+      }
+      if (parsed.apiKeys && typeof parsed.apiKeys === 'object') {
+        setApiKeys(prev => ({ ...prev, ...parsed.apiKeys }));
+      }
+      if (parsed.activeProviders && typeof parsed.activeProviders === 'object') {
+        setActiveProviders(prev => ({ ...prev, ...parsed.activeProviders }));
+      }
+      if (parsed.customModels && typeof parsed.customModels === 'object') {
+        setCustomModels(parsed.customModels);
+      }
+      if (Array.isArray(parsed.hiddenPredefinedModels)) {
+        setHiddenPredefinedModels(parsed.hiddenPredefinedModels);
+      }
+    } catch (err) {
+      setErrorMessage(`Provider settings import failed: ${err.message}`);
+    } finally {
+      event.target.value = '';
+    }
   };
 
 
   const renderSettings = () => {
-    const PROVIDERS = [
-      { id: 'openai', name: 'OpenAI', url: 'https://platform.openai.com/api-keys' },
-      { id: 'anthropic', name: 'Anthropic', url: 'https://console.anthropic.com/' },
-      { id: 'qwen3-cn', name: 'Qwen (DashScope)', url: 'https://dashscope.console.aliyun.com/' },
-      { id: 'deepseek', name: 'DeepSeek', url: 'https://platform.deepseek.com/' },
-      { id: 'glm', name: 'GLM (ZhipuAI)', url: 'https://open.bigmodel.cn/' }
-    ];
+    const PROVIDERS = Object.entries(PROVIDER_DEFAULTS).map(([id, provider]) => ({
+      id,
+      name: provider.name,
+      url: provider.apiKeyUrl,
+    }));
 
     const SCOPE_META = {
       both:    { label: 'Both',    color: '#4285f4' },
@@ -1296,8 +1326,29 @@ function App() {
     return (
       <div className="settings-page">
         <div className="settings-header">
-          <h2>Model Providers</h2>
-          <p>Enable providers, set API keys, and add custom model IDs for each agent tier.</p>
+          <div>
+            <h2>Model Providers</h2>
+            <p>Enable providers, set API keys, endpoints, and custom model IDs for each agent tier.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              ref={providerSettingsFileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={importProviderSettings}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => providerSettingsFileRef.current?.click()}
+            >
+              Import
+            </button>
+            <button type="button" className="secondary-btn" onClick={exportProviderSettings}>
+              Export
+            </button>
+          </div>
         </div>
 
         <div className="provider-grid">
@@ -1353,6 +1404,17 @@ function App() {
                           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
                         )}
                       </button>
+                    </div>
+
+                    <div className="api-key-field">
+                      <svg className="api-key-field-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 000 10h4v-1.9H7A3.1 3.1 0 013.9 12zm4.1 1h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 010 6.2h-4V17h4a5 5 0 000-10z"/></svg>
+                      <input
+                        type="url"
+                        className="api-key-input"
+                        placeholder={`${provider.name} endpoint`}
+                        value={providerEndpoints[provider.id] || ''}
+                        onChange={(e) => setProviderEndpoints(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                      />
                     </div>
 
                     {/* Unified Models section */}
@@ -1662,7 +1724,6 @@ function App() {
                   ].map(({ stage, label }) => {
                     const isDone = discoveryStage !== null && stage < discoveryStage;
                     const isActive = discoveryStage === stage;
-                    const isPending = discoveryStage === null || stage > discoveryStage;
                     return (
                       <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                         <div style={{

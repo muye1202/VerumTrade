@@ -263,11 +263,11 @@ def select_llm_provider() -> tuple[str, str]:
     """Select the OpenAI api url using interactive selection."""
     # Define OpenAI api options with their corresponding endpoints
     BASE_URLS = [
-        ("Google", "openai", "http://192.168.123.81:8045/v1"),   # NOTE: Hankun's Antigravity Tool
+        ("OpenAI", "openai", "https://api.openai.com/v1"),
         ("Qwen3-CN (DashScope)", "qwen3-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
         ("GLM (ZhipuAI)", "glm", "https://open.bigmodel.cn/api/paas/v4"),
-        ("Anthropic", "anthropic", "http://ai.tachira.cn/api"),
+        ("Anthropic", "anthropic", "https://api.anthropic.com"),
         ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
     ]
 

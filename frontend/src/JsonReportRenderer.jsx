@@ -15,15 +15,9 @@
  *   • null/undefined → muted "N/A"
  */
 import { memo, useState } from 'react';
+import { humanizeKey } from './jsonReportUtils';
 
 /* ── Helpers ──────────────────────────────────────────── */
-
-/** Pretty-print a snake_case / camelCase key into Title Case */
-const humanizeKey = (key) =>
-  key
-    .replace(/([a-z])([A-Z])/g, '$1 $2')   // camelCase
-    .replace(/[_-]+/g, ' ')                 // snake_case / kebab
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 /** Decide if a string value is "long" (multi-line or > threshold chars) */
 const isLongText = (v) => typeof v === 'string' && (v.length > 120 || v.includes('\n'));
@@ -228,5 +222,5 @@ const JsonReportView = memo(({ data, title }) => {
   );
 });
 
-export { JsonReportView, humanizeKey, ValueRenderer, ObjectSection };
+export { JsonReportView };
 export default JsonReportView;

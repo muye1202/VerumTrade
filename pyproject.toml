@@ -1,9 +1,24 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "tradingagents"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-agent LLM framework for financial research, trading analysis, and portfolio workflows."
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "TradingAgents Team", email = "yijia.xiao@cs.ucla.edu" },
+]
+license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Trading Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 dependencies = [
     "akshare>=1.16.98",
     "alpaca-py>=0.42.0",
@@ -11,27 +26,43 @@ dependencies = [
     "chainlit>=2.5.5",
     "chromadb>=1.0.12",
     "eodhd>=1.0.32",
+    "fastapi>=0.115.9",
     "feedparser>=6.0.11",
     "finnhub-python>=2.4.23",
-    "grip>=4.6.2",
     "langchain-anthropic>=0.3.15",
+    "langchain-core>=0.3.65",
     "langchain-experimental>=0.3.4",
     "langchain-google-genai>=2.1.5",
     "langchain-openai>=0.3.23",
     "langgraph>=0.4.8",
+    "numpy>=2.2.6",
     "pandas>=2.3.0",
     "parsel>=1.10.0",
     "praw>=7.8.1",
+    "pydantic>=2.11.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.2",
     "pytz>=2025.2",
     "questionary>=2.1.0",
     "redis>=6.2.0",
     "requests>=2.32.4",
     "rich>=14.0.0",
-    "setuptools>=80.9.0",
+    "sqlalchemy>=2.0.0",
     "stockstats>=0.6.5",
     "tqdm>=4.67.1",
     "tushare>=1.4.21",
+    "typer>=0.16.0",
     "typing-extensions>=4.14.0",
+    "uvicorn>=0.34.3",
+    "websockets>=15.0.1",
     "yfinance>=0.2.63",
-    "python-dotenv>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/TauricResearch/TradingAgents"
+
+[project.scripts]
+tradingagents = "cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["api*", "cli*", "tradingagents*"]

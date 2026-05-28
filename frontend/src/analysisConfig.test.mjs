@@ -16,13 +16,27 @@ assert.deepEqual(DEFAULT_ANALYSTS, [
   'fundamentals',
 ]);
 
-assert.deepEqual(REPORT_SECTIONS.slice(0, 5), [
+assert.deepEqual(REPORT_SECTIONS.slice(0, 6), [
+  ['discovery_report', 'Candidate Stocks'],
   ['catalyst_report', 'Catalyst'],
   ['market_report', 'Market'],
   ['sentiment_report', 'Sentiment'],
   ['news_report', 'News'],
   ['fundamentals_report', 'Fundamentals'],
 ]);
+
+assert.deepEqual(
+  REPORT_SECTIONS.filter(([sectionKey]) => DEFAULT_ANALYSTS
+    .map((analyst) => analyst === 'social' ? 'sentiment_report' : `${analyst}_report`)
+    .includes(sectionKey)),
+  [
+    ['catalyst_report', 'Catalyst'],
+    ['market_report', 'Market'],
+    ['sentiment_report', 'Sentiment'],
+    ['news_report', 'News'],
+    ['fundamentals_report', 'Fundamentals'],
+  ],
+);
 
 assert.equal(ANALYST_SUMMARY_LABEL, 'Catalyst, Market, Social, News, Fundamentals');
 

@@ -43,6 +43,8 @@ pip install -e .
 uv sync
 ```
 
+Editable installs also provide the `tradingagents` console command for CLI workflows.
+
 ### 🔑 Set up your API keys
 
 Create a `.env` file in the repo root (it is git-ignored). Add whichever keys you need:
@@ -80,13 +82,13 @@ The easiest way to use the application is via the modern web interface.
 
 ```bash
 # Windows
-run.bat
+start.bat
 
 # Mac / Linux
-./run.sh
+./start.sh
 ```
 
-*(Alternatively, you can run python run.py directly).*
+*(After dependencies are installed, you can run `python run.py` directly).*
 
 This script automatically launches both the backend API and the frontend UI in a single terminal window. Once running, open your browser to [http://localhost:5173](http://localhost:5173) (or whichever port Vite provides).
 
@@ -99,6 +101,8 @@ The interactive CLI walks you through every choice step by step — this is the 
 
 ```bash
 python -m cli.main analyze
+# or, after pip install -e .
+tradingagents analyze
 ```
 
 You'll be prompted to pick:

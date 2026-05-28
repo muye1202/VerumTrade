@@ -4,6 +4,7 @@ from typing import Dict, Any
 from fastapi import WebSocket
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.graph.provider_settings import serialize_provider_settings
 from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.execution.portfolio_context import fetch_portfolio_context
@@ -151,6 +152,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    config["provider_settings"] = serialize_provider_settings(req.provider_settings)
     if req.qwen_enable_thinking is not None:
         config["qwen_enable_thinking"] = req.qwen_enable_thinking
         config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
@@ -327,6 +329,7 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     config["deep_think_llm"] = req.deep_thinker
     config["backend_url"] = req.backend_url if req.backend_url is not None else ""
     config["llm_provider"] = req.llm_provider.lower()
+    config["provider_settings"] = serialize_provider_settings(req.provider_settings)
     if req.qwen_enable_thinking is not None:
         config["qwen_enable_thinking"] = req.qwen_enable_thinking
         config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking

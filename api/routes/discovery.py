@@ -8,6 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.stock_discovery import StockDiscoveryGraph
+from tradingagents.graph.provider_settings import serialize_provider_settings
 from tradingagents.agents.discovery.theme_engine import ThemeScanner
 from api.schemas import DiscoveryRequest
 
@@ -60,6 +61,7 @@ def _build_config(req: DiscoveryRequest) -> dict:
     config["deep_think_llm"] = req.deep_thinker
     config["llm_provider"] = req.llm_provider.lower()
     config["backend_url"] = req.backend_url or ""
+    config["provider_settings"] = serialize_provider_settings(req.provider_settings)
 
     config.setdefault("theme_engine", {})
     config["theme_engine"]["scan_mode"] = req.scan_mode

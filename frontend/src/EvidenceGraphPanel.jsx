@@ -232,10 +232,10 @@ const EvidenceGraphPanel = ({ data }) => {
   const [domainFilter, setDomainFilter] = useState('all');
 
   const graph = data || {};
-  const facts = graph.facts || [];
-  const inferences = graph.inferences || [];
-  const conflicts = graph.conflicts || [];
-  const auditIssues = graph.audit_issues || [];
+  const facts = useMemo(() => graph.facts || [], [graph.facts]);
+  const inferences = useMemo(() => graph.inferences || [], [graph.inferences]);
+  const conflicts = useMemo(() => graph.conflicts || [], [graph.conflicts]);
+  const auditIssues = useMemo(() => graph.audit_issues || [], [graph.audit_issues]);
 
   // Fact lookup map for linking
   const factLookup = useMemo(() => {

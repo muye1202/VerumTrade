@@ -27,6 +27,7 @@ from tradingagents.execution.decision_guard import build_market_snapshot
 from tradingagents.agents.utils.agent_runtime.evidence_graph import build_decision_trace
 from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
 from tradingagents.dataflows.config import set_config
+from tradingagents.graph.provider_settings import resolve_llm_endpoint
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_runtime.agent_utils import (
@@ -418,19 +419,13 @@ class TradingAgentsGraph:
 
         # Initialize LLMs
         if self.config["llm_provider"].lower() in {"openai", "ollama", "openrouter", "qwen3-cn", "deepseek", "glm"}:
-            openai_kwargs = {"base_url": self.config["backend_url"]}
-            if self.config["llm_provider"].lower() == "qwen3-cn":
-                openai_kwargs["api_key"] = os.getenv("DASHSCOPE_API_KEY")
-            if self.config["llm_provider"].lower() == "deepseek":
-                openai_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY")
-            if self.config["llm_provider"].lower() == "openrouter":
-                openai_kwargs["api_key"] = os.getenv("OPENROUTER_API_KEY")
-            if self.config["llm_provider"].lower() == "glm":
-                openai_kwargs["api_key"] = (
-                    os.getenv("ZHIPUAI_API_KEY")
-                    or os.getenv("GLM_API_KEY")
-                    or os.getenv("OPENAI_API_KEY")
-                )
+            provider = self.config["llm_provider"].lower()
+            endpoint = resolve_llm_endpoint(provider, self.config)
+            openai_kwargs = {}
+            if endpoint.get("base_url"):
+                openai_kwargs["base_url"] = endpoint["base_url"]
+            if endpoint.get("api_key"):
+                openai_kwargs["api_key"] = endpoint["api_key"]
 
             # Provider-specific parameters for OpenAI-compatible backends.
             # DashScope supports "enable_thinking" (reasoning mode) for select Qwen models.
@@ -551,8 +546,6 @@ class TradingAgentsGraph:
                     self.config.get("deep_think_llm", "")
                 )
 
-            provider = self.config["llm_provider"].lower()
-
             if provider == "qwen3-cn":
                 base_llm_cls = StreamCompatibleChatOpenAI
             elif provider == "deepseek":
@@ -629,9 +622,9 @@ class TradingAgentsGraph:
                     f"llm:{provider}:{str(self.config.get('backend_url') or '').rstrip('/')}:{self.config.get('quick_think_llm')}".lower()
                 )
         elif self.config["llm_provider"].lower() == "anthropic":
-            # Retrieve API key and Base URL
-            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-            anthropic_base_url = os.getenv("ANTHROPIC_BASE_URL") or self.config.get("backend_url")
+            endpoint = resolve_llm_endpoint("anthropic", self.config)
+            anthropic_api_key = endpoint.get("api_key")
+            anthropic_base_url = endpoint.get("base_url")
 
             # Configure Thinking Mode
             anthropic_thinking = {}
@@ -660,8 +653,18 @@ class TradingAgentsGraph:
                 # For now, we only apply thinking to the "deep" agent if enabled.
             )
         elif self.config["llm_provider"].lower() == "google":
-            self.deep_thinking_llm = ChatGoogleGenerativeAI(model=self.config["deep_think_llm"])
-            self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
+            endpoint = resolve_llm_endpoint("google", self.config)
+            google_kwargs = {}
+            if endpoint.get("api_key"):
+                google_kwargs["google_api_key"] = endpoint["api_key"]
+            self.deep_thinking_llm = ChatGoogleGenerativeAI(
+                model=self.config["deep_think_llm"],
+                **google_kwargs,
+            )
+            self.quick_thinking_llm = ChatGoogleGenerativeAI(
+                model=self.config["quick_think_llm"],
+                **google_kwargs,
+            )
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config['llm_provider']}")
 

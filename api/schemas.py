@@ -1,11 +1,15 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 class ExecutionSettings(BaseModel):
     enabled: bool = False
     provider: str = "alpaca"
     paper: bool = True
     position_size_pct: float = 0.10
+
+class ProviderSettings(BaseModel):
+    api_key: Optional[str] = Field(default=None, description="Request-scoped API key")
+    base_url: Optional[str] = Field(default=None, description="Request-scoped provider base URL")
 
 class AnalysisRequest(BaseModel):
     ticker: str = Field(..., description="The stock ticker symbol (e.g. AAPL)")
@@ -17,6 +21,10 @@ class AnalysisRequest(BaseModel):
     research_depth: int = Field(default=1, description="Depth of research (debate rounds)")
     llm_provider: str = Field(default="openai", description="LLM provider (e.g. openai, anthropic)")
     backend_url: Optional[str] = Field(default=None, description="Backend URL for local/custom LLMs")
+    provider_settings: Optional[Dict[str, ProviderSettings]] = Field(
+        default=None,
+        description="Optional request-scoped provider settings keyed by provider id",
+    )
     shallow_thinker: str = Field(default="gpt-4o-mini", description="Model used for shallow tasks")
     deep_thinker: str = Field(default="gpt-4o", description="Model used for deep reasoning")
     time_horizon: str = Field(default="1-2 weeks", description="Trading time horizon")
@@ -34,6 +42,10 @@ class DiscoveryRequest(BaseModel):
     policy_mode: str = Field(default="off", description="off | adaptive (LLM re-scoring)")
     llm_provider: str = Field(default="openai", description="LLM provider")
     backend_url: Optional[str] = Field(default=None, description="Backend URL for local/custom LLMs")
+    provider_settings: Optional[Dict[str, ProviderSettings]] = Field(
+        default=None,
+        description="Optional request-scoped provider settings keyed by provider id",
+    )
     shallow_thinker: str = Field(default="gpt-4o-mini", description="Model for shallow tasks")
     deep_thinker: str = Field(default="gpt-4o", description="Model for deep reasoning")
     mock: bool = Field(default=False, description="If true, return mock stream without running pipeline")

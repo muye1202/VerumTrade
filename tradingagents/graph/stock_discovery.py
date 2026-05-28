@@ -4,7 +4,6 @@ Stock Discovery Graph: Orchestrates the stock recommendation pipeline
 and integrates with BatchAnalyzer for deep analysis of top picks.
 """
 
-import os
 import logging
 import inspect
 from typing import Dict, Any, List, Optional
@@ -18,6 +17,7 @@ from tradingagents.agents.discovery.intelligence_integration import (
     IntelligenceDrivenRecommender,
 )
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.graph.provider_settings import resolve_llm_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -79,36 +79,9 @@ class StockDiscoveryGraph:
     def _create_llm(self, model: str) -> ChatOpenAI:
         """Create the LLM instance based on config."""
         provider = self.config.get("llm_provider", "openai").lower()
-        backend_url = self.config.get("backend_url")
-
-        # Determine API key and base URL based on provider
-        api_key = None
-        base_url = backend_url
-
-        if provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            base_url = base_url or "https://api.openai.com/v1"
-        elif provider == "glm":
-            api_key = (
-                os.getenv("ZHIPUAI_API_KEY") 
-                or os.getenv("GLM_API_KEY")
-            )
-            base_url = base_url or "https://open.bigmodel.cn/api/paas/v4"
-        elif provider == "deepseek":
-            api_key = os.getenv("DEEPSEEK_API_KEY")
-            base_url = base_url or "https://api.deepseek.com"
-        elif provider == "qwen3-cn":
-            api_key = os.getenv("DASHSCOPE_API_KEY")
-            base_url = base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        elif provider == "openrouter":
-            api_key = os.getenv("OPENROUTER_API_KEY")
-            base_url = base_url or "https://openrouter.ai/api/v1"
-        elif provider == "ollama":
-            api_key = "ollama"  # Ollama doesn't require API key
-            base_url = base_url or "http://localhost:11434/v1"
-        else:
-            # Generic OpenAI-compatible
-            api_key = os.getenv("OPENAI_API_KEY")
+        endpoint = resolve_llm_endpoint(provider, self.config)
+        api_key = endpoint.get("api_key")
+        base_url = endpoint.get("base_url")
 
         def _with_extra_params(kwargs: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
             if not extra:
