@@ -332,7 +332,7 @@ class ExtendedHoursSubmissionError(RuntimeError):
 
 class AlpacaExecutor:
     """
-    Executes trading signals from TradingAgents framework on Alpaca paper trading.
+    Executes OpenTrace trading signals on Alpaca paper trading.
 
     Handles:
     - Signal translation (BUY/SELL/HOLD -> Alpaca orders)
@@ -531,12 +531,12 @@ class AlpacaExecutor:
         agent_take_profit: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        Execute a trading signal from TradingAgents.
+        Execute an OpenTrace trading signal.
 
         Args:
             ticker: Stock ticker symbol
             signal: Trading signal (BUY, SELL, or HOLD)
-            analysis_state: Full state from TradingAgents (optional, for logging)
+            analysis_state: Full OpenTrace analysis state (optional, for logging)
             trade_date: Date of analysis (for logging)
             
         Returns:

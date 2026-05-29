@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
-import { JsonReportView, humanizeKey } from './JsonReportRenderer';
+import { JsonReportView } from './JsonReportRenderer';
+import { humanizeKey } from './jsonReportUtils';
 
 const STATUS_META = {
   'Parse failure': { tone: 'danger', label: 'Parse failure' },

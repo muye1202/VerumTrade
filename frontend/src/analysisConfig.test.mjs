@@ -6,6 +6,7 @@ import {
   ANALYST_SUMMARY_LABEL,
   DEFAULT_EXPANDED_REPORT_SECTIONS,
   isReportSectionExpanded,
+  buildContinueAnalysisOverrides,
 } from './analysisConfig.js';
 
 assert.deepEqual(DEFAULT_ANALYSTS, [
@@ -47,3 +48,19 @@ assert.equal(isReportSectionExpanded('decision_trace', DEFAULT_EXPANDED_REPORT_S
 assert.equal(isReportSectionExpanded('final_trade_decision', DEFAULT_EXPANDED_REPORT_SECTIONS), false);
 assert.equal(isReportSectionExpanded('decision_trace', { decision_trace: true }), true);
 assert.equal(isReportSectionExpanded('final_trade_decision', { final_trade_decision: false }), false);
+
+assert.deepEqual(
+  buildContinueAnalysisOverrides({
+    id: 19,
+    ticker: 'MRVL',
+    analysis_date: '2026-05-26',
+    time_horizon: '2-3 months',
+  }),
+  {
+    ticker: 'MRVL',
+    analysisDate: '2026-05-26',
+    timeHorizon: '2-3 months',
+    continuePrevious: true,
+    continueSessionId: 19,
+  },
+);

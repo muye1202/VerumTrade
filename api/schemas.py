@@ -29,6 +29,8 @@ class AnalysisRequest(BaseModel):
     deep_thinker: str = Field(default="gpt-4o", description="Model used for deep reasoning")
     time_horizon: str = Field(default="1-2 weeks", description="Trading time horizon")
     skip_completed_analysts: bool = Field(default=False, description="Whether to skip already completed analysts")
+    continue_previous: bool = Field(default=False, description="Resume the latest incomplete matching analysis session")
+    continue_session_id: Optional[int] = Field(default=None, description="Specific analysis session to continue")
     execution: Optional[ExecutionSettings] = None
     mock: bool = Field(default=False, description="If true, bypass LLM and return mock stream")
     qwen_enable_thinking: Optional[bool] = Field(default=None, description="Whether Qwen thinking mode is enabled")

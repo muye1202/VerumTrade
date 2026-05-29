@@ -721,7 +721,11 @@ class TradingAgentsGraph:
     @staticmethod
     def normalize_selected_analysts(selected_analysts) -> List[str]:
         """Deduplicate analyst keys and run catalyst first when selected."""
-        raw = selected_analysts or ["market", "social", "news", "fundamentals"]
+        raw = (
+            ["market", "social", "news", "fundamentals"]
+            if selected_analysts is None
+            else selected_analysts
+        )
         seen = set()
         normalized: List[str] = []
         for item in raw:

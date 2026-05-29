@@ -9,8 +9,8 @@ Base.metadata.create_all(bind=engine)
 run_schema_migrations()
 
 app = FastAPI(
-    title="TradingAgents API",
-    description="FastAPI backend for TradingAgents multi-agent framework",
+    title="OpenTrace API",
+    description="FastAPI backend for OpenTrace agentic market research workflows",
     version="1.0.0",
 )
 
@@ -29,4 +29,4 @@ app.include_router(discovery.router, prefix="/api", tags=["discovery"])
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "message": "TradingAgents API is running"}
+    return {"status": "ok", "message": "OpenTrace API is running"}

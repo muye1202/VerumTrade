@@ -54,9 +54,6 @@ class GraphSetup:
                 - "catalyst": Catalyst / Event-Risk analyst
                 - "fundamentals": Fundamentals analyst
         """
-        if len(selected_analysts) == 0:
-            raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
-
         # Create analyst nodes
         analyst_nodes = {}
         delete_nodes = {}
@@ -154,10 +151,13 @@ class GraphSetup:
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
 
-        # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
+        # Define edges. Continuation runs may have no remaining analyst work
+        # because all analyst reports were restored from persisted state.
+        if selected_analysts:
+            first_analyst = selected_analysts[0]
+            workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
+        else:
+            workflow.add_edge(START, "Evidence Graph")
 
         # Connect analysts in sequence
         for i, analyst_type in enumerate(selected_analysts):

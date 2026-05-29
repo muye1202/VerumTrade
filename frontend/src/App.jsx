@@ -8,6 +8,7 @@ import {
   REPORT_SECTIONS,
   REPORT_GROUPS,
   isReportSectionExpanded,
+  buildContinueAnalysisOverrides,
 } from './analysisConfig';
 import {
   buildCatalystDiagnosticsData,
@@ -22,6 +23,7 @@ import EvidenceGraphPanel from './EvidenceGraphPanel';
 import DecisionTracePanel from './DecisionTracePanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
+import CatalystDiagnosticsPanel from './CatalystDiagnosticsPanel';
 import {
   PROVIDER_DEFAULTS,
   buildProviderSettingsPayload,
@@ -535,6 +537,7 @@ function App() {
   const [analysisDate, setAnalysisDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeHorizon, setTimeHorizon] = useState(HORIZONS[0].value);
   const [researchDepth, setResearchDepth] = useState(RESEARCH_DEPTHS[0].value);
+  const [continuePrevious, setContinuePrevious] = useState(false);
   const [shallowThinker, setShallowThinker] = useState('openai|gpt-4o-mini');
   const [deepThinker, setDeepThinker] = useState('openai|gpt-4o-mini');
   const [activeMode, setActiveMode] = useState('analysis');
@@ -729,6 +732,8 @@ function App() {
       deep_thinker: deepModel,
       time_horizon: normalizeHorizonValue(overrides.timeHorizon ?? timeHorizon),
       skip_completed_analysts: false,
+      continue_previous: overrides.continuePrevious ?? continuePrevious,
+      continue_session_id: overrides.continueSessionId ?? null,
       mock: false,
       qwen_enable_thinking: isThinkingEnabled(deepProvider, deepModel) || isThinkingEnabled(shallowProvider, shallowModel),
       qwen_thinking_budget: 7000,
@@ -755,7 +760,7 @@ function App() {
     setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
     setErrorMessage('');
     const payloadHorizon = HORIZONS.find((item) => item.value === payload.time_horizon) || HORIZONS[0];
-    setLogs([makeLog('user', `Analyze ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
+    setLogs([makeLog('user', `${payload.continue_previous ? 'Continue' : 'Analyze'} ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
     setReports({});
     setIsRunning(true);
 
@@ -999,6 +1004,7 @@ function App() {
         setTicker(data.ticker);
         setAnalysisDate(data.analysis_date);
         setTimeHorizon(normalizeHorizonValue(data.time_horizon));
+        setActiveSessionType(data.ticker === 'AI Discovery' ? 'discovery' : 'single');
 
         // Normalize stored logs from backend format → frontend display format.
         // Backend stores: {event:"message", type:"Reasoning"/"User"/..., content:"..."}
@@ -1093,6 +1099,16 @@ function App() {
             )}
           </div>
         </div>
+        <label className="continue-toggle">
+          <input
+            type="checkbox"
+            checked={continuePrevious}
+            onChange={(event) => setContinuePrevious(event.target.checked)}
+            disabled={isRunning}
+          />
+          <span className="continue-switch" aria-hidden="true"></span>
+          <span className="continue-copy">Continue saved run</span>
+        </label>
       </div>
     );
   };
@@ -1587,6 +1603,19 @@ function App() {
                     <span>{item.ticker}</span>
                     <small>{(item.time_horizon || '').replaceAll('_', ' ')} · {formatDateTime(item.created_at)}</small>
                   </button>
+                  {(item.status || '').toLowerCase() !== 'completed' && (
+                    <button
+                      className="history-continue-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        startAnalysis(buildContinueAnalysisOverrides(item));
+                      }}
+                      title="Continue analysis"
+                      disabled={isRunning}
+                    >
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    </button>
+                  )}
                   <button className="history-delete-btn" onClick={(e) => deleteHistoryItem(e, item.id)} title="Delete session">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z" /></svg>
                   </button>

@@ -55,3 +55,11 @@ export const REPORT_GROUPS = [
     sections: ['final_trade_decision'],
   }
 ];
+
+export const buildContinueAnalysisOverrides = (session) => ({
+  ticker: session?.ticker || '',
+  analysisDate: session?.analysis_date || '',
+  timeHorizon: session?.time_horizon || '',
+  continuePrevious: true,
+  continueSessionId: session?.id ?? null,
+});

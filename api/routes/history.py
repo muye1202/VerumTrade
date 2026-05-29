@@ -13,6 +13,7 @@ class HistoryListItem(BaseModel):
     ticker: str
     analysis_date: str
     time_horizon: str
+    status: str
     created_at: str
 
 @router.get("/history", response_model=List[HistoryListItem])
@@ -26,6 +27,7 @@ def get_history(db: Session = Depends(get_db)):
             ticker=s.ticker,
             analysis_date=s.analysis_date,
             time_horizon=s.time_horizon,
+            status=s.status or "completed",
             created_at=s.created_at.isoformat()
         )
         for s in sessions
@@ -43,6 +45,7 @@ def get_history_detail(session_id: int, db: Session = Depends(get_db)) -> Dict[s
         "ticker": session.ticker,
         "analysis_date": session.analysis_date,
         "time_horizon": session.time_horizon,
+        "status": session.status or "completed",
         "logs": session.logs,
         "reports": session.reports,
         "created_at": session.created_at.isoformat()

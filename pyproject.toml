@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tradingagents"
 version = "0.1.0"
-description = "Multi-agent LLM framework for financial research, trading analysis, and portfolio workflows."
+description = "OpenTrace: agentic market research, trading analysis, and portfolio workflows."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "TradingAgents Team", email = "yijia.xiao@cs.ucla.edu" },
+    { name = "OpenTrace Maintainers" },
 ]
 license = "Apache-2.0"
 classifiers = [
@@ -59,7 +59,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/TauricResearch/TradingAgents"
+Homepage = "https://github.com/muye1202/OpenTrace"
 
 [project.scripts]
 tradingagents = "cli.main:app"

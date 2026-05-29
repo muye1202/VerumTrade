@@ -353,7 +353,8 @@ select:focus-visible {
   cursor: pointer;
 }
 
-.history-delete-btn {
+.history-delete-btn,
+.history-continue-btn {
   width: 36px;
   display: flex;
   align-items: center;
@@ -366,12 +367,17 @@ select:focus-visible {
   transition: opacity 0.2s, color 0.2s;
 }
 
-.history-item:hover .history-delete-btn {
+.history-item:hover .history-delete-btn,
+.history-item:hover .history-continue-btn {
   opacity: 1;
 }
 
 .history-delete-btn:hover {
   color: #ff4d4f;
+}
+
+.history-continue-btn:hover {
+  color: var(--accent);
 }
 
 .theme-button {
@@ -677,6 +683,62 @@ h1 {
 .gemini-input::placeholder {
   color: var(--muted);
   font-weight: 400;
+}
+
+.continue-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  margin: 0 8px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.continue-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.continue-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.continue-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.continue-toggle input:checked + .continue-switch {
+  border-color: color-mix(in srgb, var(--accent) 72%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.continue-toggle input:checked + .continue-switch::after {
+  transform: translateX(14px);
+  background: var(--accent);
+}
+
+.continue-toggle input:disabled ~ .continue-copy,
+.continue-toggle input:disabled + .continue-switch {
+  opacity: 0.55;
 }
 
 /* Config strip – replaces the crowded single-row toolbar */

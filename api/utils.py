@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Iterable
 from fastapi import WebSocket
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -54,6 +54,80 @@ REPORT_PAYLOAD_KEYS = [
     "llm_metrics",
 ]
 
+ANALYST_REPORT_KEYS = {
+    "catalyst": "catalyst_report",
+    "market": "market_report",
+    "social": "sentiment_report",
+    "news": "news_report",
+    "fundamentals": "fundamentals_report",
+}
+
+
+def _has_report_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list, tuple, set)):
+        return bool(value)
+    return True
+
+
+def plan_continuation_analysts(
+    requested_analysts: Iterable[str],
+    previous_reports: Dict[str, Any] | None,
+) -> list[str]:
+    """Return only analyst stages that do not already have persisted reports."""
+    reports = previous_reports or {}
+    remaining = []
+    for analyst in requested_analysts:
+        analyst_key = analyst.value if hasattr(analyst, "value") else str(analyst)
+        report_key = ANALYST_REPORT_KEYS.get(analyst_key)
+        if report_key and _has_report_value(reports.get(report_key)):
+            continue
+        remaining.append(analyst_key)
+    return remaining
+
+
+def apply_previous_reports_to_state(
+    state: Dict[str, Any],
+    previous_reports: Dict[str, Any] | None,
+) -> None:
+    """Restore persisted report/state keys into a fresh graph initial state."""
+    for key, value in (previous_reports or {}).items():
+        if key in state and _has_report_value(value):
+            state[key] = value
+
+
+def find_previous_analysis_session(
+    db,
+    *,
+    ticker: str,
+    analysis_date: str,
+    time_horizon: str | None = None,
+    session_id: int | None = None,
+) -> AnalysisSession | None:
+    """Find the session to continue, preferring incomplete matching runs."""
+    query = db.query(AnalysisSession)
+    if session_id is not None:
+        return query.filter(AnalysisSession.id == session_id).first()
+
+    sessions = (
+        query.filter(AnalysisSession.ticker == ticker.upper())
+        .filter(AnalysisSession.analysis_date == analysis_date)
+        .order_by(AnalysisSession.created_at.desc())
+        .all()
+    )
+    if time_horizon:
+        sessions = [s for s in sessions if s.time_horizon == time_horizon]
+
+    incomplete = [
+        s for s in sessions
+        if (s.status or "").lower() != "completed"
+        or not _has_report_value((s.reports or {}).get("final_trade_decision"))
+    ]
+    return incomplete[0] if incomplete else (sessions[0] if sessions else None)
+
 
 def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[str, Any]:
     """Build the persisted/API report payload from the final graph state."""
@@ -74,28 +148,58 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     """
     all_logs = []
     final_reports = {}
+    previous_session = None
+    continuation_analysts = list(req.analysts)
+
+    if req.continue_previous:
+        db = SessionLocal()
+        try:
+            previous_session = find_previous_analysis_session(
+                db,
+                ticker=req.ticker,
+                analysis_date=req.analysis_date,
+                time_horizon=req.time_horizon,
+                session_id=req.continue_session_id,
+            )
+            if previous_session:
+                all_logs = list(previous_session.logs or [])
+                final_reports = dict(previous_session.reports or {})
+                continuation_analysts = plan_continuation_analysts(req.analysts, final_reports)
+        finally:
+            db.close()
 
     # --- Create the session record immediately so artifacts survive interruptions ---
     ticker_label = f"MOCK {req.ticker}" if req.mock else req.ticker
     session_id = None
-    _create_db = SessionLocal()
-    try:
-        db_record = AnalysisSession(
-            ticker=ticker_label,
-            analysis_date=req.analysis_date,
-            time_horizon=req.time_horizon,
-            logs=[],
-            reports={},
-            status="running",
-        )
-        _create_db.add(db_record)
-        _create_db.commit()
-        _create_db.refresh(db_record)
-        session_id = db_record.id
-    except Exception as e:
-        print(f"Error creating session record: {e}")
-    finally:
-        _create_db.close()
+    if previous_session:
+        session_id = previous_session.id
+        _resume_db = SessionLocal()
+        try:
+            record = _resume_db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+            if record:
+                record.status = "running"
+                _resume_db.commit()
+        finally:
+            _resume_db.close()
+    else:
+        _create_db = SessionLocal()
+        try:
+            db_record = AnalysisSession(
+                ticker=ticker_label,
+                analysis_date=req.analysis_date,
+                time_horizon=req.time_horizon,
+                logs=[],
+                reports={},
+                status="running",
+            )
+            _create_db.add(db_record)
+            _create_db.commit()
+            _create_db.refresh(db_record)
+            session_id = db_record.id
+        except Exception as e:
+            print(f"Error creating session record: {e}")
+        finally:
+            _create_db.close()
 
     def _flush(status: str = "running") -> None:
         """Persist the current in-memory logs and reports to the DB record."""
@@ -169,7 +273,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
         }
         
     graph = TradingAgentsGraph(
-        req.analysts, config=config, debug=True
+        continuation_analysts, config=config, debug=True
     )
     
     await websocket.send_json({"event": "system", "content": f"Fetching portfolio context for {req.ticker}..."})
@@ -182,6 +286,31 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
         portfolio_context=portfolio_ctx,
         time_horizon=req.time_horizon,
     )
+    if previous_session:
+        apply_previous_reports_to_state(init_agent_state, final_reports)
+        await websocket.send_json({
+            "event": "system",
+            "content": f"Continuing saved analysis session {previous_session.id} for {req.ticker}.",
+        })
+        await websocket.send_json({
+            "event": "chunk",
+            "updates": all_logs,
+            "reports": final_reports,
+        })
+        skipped = [
+            analyst for analyst in req.analysts
+            if analyst not in continuation_analysts
+        ]
+        if skipped:
+            await websocket.send_json({
+                "event": "system",
+                "content": f"Reusing completed analyst reports: {', '.join(skipped)}.",
+            })
+        if not continuation_analysts:
+            await websocket.send_json({
+                "event": "system",
+                "content": "All analyst reports are already present; continuing from the trading decision pipeline.",
+            })
     args = graph.propagator.get_graph_args()
     
     seen_messages = 0
@@ -336,8 +465,27 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
     if req.qwen_thinking_budget is not None:
         config["qwen_thinking_budget"] = req.qwen_thinking_budget
 
+    previous_session = None
+    previous_reports = {}
+    continuation_analysts = list(req.analysts)
+    if req.continue_previous:
+        db = SessionLocal()
+        try:
+            previous_session = find_previous_analysis_session(
+                db,
+                ticker=req.ticker,
+                analysis_date=req.analysis_date,
+                time_horizon=req.time_horizon,
+                session_id=req.continue_session_id,
+            )
+            if previous_session:
+                previous_reports = dict(previous_session.reports or {})
+                continuation_analysts = plan_continuation_analysts(req.analysts, previous_reports)
+        finally:
+            db.close()
+
     graph = TradingAgentsGraph(
-        req.analysts, config=config, debug=False
+        continuation_analysts, config=config, debug=False
     )
 
     portfolio_ctx = fetch_portfolio_context(req.ticker)
@@ -348,28 +496,41 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         portfolio_context=portfolio_ctx,
         time_horizon=req.time_horizon,
     )
+    if previous_session:
+        apply_previous_reports_to_state(init_agent_state, previous_reports)
     args = graph.propagator.get_graph_args()
 
     # Create session record immediately
     session_id = None
-    _create_db = SessionLocal()
-    try:
-        db_record = AnalysisSession(
-            ticker=req.ticker,
-            analysis_date=req.analysis_date,
-            time_horizon=req.time_horizon,
-            logs=[],
-            reports={},
-            status="running",
-        )
-        _create_db.add(db_record)
-        _create_db.commit()
-        _create_db.refresh(db_record)
-        session_id = db_record.id
-    except Exception as e:
-        print(f"Error creating session record: {e}")
-    finally:
-        _create_db.close()
+    if previous_session:
+        session_id = previous_session.id
+        _resume_db = SessionLocal()
+        try:
+            record = _resume_db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+            if record:
+                record.status = "running"
+                _resume_db.commit()
+        finally:
+            _resume_db.close()
+    else:
+        _create_db = SessionLocal()
+        try:
+            db_record = AnalysisSession(
+                ticker=req.ticker,
+                analysis_date=req.analysis_date,
+                time_horizon=req.time_horizon,
+                logs=[],
+                reports={},
+                status="running",
+            )
+            _create_db.add(db_record)
+            _create_db.commit()
+            _create_db.refresh(db_record)
+            session_id = db_record.id
+        except Exception as e:
+            print(f"Error creating session record: {e}")
+        finally:
+            _create_db.close()
 
     final_state = None
     status = "interrupted"
@@ -387,6 +548,8 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
                 record = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
                 if record:
                     reports = build_analysis_reports_payload(final_state) if final_state else {}
+                    if previous_reports:
+                        reports = {**previous_reports, **reports}
                     record.reports = json.loads(json.dumps(reports, default=str))
                     record.status = status
                     db.commit()
