@@ -6,7 +6,7 @@ import time
 
 def main():
     print("===================================================")
-    print("    Starting Boolean Trader (Single Terminal)")
+    print("    Starting OpenTrace (Single Terminal)")
     print("===================================================")
 
     is_windows = platform.system() == "Windows"

@@ -43,6 +43,67 @@ def _str_list(value: Any) -> list[str]:
     return [str(item).strip() for item in _as_list(value) if str(item).strip()]
 
 
+def _humanize_event_item(value: Any) -> str:
+    """Render a catalyst/event entry as a readable sentence.
+
+    Models frequently emit structured event objects (``{"event_type": ...,
+    "summary": ...}``) for the event-list fields even though the schema is a
+    list of strings. Stringifying those dicts directly leaks Python ``repr``
+    syntax into the report, so collapse them into clean prose here. Plain
+    string entries are returned unchanged.
+    """
+    if not isinstance(value, dict):
+        return str(value).strip()
+
+    event_type = _str_or_none(value.get("event_type"))
+    label = event_type.replace("_", " ").title() if event_type else None
+    when = _str_or_none(
+        value.get("event_time") or value.get("detected_at") or value.get("date")
+    )
+    summary = _str_or_none(
+        value.get("summary")
+        or value.get("title")
+        or value.get("claim")
+        or value.get("description")
+    )
+
+    if label and when:
+        head = f"{label} ({when})"
+    else:
+        head = label or when
+
+    if head and summary:
+        body = f"{head}: {summary}"
+    elif summary:
+        body = summary
+    elif head:
+        body = head
+    else:
+        body = "; ".join(
+            f"{str(k).replace('_', ' ')} {v}" for k, v in value.items() if v not in (None, "")
+        )
+
+    materiality = _float_or_none(
+        value.get("materiality")
+        if value.get("materiality") is not None
+        else value.get("materiality_score")
+    )
+    confidence = _float_or_none(value.get("confidence"))
+    metrics = []
+    if materiality is not None:
+        metrics.append(f"materiality {materiality:.2f}")
+    if confidence is not None:
+        metrics.append(f"confidence {confidence:.2f}")
+    if metrics:
+        body = f"{body} ({', '.join(metrics)})"
+
+    return body.strip()
+
+
+def _event_str_list(value: Any) -> list[str]:
+    return [item for item in (_humanize_event_item(v) for v in _as_list(value)) if item]
+
+
 def _float_or_none(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -353,10 +414,10 @@ class CatalystEventReport:
             catalyst_score=_clamp01(d.get("catalyst_score")),
             thesis_break_score=_clamp01(d.get("thesis_break_score")),
             thesis_support_score=_clamp01(d.get("thesis_support_score")),
-            near_term_catalysts=_str_list(d.get("near_term_catalysts")),
-            recent_material_events=_str_list(d.get("recent_material_events")),
-            thesis_supporting_events=_str_list(d.get("thesis_supporting_events")),
-            thesis_breaking_events=_str_list(d.get("thesis_breaking_events")),
+            near_term_catalysts=_event_str_list(d.get("near_term_catalysts")),
+            recent_material_events=_event_str_list(d.get("recent_material_events")),
+            thesis_supporting_events=_event_str_list(d.get("thesis_supporting_events")),
+            thesis_breaking_events=_event_str_list(d.get("thesis_breaking_events")),
             unresolved_questions=_str_list(d.get("unresolved_questions")),
             recommended_action=action,
             action_rationale=str(d.get("action_rationale") or ""),
