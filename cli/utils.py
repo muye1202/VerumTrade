@@ -175,6 +175,12 @@ def select_shallow_thinking_agent(provider) -> str:
         # "deepseek": [
         #     ("DeepSeek Chat", "deepseek-chat"),
         # ],
+        "azure-foundry": [
+            ("GPT-5 Mini", "gpt-5-mini"),
+            ("DeepSeek-R1", "DeepSeek-R1"),
+            ("DeepSeek-V3.1", "DeepSeek-V3.1"),
+            ("GPT-4o Mini", "gpt-4o-mini"),
+        ],
         "anthropic": [
             ("Claude 4.6 Sonnet", "claude-sonnet-4-6"),
             ("Claude 4.5 Haiku", "claude-haiku-4-5-20251001"),
@@ -226,6 +232,14 @@ def select_deep_thinking_agent(provider) -> str:
         "deepseek": [
             ("DeepSeek Reasoner", "deepseek-reasoner"),
         ],
+        "azure-foundry": [
+            ("GPT-5 Mini", "gpt-5-mini"),
+            ("DeepSeek-R1", "DeepSeek-R1"),
+            ("DeepSeek-R1-0528", "DeepSeek-R1-0528"),
+            ("DeepSeek-V3.1", "DeepSeek-V3.1"),
+            ("GPT-4o", "gpt-4o"),
+            ("GPT-4o Mini", "gpt-4o-mini"),
+        ],
         "anthropic": [
             ("Claude 4.6 Opus", "claude-opus-4-6"),
             ("Claude 4.6 Sonnet", "claude-sonnet-4-6"),
@@ -264,6 +278,7 @@ def select_llm_provider() -> tuple[str, str]:
     # Define OpenAI api options with their corresponding endpoints
     BASE_URLS = [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
+        ("Azure Foundry", "azure-foundry", ""),
         ("Qwen3-CN (DashScope)", "qwen3-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
         ("GLM (ZhipuAI)", "glm", "https://open.bigmodel.cn/api/paas/v4"),
