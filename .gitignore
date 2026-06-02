@@ -25,6 +25,8 @@ eval_data/
 *.db
 
 # ─── Temp / scratch files ──────────────────────────────────
+.pytest_cache
+.codex-tmp
 tmp_*
 scratch/*
 verify_*
