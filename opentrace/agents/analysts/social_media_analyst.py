@@ -37,7 +37,7 @@ def create_social_media_analyst(llm):
         portfolio_context = state.get("portfolio_context", "")
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
-        window_text = f"the next {spec.weeks_range[0]}â€“{spec.weeks_range[1]} weeks"
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
         enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
         tool_round_cap = int(get_config().get("analyst_tool_round_cap", 4) or 0)

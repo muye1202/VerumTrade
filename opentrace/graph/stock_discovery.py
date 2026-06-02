@@ -168,7 +168,7 @@ class StockDiscoveryGraph:
         Args:
             trade_date: Target date (defaults to today)
             exclude_tickers: Optional list of symbols to exclude from recommendations
-            discovery_track: ``"enricher"`` for Stage 1â†’2 pipeline,
+            discovery_track: ``"enricher"`` for Stage 1→2 pipeline,
                 ``"anomaly_scan"`` for Track B momentum anomaly scans.
 
         Returns:

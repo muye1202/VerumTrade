@@ -1,5 +1,5 @@
 """
-LLM Evaluator â€” intelligent trigger evaluation for near-trigger situations.
+LLM Evaluator — intelligent trigger evaluation for near-trigger situations.
 
 Design goals:
   1. Minimal token usage: thesis digests are cached, tick context is compact
@@ -9,10 +9,10 @@ Design goals:
 
 Architecture:
   Rule pre-filter (every tick, ~0 cost)
-    â†’ Proximity scoring (every tick, ~0 cost)
-    â†’ Skip-until gate (most ticks exit here)
-    â†’ LLM evaluation (2-5 calls/day during active monitoring)
-    â†’ Policy validation â†’ Executable order
+    → Proximity scoring (every tick, ~0 cost)
+    → Skip-until gate (most ticks exit here)
+    → LLM evaluation (2-5 calls/day during active monitoring)
+    → Policy validation → Executable order
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 logger = logging.getLogger(__name__)
 
 
-# â”€â”€ LLM client protocol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── LLM client protocol ─────────────────────────────────────────────────
 
 
 class LLMClient(Protocol):
@@ -43,7 +43,7 @@ class LLMClient(Protocol):
         ...
 
 
-# â”€â”€ Default Anthropic implementation (kept for backward compat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Default Anthropic implementation (kept for backward compat) ──────────
 
 
 class AnthropicLLMClient:
@@ -69,7 +69,7 @@ class AnthropicLLMClient:
         return resp.content[0].text
 
 
-# â”€â”€ Config-driven LLM client (mirrors opentrace_graph.py provider logic) â”€â”€â”€
+# ── Config-driven LLM client (mirrors opentrace_graph.py provider logic) ───
 
 
 class ConfiguredLLMClient:
@@ -91,7 +91,7 @@ class ConfiguredLLMClient:
         self._config = config
         self._llm = self._build(config)
 
-    # â”€â”€ LLMClient protocol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── LLMClient protocol ─────────────────────────────────────────
     def complete(self, *, system: str, user: str, max_tokens: int = 512) -> str:
         messages = [
             {"role": "system", "content": system},
@@ -100,7 +100,7 @@ class ConfiguredLLMClient:
         result = self._llm.invoke(messages)
         return str(getattr(result, "content", result) or "")
 
-    # â”€â”€ Provider construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Provider construction ──────────────────────────────────────
     @staticmethod
     def _build(config: Dict[str, Any]):
         """Build a LangChain chat model from an OpenTrace config dict."""
@@ -168,7 +168,7 @@ def build_llm_client_from_config(config: Optional[Dict[str, Any]]) -> Optional["
         return None
 
 
-# â”€â”€ Trigger proximity scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Trigger proximity scoring ────────────────────────────────────────────
 
 
 @dataclass
@@ -192,7 +192,7 @@ def score_branch_proximity(
     tracker_state: Dict[str, Any],
 ) -> BranchProximity:
     """
-    Compute a 0â€“1 proximity score for a single branch.
+    Compute a 0–1 proximity score for a single branch.
 
     The score is the minimum across all sub-condition scores (AND logic).
     A sub-condition scores 1.0 when met, 0.0 when far, and intermediate
@@ -203,7 +203,7 @@ def score_branch_proximity(
     scores: Dict[str, float] = {}
     blockers: List[str] = []
 
-    # â”€â”€ Price conditions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Price conditions ─────────────────────────────────────────
     price_cond = conditions.get("price") or {}
     if price_cond and price is not None:
         close_above = _sf(price_cond.get("close_above"))
@@ -230,7 +230,7 @@ def score_branch_proximity(
         scores["price"] = 0.0
         blockers.append("no price data")
 
-    # â”€â”€ Volume conditions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Volume conditions ────────────────────────────────────────
     vol_cond = conditions.get("volume") or {}
     if vol_cond:
         ratio_min = _sf(vol_cond.get("volume_ratio_min"))
@@ -245,7 +245,7 @@ def score_branch_proximity(
                 scores["volume"] = 0.5  # unknown, don't block
                 blockers.append("volume data unavailable")
 
-    # â”€â”€ Schedule conditions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Schedule conditions ──────────────────────────────────────
     schedule = conditions.get("schedule") or {}
     if schedule:
         valid_from = str(schedule.get("valid_from") or "").strip()
@@ -268,7 +268,7 @@ def score_branch_proximity(
             else:
                 scores["schedule_window"] = 1.0
 
-    # â”€â”€ Event conditions (always 0 unless confirmed externally) â”€â”€
+    # ── Event conditions (always 0 unless confirmed externally) ──
     events = branch.get("event_conditions") or conditions.get("event_conditions") or []
     if events and isinstance(events, list):
         has_required = any(
@@ -279,7 +279,7 @@ def score_branch_proximity(
             scores["event_confirmation"] = 0.3  # can't assess, penalize mildly
             blockers.append("event confirmation pending")
 
-    # â”€â”€ Composite score â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Composite score ──────────────────────────────────────────
     if not scores:
         final = 1.0  # no conditions = always matches
     else:
@@ -294,7 +294,7 @@ def score_branch_proximity(
     )
 
 
-# â”€â”€ Thesis digest (cached, compact) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Thesis digest (cached, compact) ─────────────────────────────────────
 
 
 class ThesisDigestCache:
@@ -391,7 +391,7 @@ class ThesisDigestCache:
         return "\n".join(parts) if parts else "No thesis context available."
 
 
-# â”€â”€ Skip-until cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Skip-until cache ─────────────────────────────────────────────────────
 
 
 class SkipUntilCache:
@@ -443,7 +443,7 @@ class SkipUntilCache:
         return mapping.get(h)
 
 
-# â”€â”€ State hashing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── State hashing ────────────────────────────────────────────────────────
 
 
 def compute_state_hash(
@@ -466,7 +466,7 @@ def compute_state_hash(
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
-# â”€â”€ LLM evaluation result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── LLM evaluation result ───────────────────────────────────────────────
 
 
 @dataclass
@@ -476,7 +476,7 @@ class LLMEvalResult:
     action: str  # EXECUTE, HOLD, CLOSE, WATCH
     branch_id: Optional[str] = None
     order: Optional[Dict[str, Any]] = None  # executable order params
-    phase_transition: Optional[str] = None   # e.g. "WATCHING â†’ TRIGGERED"
+    phase_transition: Optional[str] = None   # e.g. "WATCHING → TRIGGERED"
     reasoning: str = ""
     next_eval_hint: str = "next_tick"
     confidence: float = 0.0
@@ -487,10 +487,10 @@ class LLMEvalResult:
         return self.action == "EXECUTE" and self.order is not None
 
 
-# â”€â”€ Core LLM evaluator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Core LLM evaluator ──────────────────────────────────────────────────
 
 
-# System prompt â€” static, benefits from API-level caching (~150 tokens)
+# System prompt — static, benefits from API-level caching (~150 tokens)
 _SYSTEM_PROMPT = """You evaluate trade triggers for an automated journal agent.
 
 Given a thesis digest, current tick data, and near-trigger branch details,
@@ -499,11 +499,11 @@ decide whether to EXECUTE a branch, HOLD (wait), CLOSE (exit/time-stop), or WATC
 RULES:
 - "close_below"/"close_above" conditions refer to DAILY CLOSING prices, not intraday prints
 - If the market session is not near close (after 3:30 PM ET), intraday price crossing a close_X level should be HOLD, not EXECUTE
-- Time stops are hard exits â€” if days_active >= max_days, recommend CLOSE
+- Time stops are hard exits — if days_active >= max_days, recommend CLOSE
 - Volume conditions matter: if thesis requires declining volume but volume is elevated, that's a HOLD signal
 - If an invalidation branch's conditions are closer to triggering than the primary branch, flag it
 
-OUTPUT FORMAT â€” respond with ONLY this JSON, no other text:
+OUTPUT FORMAT — respond with ONLY this JSON, no other text:
 {
   "action": "EXECUTE|HOLD|CLOSE|WATCH",
   "branch_id": "which branch if EXECUTE",
@@ -556,7 +556,7 @@ class LLMEvaluator:
         """
         Run LLM evaluation. Returns None if skipped (due to cache/cooldown).
         """
-        # â”€â”€ Skip-until check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Skip-until check ─────────────────────────────────────
         state_hash = compute_state_hash(
             price=price,
             volume_ratio=volume_ratio,
@@ -568,12 +568,12 @@ class LLMEvaluator:
             logger.debug("Skipping LLM eval for %s (skip-until active)", thesis_id)
             return None
 
-        # â”€â”€ Rate limiting (min 60s between calls for same thesis) â”€
+        # ── Rate limiting (min 60s between calls for same thesis) ─
         if self._last_call_ts and (time.time() - self._last_call_ts) < 30:
             logger.debug("Rate-limiting LLM eval (too soon)")
             return None
 
-        # â”€â”€ Build compact prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Build compact prompt ─────────────────────────────────
         digest = self._digest_cache.get_or_build(thesis_id, decision_text, plan_json)
         user_prompt = self._build_user_prompt(
             digest=digest,
@@ -586,7 +586,7 @@ class LLMEvaluator:
             eod_series=eod_series,
         )
 
-        # â”€â”€ Call LLM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Call LLM ─────────────────────────────────────────────
         try:
             raw = self._llm.complete(
                 system=_SYSTEM_PROMPT,
@@ -599,13 +599,13 @@ class LLMEvaluator:
             logger.error("LLM evaluation failed: %s", e)
             return None
 
-        # â”€â”€ Parse response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Parse response ───────────────────────────────────────
         result = self._parse_response(raw)
         if result is None:
             logger.warning("Failed to parse LLM response: %s", raw[:200])
             return None
 
-        # â”€â”€ Record skip-until hint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Record skip-until hint ───────────────────────────────
         if result.next_eval_hint and result.action != "EXECUTE":
             self._skip_cache.set_skip(thesis_id, state_hash, result.next_eval_hint)
 
@@ -614,7 +614,7 @@ class LLMEvaluator:
     def clear_skip(self, thesis_id: str):
         self._skip_cache.clear(thesis_id)
 
-    # â”€â”€ Prompt construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Prompt construction ──────────────────────────────────────────
 
     def _build_user_prompt(
         self,
@@ -672,10 +672,10 @@ class LLMEvaluator:
                 if bp.blocking_reasons:
                     lines.append(f"    blockers: {'; '.join(bp.blocking_reasons[:3])}")
 
-        lines.append("\nâ†’ JSON recommendation:")
+        lines.append("\n→ JSON recommendation:")
         return "\n".join(lines)
 
-    # â”€â”€ Response parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Response parsing ─────────────────────────────────────────────
 
     @staticmethod
     def _parse_response(raw: str) -> Optional[LLMEvalResult]:
@@ -724,7 +724,7 @@ class LLMEvaluator:
         )
 
 
-# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Helpers ──────────────────────────────────────────────────────────────
 
 
 def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:

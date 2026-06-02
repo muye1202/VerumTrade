@@ -234,7 +234,7 @@ def main() -> None:
 
         console.print()
 
-    # â”€â”€ Optional Tier 2 LLM eval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Optional Tier 2 LLM eval ─────────────────────────────────────────────
     # Set JOURNAL_LLM_PROVIDER + JOURNAL_LLM_MODEL in .env to enable.
     # Example:
     #   JOURNAL_LLM_PROVIDER=openai

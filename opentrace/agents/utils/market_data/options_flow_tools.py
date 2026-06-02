@@ -240,19 +240,19 @@ This could mean:
     
     # Sentiment assessment
     if total_call_notional > total_put_notional * 2:
-        sentiment = "ðŸŸ¢ STRONGLY BULLISH"
+        sentiment = "🟢 STRONGLY BULLISH"
         sentiment_detail = "Call premium significantly exceeds put premium"
     elif total_call_notional > total_put_notional * 1.3:
-        sentiment = "ðŸŸ¢ BULLISH"
+        sentiment = "🟢 BULLISH"
         sentiment_detail = "Call premium exceeds put premium"
     elif total_put_notional > total_call_notional * 2:
-        sentiment = "ðŸ”´ STRONGLY BEARISH"
+        sentiment = "🔴 STRONGLY BEARISH"
         sentiment_detail = "Put premium significantly exceeds call premium"
     elif total_put_notional > total_call_notional * 1.3:
-        sentiment = "ðŸ”´ BEARISH"
+        sentiment = "🔴 BEARISH"
         sentiment_detail = "Put premium exceeds call premium"
     else:
-        sentiment = "âšª NEUTRAL"
+        sentiment = "⚪ NEUTRAL"
         sentiment_detail = "Balanced call/put activity"
     
     # Format top unusual contracts (limit to 10)
@@ -398,19 +398,19 @@ async def get_options_sentiment_summary(
     # Contrarian: High P/C often bullish (fear = buying opportunity)
     # Confirmation: Very low P/C may indicate complacency
     if pc_volume_ratio > 1.5:
-        sentiment = "ðŸŸ¡ ELEVATED PUT ACTIVITY"
+        sentiment = "🟡 ELEVATED PUT ACTIVITY"
         interpretation = "High put volume may indicate hedging or fear - contrarian bullish signal"
     elif pc_volume_ratio > 1.0:
-        sentiment = "âšª SLIGHTLY BEARISH"
+        sentiment = "⚪ SLIGHTLY BEARISH"
         interpretation = "Puts outpacing calls, mild caution in the market"
     elif pc_volume_ratio < 0.5:
-        sentiment = "ðŸŸ¡ ELEVATED CALL ACTIVITY"
+        sentiment = "🟡 ELEVATED CALL ACTIVITY"
         interpretation = "Very high call volume may indicate complacency - watch for pullback"
     elif pc_volume_ratio < 0.7:
-        sentiment = "ðŸŸ¢ BULLISH"
+        sentiment = "🟢 BULLISH"
         interpretation = "Calls outpacing puts, market expects upside"
     else:
-        sentiment = "âšª NEUTRAL"
+        sentiment = "⚪ NEUTRAL"
         interpretation = "Balanced put/call activity"
     
     return f"""## Options Sentiment: {symbol} ({curr_date})

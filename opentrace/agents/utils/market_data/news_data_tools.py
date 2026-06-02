@@ -88,8 +88,8 @@ async def get_insider_sentiment(
     - Dollar values of insider purchases vs sales
 
     Interpretation:
-    - Net positive (more buying) â†’ Bullish insider sentiment (insiders confident)
-    - Net negative (more selling) â†’ Bearish insider sentiment (insiders cautious)
+    - Net positive (more buying) -> Bullish insider sentiment (insiders confident)
+    - Net negative (more selling) -> Bearish insider sentiment (insiders cautious)
 
     This is fundamentally different from get_news() which provides TEXT-BASED
     sentiment from NLP analysis of news article language.
@@ -171,9 +171,10 @@ async def get_news_sentiment(
 @tool
 async def get_recent_sec_filings(
     ticker: Annotated[str, "Ticker symbol"] = "",
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"] = "",
 ) -> str:
     """
     Retrieve recent SEC filings (e.g. 8-K, Form 4) for a specific ticker (or globally if ticker is empty).
     Provides primary source structural records of material events, earnings, Insider trades, etc.
     """
-    return await asyncio.to_thread(route_to_vendor, "get_recent_sec_filings", ticker)
+    return await asyncio.to_thread(route_to_vendor, "get_recent_sec_filings", ticker, curr_date)

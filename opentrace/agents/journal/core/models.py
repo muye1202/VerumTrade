@@ -2,7 +2,7 @@
 Data models for the Trade Journal system.
 
 All models are plain dataclasses with to_dict/from_dict for SQLite serialization.
-No ORM â€” we keep it lightweight and explicit.
+No ORM — we keep it lightweight and explicit.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ class TradeThesis:
     """
     The structured thesis captured at trade entry time.
 
-    Extracted from the multi-agent analysis state â€” entry zone, stop, targets,
+    Extracted from the multi-agent analysis state — entry zone, stop, targets,
     time-stop, catalyst, and the raw rationale from each agent stage.
     """
 
@@ -206,7 +206,7 @@ class JournalAlert:
     """
     An alert generated when a monitored position hits a thesis parameter.
 
-    Alerts are the journal's "output" â€” they inform the user and can trigger
+    Alerts are the journal's "output" — they inform the user and can trigger
     automated actions (exit orders, re-analysis, reflection).
     """
 
@@ -303,7 +303,7 @@ class TradeOutcome:
     """
     Structured outcome record computed when a position closes.
 
-    This is the primary input to the reflection/learning loop â€” it tells the
+    This is the primary input to the reflection/learning loop — it tells the
     system not just P&L but *why* the trade worked or didn't.
     """
 

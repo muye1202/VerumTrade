@@ -118,7 +118,7 @@ async def get_price_action_summary(
     Compute short-term (swing-trade) price/volatility/liquidity metrics from daily OHLCV.
 
     This tool fetches OHLCV via the configured core_stock_apis vendor and returns a compact
-    snapshot suitable for 1â€“2 month holding-period decisions.
+    snapshot suitable for 1–2 month holding-period decisions.
     """
     try:
         import pandas as pd  # type: ignore
@@ -140,7 +140,7 @@ async def get_price_action_summary(
     try:
         raw = await asyncio.to_thread(route_to_vendor, "get_stock_data", symbol, start_date, end_date)
     except Exception as e:
-        return f"Error: failed to fetch OHLCV for {symbol} ({start_date} â†’ {end_date}): {e}"
+        return f"Error: failed to fetch OHLCV for {symbol} ({start_date} → {end_date}): {e}"
     if isinstance(raw, str) and raw.lower().startswith("no data found"):
         return str(raw)
 
@@ -161,7 +161,7 @@ async def get_price_action_summary(
     df = df.dropna(subset=[cols.close])
 
     if df.empty or len(df) < 5:
-        return f"Not enough OHLCV data to compute metrics for {symbol} ({start_date} â†’ {end_date})."
+        return f"Not enough OHLCV data to compute metrics for {symbol} ({start_date} → {end_date})."
 
     close = df[cols.close]
     high = df[cols.high]
@@ -172,7 +172,7 @@ async def get_price_action_summary(
     last_close = float(close.iloc[-1])
     prev_close = float(close.iloc[-2]) if len(close) >= 2 else None
 
-    # Trading-day returns for horizons that map to 1â€“2 months.
+    # Trading-day returns for horizons that map to 1–2 months.
     def ret_n(n: int) -> Optional[float]:
         if len(close) <= n:
             return None
@@ -239,7 +239,7 @@ async def get_price_action_summary(
 
     out = []
     out.append(f"## Price-action snapshot for {symbol.upper()} (daily)")
-    out.append(f"- Window: {start_date} â†’ {end_date} ({len(df)} trading days parsed)")
+    out.append(f"- Window: {start_date} → {end_date} ({len(df)} trading days parsed)")
     out.append(f"- Last close: {_num(last_close)} (prev: {_num(prev_close)})")
     out.append(f"- Returns: 5D {_pct(ret_5d)} | 1M(21D) {_pct(ret_21d)} | 2M(42D) {_pct(ret_42d)} | 3M(63D) {_pct(ret_63d)}")
     out.append(f"- Realized vol (ann., ~{vol_window_days}D): {_pct(rv_annual)}")

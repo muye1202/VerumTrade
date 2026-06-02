@@ -8,7 +8,7 @@ Purely technical scanner to flag specific quantitative phenomena based on calcul
 Track B: Momentum Anomaly Scans.
 
 Four pure-numeric scans that run against the liquid ticker universe daily.
-All use daily OHLCV from Alpaca free tier â€” zero LLM calls.
+All use daily OHLCV from Alpaca free tier — zero LLM calls.
 
 Scan 1: Momentum Acceleration
 Scan 2: Volatility Contraction Breakout
@@ -95,7 +95,7 @@ def _linear_regression_slope(values: List[float]) -> float:
 
 
 def _percentile_rank(value: float, history: List[float]) -> float:
-    """Percentile rank of *value* within *history* (0â€“100)."""
+    """Percentile rank of *value* within *history* (0–100)."""
     if not history:
         return 50.0
     count_below = sum(1 for v in history if v < value)
@@ -103,7 +103,7 @@ def _percentile_rank(value: float, history: List[float]) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Ticker data bundle â€” fetched once, reused across all scans
+# Ticker data bundle — fetched once, reused across all scans
 # ---------------------------------------------------------------------------
 
 class _TickerData:
@@ -236,7 +236,7 @@ class MomentumAnomalyScanner:
             hits.extend(self._scan4_stealth_accumulation(ticker_data, cfg["thresholds"]))
 
         self.logger.info(
-            f"Track B scans complete: {len(universe)} tickers â†’ {len(hits)} hits "
+            f"Track B scans complete: {len(universe)} tickers → {len(hits)} hits "
             f"[accel={sum(1 for h in hits if h.scan_name == 'momentum_acceleration')}, "
             f"breakout={sum(1 for h in hits if h.scan_name == 'volatility_breakout')}, "
             f"rs_div={sum(1 for h in hits if h.scan_name == 'rs_divergence')}, "
@@ -327,7 +327,7 @@ class MomentumAnomalyScanner:
         thresholds: Dict[str, float],
     ) -> List[MomentumScanHit]:
         """
-        Catches the 'coiled spring' setup â€” tight consolidation then breakout.
+        Catches the 'coiled spring' setup — tight consolidation then breakout.
 
         Signal:
           bb_width at low percentile vs last 60 days,
@@ -418,7 +418,7 @@ class MomentumAnomalyScanner:
         ohlcv_cache: Optional[Dict[str, str]] = None,
     ) -> List[MomentumScanHit]:
         """
-        Catches early sector rotation â€” stock RS rising vs SPY while
+        Catches early sector rotation — stock RS rising vs SPY while
         its sector ETF RS is flat or falling.
 
         Signal:
@@ -606,7 +606,7 @@ class MomentumAnomalyScanner:
     ) -> Optional[_TickerData]:
         """Fetch OHLCV + SMA50 for one ticker.
 
-        Uses *ohlcv_cache* (ticker â†’ raw CSV) when available to avoid
+        Uses *ohlcv_cache* (ticker → raw CSV) when available to avoid
         duplicate ``route_to_vendor('get_stock_data')`` calls.  On a cache
         miss the fetched CSV is stored into *ohlcv_cache* so other
         consumers (e.g. Stage 1) can benefit.

@@ -1,5 +1,5 @@
 # ============================================================
-# OpenTrace â€” Theme Taxonomy
+# OpenTrace — Theme Taxonomy
 # ============================================================
 # This file seeds the Theme Graph and Supply-Chain Exposure Engine.
 #
@@ -134,7 +134,7 @@ themes:
     label: "Data-center power and cooling"
     description: >
       AI GPU density is creating a power and thermal crisis in data centers.
-      Liquid cooling is the bottleneck â€” air cooling cannot handle modern AI racks.
+      Liquid cooling is the bottleneck — air cooling cannot handle modern AI racks.
     chain:
       - { id: ai_power_density, label: "AI rack power density surge", type: theme_root }
       - { id: liquid_cooling, label: "Liquid and immersion cooling", type: bottleneck, is_bottleneck: true }
@@ -409,7 +409,7 @@ themes:
     description: >
       AI-powered attacks and nation-state threats are expanding the addressable
       market for security platforms. AI-native detection is the bottleneck
-      differentiator â€” it cannot be replicated quickly by incumbents.
+      differentiator — it cannot be replicated quickly by incumbents.
     chain:
       - { id: threat_escalation, label: "AI-powered threat escalation", type: theme_root }
       - { id: ai_native_detection, label: "AI-native threat detection", type: bottleneck, is_bottleneck: true }
@@ -562,7 +562,7 @@ themes:
     description: >
       Defense systems, EVs, and clean energy require rare earth magnets, lithium,
       and other critical minerals. Non-Chinese refining capacity is the defining
-      bottleneck â€” the US has almost no domestic refining today.
+      bottleneck — the US has almost no domestic refining today.
     chain:
       - { id: mineral_demand, label: "Defense, EV, and clean energy demand", type: theme_root }
       - { id: rare_earth_refining, label: "Rare earth separation and refining", type: bottleneck, is_bottleneck: true }
@@ -611,7 +611,7 @@ themes:
     description: >
       Insatiable GLP-1 drug demand has created a multi-year manufacturing
       bottleneck. Fill-finish and aseptic capacity cannot be expanded quickly
-      â€” it takes 3-5 years to build and qualify a new fill-finish facility.
+      — it takes 3-5 years to build and qualify a new fill-finish facility.
     chain:
       - { id: glp1_drug_demand, label: "GLP-1 obesity and diabetes demand", type: theme_root }
       - { id: fill_finish_capacity, label: "Fill-finish and aseptic manufacturing", type: bottleneck, is_bottleneck: true }
@@ -717,7 +717,7 @@ themes:
     description: >
       AI and advanced chip demand is driving the largest semiconductor capacity
       expansion in history. Lithography and advanced inspection equipment are
-      the defining bottlenecks â€” both have multi-year backlogs.
+      the defining bottlenecks — both have multi-year backlogs.
     chain:
       - { id: advanced_chip_demand, label: "Advanced chip demand (AI, HPC)", type: theme_root }
       - { id: euv_lithography, label: "EUV and advanced lithography", type: bottleneck, is_bottleneck: true }
@@ -780,7 +780,7 @@ themes:
   - id: edge_ai_hardware
     label: "Edge AI hardware"
     description: >
-      AI inference is moving to the edge â€” in cars, phones, factories, and
+      AI inference is moving to the edge — in cars, phones, factories, and
       medical devices. Purpose-built edge AI chips with the right power
       efficiency are the bottleneck constraining deployment speed.
     chain:

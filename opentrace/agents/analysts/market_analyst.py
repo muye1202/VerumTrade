@@ -55,9 +55,9 @@ def create_market_analyst(llm):
         catalyst_structured = state.get("catalyst_event_report_structured", {})
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
-        window_text = f"the next {spec.weeks_range[0]}â€“{spec.weeks_range[1]} weeks"
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
         trading_days_text = (
-            f"~{spec.trading_days_range[0]}â€“{spec.trading_days_range[1]} trading days"
+            f"~{spec.trading_days_range[0]}–{spec.trading_days_range[1]} trading days"
         )
 
         enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
@@ -121,7 +121,7 @@ Operating horizon and output:
 
 Workflow (tool-first, then write):
 1) Call `get_price_action_summary(symbol=<ticker>, curr_date=<current_date>)` to ground the analysis (returns/vol/ATR, key levels, volume + gap risk).
-2) Select 4â€“6 indicators (max 6) from the allowed list below that add *non-redundant* information for a {holding_text} horizon.
+2) Select 4–6 indicators (max 6) from the allowed list below that add *non-redundant* information for a {holding_text} horizon.
 3) For each selected indicator, call `get_indicators(symbol=<ticker>, indicator=..., curr_date=<current_date>, look_back_days=90)` (use ~90 days for context). Use the exact indicator names.
    - If a vendor replies that an indicator isn't available (e.g., VWMA on Alpha Vantage), substitute another from the list and continue.
 4) Call VWAP tools for entry timing context:
@@ -200,7 +200,7 @@ Report requirements (keep it to-the-point, but specific):
 - Options sentiment: Put/call ratio, any unusual activity detected.
 - Institutional flow: Short volume trends, dark pool activity signals.
 - Squeeze risk: If short interest >10%, assess squeeze potential.
-- Setup(s) for {window_text}: 1â€“2 candidate trade plans with entry zone, stop, 1â€“2 targets, and a time-stop.
+- Setup(s) for {window_text}: 1–2 candidate trade plans with entry zone, stop, 1–2 targets, and a time-stop.
 - Risks/catalysts: what news/earnings/macro surprises could break the setup (don't invent dates).
 - Do not output `FINAL TRANSACTION PROPOSAL`; provide domain bias and evidence only. The trader/risk judge owns executable BUY/HOLD/SELL decisions.
 - End with a compact Markdown table summarizing: regime, bias, key levels, trigger, stop, targets, time horizon, and top risks.

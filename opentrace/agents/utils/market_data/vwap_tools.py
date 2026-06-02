@@ -241,13 +241,13 @@ async def get_intraday_vwap_position(
         # Position relative to VWAP
         if vwap_deviation > 0.5:
             position = "ABOVE"
-            position_emoji = "ðŸŸ¢"
+            position_emoji = "🟢"
         elif vwap_deviation < -0.5:
             position = "BELOW"
-            position_emoji = "ðŸ”´"
+            position_emoji = "🔴"
         else:
             position = "AT"
-            position_emoji = "âšª"
+            position_emoji = "⚪"
 
         # Time above/below VWAP analysis
         bars_above = 0
@@ -320,7 +320,7 @@ async def get_intraday_vwap_position(
         if not interpretations:
             interpretations.append("Neutral positioning - no strong VWAP signal")
 
-        interpretation_text = "\n".join(f"â€¢ {i}" for i in interpretations)
+        interpretation_text = "\n".join(f"• {i}" for i in interpretations)
 
         return f"""## Intraday VWAP Analysis: {symbol} ({curr_date})
 
@@ -344,8 +344,8 @@ async def get_intraday_vwap_position(
 {interpretation_text}
 
 ### Entry Guidance
-- **For longs**: Prefer entries below VWAP (current: {'âœ… favorable' if position == 'BELOW' else 'âš ï¸ extended'})
-- **For shorts**: Prefer entries above VWAP (current: {'âœ… favorable' if position == 'ABOVE' else 'âš ï¸ extended'})
+- **For longs**: Prefer entries below VWAP (current: {'✅ favorable' if position == 'BELOW' else '⚠️ extended'})
+- **For shorts**: Prefer entries above VWAP (current: {'✅ favorable' if position == 'ABOVE' else '⚠️ extended'})
 """
 
     except Exception as e:
@@ -462,15 +462,15 @@ async def get_multi_day_vwap_context(
         
         # Trend assessment
         if pct_days_above >= 80:
-            trend = "ðŸŸ¢ Strong Bullish - Price consistently above VWAP"
+            trend = "🟢 Strong Bullish - Price consistently above VWAP"
         elif pct_days_above >= 60:
-            trend = "ðŸŸ¢ Bullish - Price mostly above VWAP"
+            trend = "🟢 Bullish - Price mostly above VWAP"
         elif pct_days_above <= 20:
-            trend = "ðŸ”´ Strong Bearish - Price consistently below VWAP"
+            trend = "🔴 Strong Bearish - Price consistently below VWAP"
         elif pct_days_above <= 40:
-            trend = "ðŸ”´ Bearish - Price mostly below VWAP"
+            trend = "🔴 Bearish - Price mostly below VWAP"
         else:
-            trend = "âšª Neutral - Mixed VWAP positioning"
+            trend = "⚪ Neutral - Mixed VWAP positioning"
         
         # Format daily details
         daily_details = "\n".join([
@@ -490,7 +490,7 @@ async def get_multi_day_vwap_context(
 {daily_details}
 
 ### Swing Trading Implications
-- **Trend confirmation**: {'âœ… Bullish bias confirmed' if pct_days_above >= 60 else 'âœ… Bearish bias confirmed' if pct_days_above <= 40 else 'âš ï¸ No clear trend'}
+- **Trend confirmation**: {'✅ Bullish bias confirmed' if pct_days_above >= 60 else '✅ Bearish bias confirmed' if pct_days_above <= 40 else '⚠️ No clear trend'}
 - **Multi-day VWAP as support/resistance**: ${multi_day_vwap:.2f}
 - **Volume trend**: Avg {avg_volume:,.0f} shares/day
 """

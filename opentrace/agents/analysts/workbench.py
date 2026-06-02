@@ -141,6 +141,20 @@ def _as_str_list(value: Any) -> list[str]:
 
 
 def _clamp_float(value: Any, default: float = 0.0, low: float = 0.0, high: float = 1.0) -> float:
+    if isinstance(value, str):
+        qualitative = {
+            "critical": 0.95,
+            "extreme": 0.9,
+            "high": 0.75,
+            "medium": 0.5,
+            "moderate": 0.5,
+            "low": 0.25,
+            "none": 0.0,
+            "n/a": 0.0,
+        }
+        text = value.strip().lower()
+        if text in qualitative:
+            return qualitative[text]
     try:
         number = float(value)
     except Exception:
@@ -732,6 +746,7 @@ Final output contract:
 - Every active hypothesis must include id, claim, origin, support, against, confidence, falsifier, and unresolved_questions.
 - Active hypotheses should be capped to 2-4 total, with at most 2 default_prior hypotheses and at least one non-default origin when material anomalies exist.
 - Every question must include triggered_by, decision_relevance, expected_information_gain, evidence_surprise, estimated_tool_cost, cheapest_tool, and stop_condition.
+- `surprise_score`, `decision_relevance`, `expected_information_gain`, `evidence_surprise`, and `estimated_tool_cost` must be numeric 0.0-1.0 values. `cheapest_tool` must exactly equal one available tool name; do not write combined names such as "tool_a / tool_b".
 - After the JSON block, write the human memo using these sections: Domain Inference, Active Hypotheses, Key Observations, Questions Investigated, Discarded Explanations, Unexplained But Decision-Relevant, Watch Items / Falsifiers.
 - Do not output executable BUY/HOLD/SELL proposals.{allowed}"""
 

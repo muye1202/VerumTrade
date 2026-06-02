@@ -197,42 +197,42 @@ Try a different symbol or check back later.
         
         # Squeeze potential assessment
         if short_pct > 30:
-            squeeze_risk = "ðŸ”´ EXTREME - Very high squeeze potential"
+            squeeze_risk = "🔴 EXTREME - Very high squeeze potential"
             squeeze_detail = "Shorts are extremely crowded. Any positive catalyst could trigger violent covering."
         elif short_pct > 20:
-            squeeze_risk = "ðŸŸ  HIGH - Significant squeeze potential"
+            squeeze_risk = "🟠 HIGH - Significant squeeze potential"
             squeeze_detail = "Heavy short positioning. Vulnerable to covering rallies on good news."
         elif short_pct > 10:
-            squeeze_risk = "ðŸŸ¡ MODERATE - Elevated short interest"
+            squeeze_risk = "🟡 MODERATE - Elevated short interest"
             squeeze_detail = "Above-average shorts. Watch for covering on momentum."
         elif short_pct > 5:
-            squeeze_risk = "âšª LOW - Normal short levels"
+            squeeze_risk = "⚪ LOW - Normal short levels"
             squeeze_detail = "Shorts not crowded. Unlikely to see squeeze dynamics."
         else:
-            squeeze_risk = "ðŸŸ¢ MINIMAL - Low short interest"
+            squeeze_risk = "🟢 MINIMAL - Low short interest"
             squeeze_detail = "Very few shorts. Not a factor in price action."
         
         # Days to cover interpretation
         if days_cover > 7:
-            cover_pressure = "ðŸ”´ HIGH - Would take >1 week for shorts to cover"
+            cover_pressure = "🔴 HIGH - Would take >1 week for shorts to cover"
         elif days_cover > 4:
-            cover_pressure = "ðŸŸ  MODERATE - Multiple days needed to cover"
+            cover_pressure = "🟠 MODERATE - Multiple days needed to cover"
         elif days_cover > 2:
-            cover_pressure = "ðŸŸ¡ LOW - Can cover relatively quickly"
+            cover_pressure = "🟡 LOW - Can cover relatively quickly"
         else:
-            cover_pressure = "ðŸŸ¢ MINIMAL - Easy to cover"
+            cover_pressure = "🟢 MINIMAL - Easy to cover"
         
         # Short interest trend
         if short_change > 10:
-            trend = "ðŸ“ˆ INCREASING - Shorts adding to positions"
+            trend = "📈 INCREASING - Shorts adding to positions"
         elif short_change > 0:
-            trend = "âž¡ï¸ SLIGHTLY UP - Modest short increase"
+            trend = "➡️ SLIGHTLY UP - Modest short increase"
         elif short_change < -10:
-            trend = "ðŸ“‰ DECREASING - Shorts covering"
+            trend = "📉 DECREASING - Shorts covering"
         elif short_change < 0:
-            trend = "âž¡ï¸ SLIGHTLY DOWN - Modest covering"
+            trend = "➡️ SLIGHTLY DOWN - Modest covering"
         else:
-            trend = "âž¡ï¸ FLAT - No significant change"
+            trend = "➡️ FLAT - No significant change"
         
         sections.append(f"""### Short Interest (Yahoo Finance)
 | Metric | Value | Assessment |
@@ -268,11 +268,11 @@ Try a different symbol or check back later.
             recent = sum(ratios[:2]) / 2
             older = sum(ratios[2:]) / len(ratios[2:]) if len(ratios) > 2 else recent
             if recent > older * 1.1:
-                vol_trend = "ðŸ“ˆ Rising short volume"
+                vol_trend = "📈 Rising short volume"
             elif recent < older * 0.9:
-                vol_trend = "ðŸ“‰ Falling short volume (covering?)"
+                vol_trend = "📉 Falling short volume (covering?)"
             else:
-                vol_trend = "âž¡ï¸ Stable"
+                vol_trend = "➡️ Stable"
         else:
             vol_trend = "N/A"
         
@@ -290,31 +290,31 @@ Try a different symbol or check back later.
 #### Recent History
 {chr(10).join(history_lines)}
 
-*Note: Short volume â‰  short interest. This is daily flow, not outstanding positions.*""")
+*Note: Short volume ≠ short interest. This is daily flow, not outstanding positions.*""")
     
     # Trading implications
     implications = []
     
     if yahoo_data:
         if yahoo_data["short_pct_float"] > 15:
-            implications.append("âš ï¸ High short interest creates squeeze risk on any positive catalyst")
+            implications.append("⚠️ High short interest creates squeeze risk on any positive catalyst")
         if yahoo_data["short_change_pct"] > 10:
-            implications.append("ðŸ”´ Shorts are adding - bearish momentum may continue")
+            implications.append("🔴 Shorts are adding - bearish momentum may continue")
         if yahoo_data["short_change_pct"] < -10:
-            implications.append("ðŸŸ¢ Shorts are covering - may support price")
+            implications.append("🟢 Shorts are covering - may support price")
         if yahoo_data["short_ratio"] > 5:
-            implications.append("âš ï¸ High days-to-cover means covering could extend over days")
+            implications.append("⚠️ High days-to-cover means covering could extend over days")
     
     if short_volume_data and len(short_volume_data) >= 3:
         ratios = [(d["short_volume"] / d["total_volume"] * 100) if d["total_volume"] > 0 else 0 
                   for d in short_volume_data]
         if ratios[0] > 55:
-            implications.append("ðŸ”´ Very high daily short volume - active bearish trading")
+            implications.append("🔴 Very high daily short volume - active bearish trading")
         elif ratios[0] < 35:
-            implications.append("ðŸŸ¢ Low daily short volume - less selling pressure")
+            implications.append("🟢 Low daily short volume - less selling pressure")
     
     if not implications:
-        implications.append("âšª Short metrics within normal ranges")
+        implications.append("⚪ Short metrics within normal ranges")
     
     sections.append(f"""### Trading Implications
 {chr(10).join(f'- {i}' for i in implications)}""")
@@ -388,62 +388,62 @@ This may indicate:
     short_pct = yahoo_data["short_pct_float"]
     if short_pct > 30:
         score += 30
-        factors.append(f"âœ… Short % of float: {short_pct:.1f}% (EXTREME, +30)")
+        factors.append(f"✅ Short % of float: {short_pct:.1f}% (EXTREME, +30)")
     elif short_pct > 20:
         score += 25
-        factors.append(f"âœ… Short % of float: {short_pct:.1f}% (HIGH, +25)")
+        factors.append(f"✅ Short % of float: {short_pct:.1f}% (HIGH, +25)")
     elif short_pct > 15:
         score += 18
-        factors.append(f"âœ… Short % of float: {short_pct:.1f}% (ELEVATED, +18)")
+        factors.append(f"✅ Short % of float: {short_pct:.1f}% (ELEVATED, +18)")
     elif short_pct > 10:
         score += 10
-        factors.append(f"âšª Short % of float: {short_pct:.1f}% (MODERATE, +10)")
+        factors.append(f"⚪ Short % of float: {short_pct:.1f}% (MODERATE, +10)")
     else:
-        factors.append(f"âŒ Short % of float: {short_pct:.1f}% (LOW, +0)")
+        factors.append(f"❌ Short % of float: {short_pct:.1f}% (LOW, +0)")
     
     # Factor 2: Days to cover (0-25 points)
     days_cover = yahoo_data["short_ratio"]
     if days_cover > 8:
         score += 25
-        factors.append(f"âœ… Days to cover: {days_cover:.1f} (VERY HIGH, +25)")
+        factors.append(f"✅ Days to cover: {days_cover:.1f} (VERY HIGH, +25)")
     elif days_cover > 5:
         score += 18
-        factors.append(f"âœ… Days to cover: {days_cover:.1f} (HIGH, +18)")
+        factors.append(f"✅ Days to cover: {days_cover:.1f} (HIGH, +18)")
     elif days_cover > 3:
         score += 10
-        factors.append(f"âšª Days to cover: {days_cover:.1f} (MODERATE, +10)")
+        factors.append(f"⚪ Days to cover: {days_cover:.1f} (MODERATE, +10)")
     else:
-        factors.append(f"âŒ Days to cover: {days_cover:.1f} (LOW, +0)")
+        factors.append(f"❌ Days to cover: {days_cover:.1f} (LOW, +0)")
     
     # Factor 3: Short interest trend (0-20 points)
     short_change = yahoo_data["short_change_pct"]
     if short_change > 15:
         score += 20
-        factors.append(f"âœ… SI trend: +{short_change:.1f}% MoM (RISING FAST, +20)")
+        factors.append(f"✅ SI trend: +{short_change:.1f}% MoM (RISING FAST, +20)")
     elif short_change > 5:
         score += 12
-        factors.append(f"âœ… SI trend: +{short_change:.1f}% MoM (RISING, +12)")
+        factors.append(f"✅ SI trend: +{short_change:.1f}% MoM (RISING, +12)")
     elif short_change < -10:
         # Covering reduces squeeze potential
-        factors.append(f"âŒ SI trend: {short_change:.1f}% MoM (COVERING, +0)")
+        factors.append(f"❌ SI trend: {short_change:.1f}% MoM (COVERING, +0)")
     else:
         score += 5
-        factors.append(f"âšª SI trend: {short_change:+.1f}% MoM (STABLE, +5)")
+        factors.append(f"⚪ SI trend: {short_change:+.1f}% MoM (STABLE, +5)")
     
     # Factor 4: Float size (0-15 points) - smaller float = more volatile
     float_shares = yahoo_data["float_shares"]
     if float_shares > 0:
         if float_shares < 20_000_000:
             score += 15
-            factors.append(f"âœ… Float: {float_shares/1_000_000:.1f}M shares (SMALL, +15)")
+            factors.append(f"✅ Float: {float_shares/1_000_000:.1f}M shares (SMALL, +15)")
         elif float_shares < 50_000_000:
             score += 10
-            factors.append(f"âœ… Float: {float_shares/1_000_000:.1f}M shares (MEDIUM, +10)")
+            factors.append(f"✅ Float: {float_shares/1_000_000:.1f}M shares (MEDIUM, +10)")
         elif float_shares < 100_000_000:
             score += 5
-            factors.append(f"âšª Float: {float_shares/1_000_000:.1f}M shares (LARGE, +5)")
+            factors.append(f"⚪ Float: {float_shares/1_000_000:.1f}M shares (LARGE, +5)")
         else:
-            factors.append(f"âŒ Float: {float_shares/1_000_000:.1f}M shares (VERY LARGE, +0)")
+            factors.append(f"❌ Float: {float_shares/1_000_000:.1f}M shares (VERY LARGE, +0)")
     
     # Factor 5: Daily short volume trend (0-10 points)
     if short_volume_data and len(short_volume_data) >= 3:
@@ -453,30 +453,30 @@ This may indicate:
         
         if recent_avg > 55:
             score += 10
-            factors.append(f"âœ… Daily short vol: {recent_avg:.0f}% (VERY HIGH, +10)")
+            factors.append(f"✅ Daily short vol: {recent_avg:.0f}% (VERY HIGH, +10)")
         elif recent_avg > 48:
             score += 5
-            factors.append(f"âšª Daily short vol: {recent_avg:.0f}% (ELEVATED, +5)")
+            factors.append(f"⚪ Daily short vol: {recent_avg:.0f}% (ELEVATED, +5)")
         else:
-            factors.append(f"âŒ Daily short vol: {recent_avg:.0f}% (NORMAL, +0)")
+            factors.append(f"❌ Daily short vol: {recent_avg:.0f}% (NORMAL, +0)")
     else:
-        factors.append("âšª Daily short vol: N/A (no data)")
+        factors.append("⚪ Daily short vol: N/A (no data)")
     
     # Overall assessment
     if score >= 75:
-        grade = "ðŸ”´ EXTREME SQUEEZE SETUP"
+        grade = "🔴 EXTREME SQUEEZE SETUP"
         assessment = "This stock has multiple factors that could trigger a violent short squeeze. However, extreme setups can persist for extended periods before materializing."
     elif score >= 55:
-        grade = "ðŸŸ  HIGH SQUEEZE POTENTIAL"
+        grade = "🟠 HIGH SQUEEZE POTENTIAL"
         assessment = "Elevated squeeze risk. A positive catalyst could trigger meaningful short covering."
     elif score >= 35:
-        grade = "ðŸŸ¡ MODERATE SQUEEZE POTENTIAL"
+        grade = "🟡 MODERATE SQUEEZE POTENTIAL"
         assessment = "Some squeeze factors present, but not at extreme levels. Watch for catalysts."
     elif score >= 20:
-        grade = "âšª LOW SQUEEZE POTENTIAL"
+        grade = "⚪ LOW SQUEEZE POTENTIAL"
         assessment = "Limited squeeze factors. Shorts not particularly crowded."
     else:
-        grade = "ðŸŸ¢ MINIMAL SQUEEZE POTENTIAL"
+        grade = "🟢 MINIMAL SQUEEZE POTENTIAL"
         assessment = "Very low short interest. Squeeze dynamics unlikely to be a factor."
     
     return f"""## Short Squeeze Assessment: {symbol} ({curr_date})
@@ -499,5 +499,5 @@ This may indicate:
 | Float Size | {float_shares/1_000_000:.1f}M | {'Small' if float_shares < 50_000_000 else 'Large'} |
 
 ### Risk Warning
-âš ï¸ Short squeeze trades are highly speculative. Characteristics that make a stock "squeezable" also make it extremely volatile and risky. High short interest often reflects legitimate bearish concerns about the company. This assessment is for informational purposes only.
+⚠️ Short squeeze trades are highly speculative. Characteristics that make a stock "squeezable" also make it extremely volatile and risky. High short interest often reflects legitimate bearish concerns about the company. This assessment is for informational purposes only.
 """

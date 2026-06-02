@@ -214,7 +214,7 @@ def update_portfolio_display(
         }.get(buffer.triage_status, buffer.triage_status)
 
         stocks_table.add_row("T", "[bold]TRIAGE[/bold]", triage_status_display, "-")
-        stocks_table.add_row("â”€" * 3, "â”€" * 8, "â”€" * 12, "â”€" * 8, style="dim")
+        stocks_table.add_row("─" * 3, "─" * 8, "─" * 12, "─" * 8, style="dim")
 
     # Add stock rows
     for idx, ticker in enumerate(buffer.stocks_to_analyze):
@@ -491,7 +491,7 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
             )
         )
     else:
-        console.print("[dim]Triage disabled â€” all positions will be fully analyzed.[/dim]\n")
+        console.print("[dim]Triage disabled — all positions will be fully analyzed.[/dim]\n")
 
     console.print("\n[yellow]Starting portfolio analysis with Live GUI...[/yellow]\n")
 
@@ -608,7 +608,7 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
 
     def on_stock_executed(ticker: str, exec_result: Dict[str, Any]):
         executed = exec_result.get("executed", False)
-        status = "âœ“ executed" if executed else "âœ— not executed"
+        status = "✓ executed" if executed else "✗ not executed"
         buffer.add_message("Execution", f"{ticker}: {status}")
         if live_context["live"]:
             update_portfolio_display(layout, buffer)
@@ -870,8 +870,8 @@ def _get_portfolio_analysis_selections(
         triage_choice = questionary.select(
             "Enable portfolio triage?",
             choices=[
-                questionary.Choice("Yes â€” let AI pick the most important stocks", value="yes"),
-                questionary.Choice("No  â€” analyze every position (slow for large portfolios)", value="no"),
+                questionary.Choice("Yes — let AI pick the most important stocks", value="yes"),
+                questionary.Choice("No  — analyze every position (slow for large portfolios)", value="no"),
             ],
             instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
             style=questionary.Style(
@@ -1069,7 +1069,7 @@ def _display_portfolio_analysis_results(results: Dict[str, Any], executed: bool)
             exec_table.add_column("Details", style="white")
             
             for result in execution_results:
-                status = "âœ“ Success" if result.get('execution_result', {}).get('executed') else "âœ— Failed"
+                status = "✓ Success" if result.get('execution_result', {}).get('executed') else "✗ Failed"
                 status_color = "green" if "Success" in status else "red"
                 
                 details = result.get('execution_result', {}).get('message', 'No details')

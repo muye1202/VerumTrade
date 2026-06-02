@@ -64,15 +64,15 @@ def init_discovery_context(
 def display_discovery_header():
     """Display the stock discovery mode header."""
     header = """
-â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘                   ðŸ” STOCK DISCOVERY MODE                     â•‘
-â•‘                                                               â•‘
-â•‘  Let AI discover promising stocks for you using:              â•‘
-â•‘  â€¢ Web search for market trends                               â•‘
-â•‘  â€¢ Sector performance analysis                                â•‘
-â•‘  â€¢ Technical breakout screening                               â•‘
-â•‘  â€¢ News catalyst detection                                    â•‘
-â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+╔═══════════════════════════════════════════════════════════════╗
+║                   🔍 STOCK DISCOVERY MODE                     ║
+║                                                               ║
+║  Let AI discover promising stocks for you using:              ║
+║  • Web search for market trends                               ║
+║  • Sector performance analysis                                ║
+║  • Technical breakout screening                               ║
+║  • News catalyst detection                                    ║
+╚═══════════════════════════════════════════════════════════════╝
 """
     console.print(Panel(
         header,
@@ -103,7 +103,7 @@ def display_discovery_result(result: DiscoveryResult):
 
     console.print(Panel(
         summary_table,
-        title="[bold green]âœ“ Discovery Complete[/bold green]",
+        title="[bold green]✓ Discovery Complete[/bold green]",
         border_style="green",
         padding=(1, 2),
     ))
@@ -614,7 +614,7 @@ def run_discovery_resume_flow(selections: Dict[str, Any]):
 
     Loads ``results/discovery/<date>/reports/stock_discovery_report.md``,
     extracts the discovered tickers, and runs the same deep-analysis pipeline
-    used by the normal discovery flow â€” skipping the expensive discovery stage.
+    used by the normal discovery flow — skipping the expensive discovery stage.
 
     Args:
         selections: User selections from the main CLI (same shape as for
@@ -625,7 +625,7 @@ def run_discovery_resume_flow(selections: Dict[str, Any]):
     console.print()
     console.print(
         Panel(
-            "[bold cyan]ðŸ“‚ RESUME FROM SAVED TICKER LIST[/bold cyan]\n"
+            "[bold cyan]📂 RESUME FROM SAVED TICKER LIST[/bold cyan]\n"
             "[dim]Loading previously discovered tickers for deep analysis...[/dim]",
             border_style="cyan",
             padding=(1, 2),

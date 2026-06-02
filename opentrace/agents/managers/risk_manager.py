@@ -181,7 +181,7 @@ JSON RULES:
   - `wait_for_trigger` for `v2`
 - Treat Trader intent as primary mode selector; only override when hard constraints require it.
 - If you override Trader mode, include `override_reason` in canonical JSON and explain override in narrative.
-- Anchor all prices to market_snapshot.reference_price. `limit_price` (when used) must be within the current bid/ask range â€” it is the actual execution price of the order being placed right now, not a hypothetical future trigger. `stop_loss` and `take_profit` must be realistic risk levels relative to reference_price.
+- Anchor all prices to market_snapshot.reference_price. `limit_price` (when used) must be within the current bid/ask range — it is the actual execution price of the order being placed right now, not a hypothetical future trigger. `stop_loss` and `take_profit` must be realistic risk levels relative to reference_price.
 
 Use `decision_version: "v1"` for immediate single-action decisions:
 {{
@@ -260,7 +260,7 @@ Validation-critical constraints:
 - STOP_LIMIT requires BOTH `stop_price` and `limit_price`.
 - TRAILING_STOP requires exactly one of `trail_percent` or `trail_price`.
 - HOLD-specific rules (when action is HOLD):
-  - Set `order_type` to "MARKET" â€” the executor does not submit any order for HOLD; MARKET is the correct sentinel.
+  - Set `order_type` to "MARKET" — the executor does not submit any order for HOLD; MARKET is the correct sentinel.
   - Set `limit_price` to null.
   - Set `quantity` to null and `position_size_pct` to null.
   - Set `stop_loss` and `take_profit` to realistic numeric risk levels relative to reference_price.
