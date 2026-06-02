@@ -19,12 +19,12 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 JOURNAL_DIR = SCRIPT_DIR / "journal"
 EXECUTION_LOG_DIR = SCRIPT_DIR / "execution_logs"
 
-# Add project root to Python path so we can import tradingagents.
+# Add project root to Python path so we can import opentrace.
 sys.path.insert(0, str(PROJECT_ROOT))
 
 load_dotenv()
 
-from tradingagents.agents.journal import (  # noqa: E402
+from opentrace.agents.journal import (  # noqa: E402
     JournalExecutionAdvisor,
     JournalExecutionPolicy,
     JournalScheduler,
@@ -32,7 +32,7 @@ from tradingagents.agents.journal import (  # noqa: E402
     LessonMemory,
     create_reflection_callback,
 )
-from tradingagents.execution import AlpacaExecutor  # noqa: E402
+from opentrace.execution import AlpacaExecutor  # noqa: E402
 
 # Ensure runtime directories exist under journal_cli/.
 os.makedirs(JOURNAL_DIR, exist_ok=True)
@@ -234,7 +234,7 @@ def main() -> None:
 
         console.print()
 
-    # ── Optional Tier 2 LLM eval ─────────────────────────────────────────────
+    # â”€â”€ Optional Tier 2 LLM eval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Set JOURNAL_LLM_PROVIDER + JOURNAL_LLM_MODEL in .env to enable.
     # Example:
     #   JOURNAL_LLM_PROVIDER=openai
@@ -244,7 +244,7 @@ def main() -> None:
     _journal_url      = os.getenv("JOURNAL_BACKEND_URL", "").strip()
     _llm_config: dict | None = None
     if _journal_provider or _journal_model:
-        from tradingagents.default_config import DEFAULT_CONFIG
+        from opentrace.default_config import DEFAULT_CONFIG
         _llm_config = dict(DEFAULT_CONFIG)
         if _journal_provider:
             _llm_config["llm_provider"] = _journal_provider

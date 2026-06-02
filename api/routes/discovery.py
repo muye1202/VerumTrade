@@ -6,10 +6,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.graph.stock_discovery import StockDiscoveryGraph
-from tradingagents.graph.provider_settings import serialize_provider_settings
-from tradingagents.agents.discovery.theme_engine import ThemeScanner
+from opentrace.default_config import DEFAULT_CONFIG
+from opentrace.graph.stock_discovery import StockDiscoveryGraph
+from opentrace.graph.provider_settings import serialize_provider_settings
+from opentrace.agents.discovery.theme_engine import ThemeScanner
 from api.schemas import DiscoveryRequest
 
 router = APIRouter()
@@ -23,7 +23,7 @@ _TRACK_LABELS = {
 
 
 # ---------------------------------------------------------------------------
-# REST endpoint — standalone theme scan
+# REST endpoint â€” standalone theme scan
 # ---------------------------------------------------------------------------
 
 @router.get("/discovery/themes")
@@ -77,7 +77,7 @@ def _build_config(req: DiscoveryRequest) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# WebSocket endpoint — full discovery pipeline with streaming
+# WebSocket endpoint â€” full discovery pipeline with streaming
 # ---------------------------------------------------------------------------
 
 @router.websocket("/ws/discovery")
@@ -108,12 +108,12 @@ async def discovery_ws(websocket: WebSocket):
         track_label = _TRACK_LABELS.get(req.discovery_track, req.discovery_track)
         await websocket.send_json({
             "event": "system",
-            "content": f"Starting {track_label} discovery for {req.analysis_date}…",
+            "content": f"Starting {track_label} discovery for {req.analysis_date}â€¦",
         })
 
         config = _build_config(req)
 
-        # ── Stage -1: Theme Engine ──────────────────────────────────────────
+        # â”€â”€ Stage -1: Theme Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # ThemeScanner is fast (seed_only = pure YAML, no I/O), so we run it
         # inline before handing off to the blocking executor.  This lets theme
         # signals reach the UI while the heavier pipeline is still initialising.
@@ -165,14 +165,14 @@ async def discovery_ws(websocket: WebSocket):
                 "label": "Theme Engine", "status": "completed",
             })
 
-        # ── Stage 0–2: Full discovery pipeline ─────────────────────────────
+        # â”€â”€ Stage 0â€“2: Full discovery pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         await websocket.send_json({
             "event": "stage", "stage": 0,
             "label": "Universe Screening", "status": "started",
         })
         await websocket.send_json({
             "event": "system",
-            "content": "Running universe screener and multi-factor pipeline…",
+            "content": "Running universe screener and multi-factor pipelineâ€¦",
         })
 
         loop = asyncio.get_event_loop()

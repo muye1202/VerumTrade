@@ -7,7 +7,7 @@ from api.utils import (
     find_previous_analysis_session,
     plan_continuation_analysts,
 )
-from tradingagents.graph.trading_graph import TradingAgentsGraph
+from opentrace.graph.opentrace_graph import OpenTraceGraph
 
 
 def test_find_previous_analysis_session_prefers_latest_incomplete_matching_run():
@@ -64,7 +64,7 @@ def test_plan_continuation_analysts_skips_completed_analyst_reports():
         complete_reports,
     ) == []
 
-    assert TradingAgentsGraph.normalize_selected_analysts([]) == []
+    assert OpenTraceGraph.normalize_selected_analysts([]) == []
 
 
 def test_apply_previous_reports_to_state_restores_persisted_graph_state():

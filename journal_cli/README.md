@@ -61,4 +61,4 @@ python journal_cli/import_scheduled_reports.py --date 2026-02-20 --json
 All scripts require:
 - Alpaca API credentials in `.env` file
 - Journal database at `./journal_cli/journal/trade_journal.db`
-- Python packages: `tradingagents`, `alpaca-py`, `python-dotenv`
+- Python packages: `opentrace`, `alpaca-py`, `python-dotenv`

@@ -16,10 +16,10 @@ from rich import box
 from rich.rule import Rule
 from rich.align import Align
 
-from tradingagents.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.execution import fetch_portfolio_symbols
-from tradingagents.execution.execution_kwargs import executor_kwargs_from_structured
+from opentrace.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
+from opentrace.default_config import DEFAULT_CONFIG
+from opentrace.execution import fetch_portfolio_symbols
+from opentrace.execution.execution_kwargs import executor_kwargs_from_structured
 from cli.discovery_report_logger import (
     load_tickers_from_discovery_report,
     write_deep_analysis_report,
@@ -64,15 +64,15 @@ def init_discovery_context(
 def display_discovery_header():
     """Display the stock discovery mode header."""
     header = """
-╔═══════════════════════════════════════════════════════════════╗
-║                   🔍 STOCK DISCOVERY MODE                     ║
-║                                                               ║
-║  Let AI discover promising stocks for you using:              ║
-║  • Web search for market trends                               ║
-║  • Sector performance analysis                                ║
-║  • Technical breakout screening                               ║
-║  • News catalyst detection                                    ║
-╚═══════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                   ðŸ” STOCK DISCOVERY MODE                     â•‘
+â•‘                                                               â•‘
+â•‘  Let AI discover promising stocks for you using:              â•‘
+â•‘  â€¢ Web search for market trends                               â•‘
+â•‘  â€¢ Sector performance analysis                                â•‘
+â•‘  â€¢ Technical breakout screening                               â•‘
+â•‘  â€¢ News catalyst detection                                    â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 """
     console.print(Panel(
         header,
@@ -103,7 +103,7 @@ def display_discovery_result(result: DiscoveryResult):
 
     console.print(Panel(
         summary_table,
-        title="[bold green]✓ Discovery Complete[/bold green]",
+        title="[bold green]âœ“ Discovery Complete[/bold green]",
         border_style="green",
         padding=(1, 2),
     ))
@@ -156,9 +156,9 @@ def _run_discovery_deep_analysis(
     import time
     import logging
     from rich.live import Live
-    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from opentrace.graph.opentrace_graph import OpenTraceGraph
     from functools import wraps
-    from tradingagents.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
+    from opentrace.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
     from cli.analysis_utils import (
         process_analysis_stream,
         _reset_message_buffer,
@@ -176,7 +176,7 @@ def _run_discovery_deep_analysis(
         executor = setup_executor(exec_settings, log_dir=results_dir)
 
     # Create the graph once (reused across tickers)
-    graph = TradingAgentsGraph(
+    graph = OpenTraceGraph(
         selected_analysts=selected_analysts,
         config=config,
         debug=False,
@@ -614,7 +614,7 @@ def run_discovery_resume_flow(selections: Dict[str, Any]):
 
     Loads ``results/discovery/<date>/reports/stock_discovery_report.md``,
     extracts the discovered tickers, and runs the same deep-analysis pipeline
-    used by the normal discovery flow — skipping the expensive discovery stage.
+    used by the normal discovery flow â€” skipping the expensive discovery stage.
 
     Args:
         selections: User selections from the main CLI (same shape as for
@@ -625,7 +625,7 @@ def run_discovery_resume_flow(selections: Dict[str, Any]):
     console.print()
     console.print(
         Panel(
-            "[bold cyan]📂 RESUME FROM SAVED TICKER LIST[/bold cyan]\n"
+            "[bold cyan]ðŸ“‚ RESUME FROM SAVED TICKER LIST[/bold cyan]\n"
             "[dim]Loading previously discovered tickers for deep analysis...[/dim]",
             border_style="cyan",
             padding=(1, 2),

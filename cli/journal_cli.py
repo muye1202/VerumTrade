@@ -1,4 +1,4 @@
-﻿"""
+"""
 CLI commands for the Trade Journal system.
 
 Register with the main CLI by importing and adding to the typer app:
@@ -31,9 +31,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tradingagents.agents.journal.core.store import JournalStore
-from tradingagents.agents.journal.core.models import AlertType, ThesisStatus
-from tradingagents.agents.journal.ingestion.report_import import import_scheduled_reports
+from opentrace.agents.journal.core.store import JournalStore
+from opentrace.agents.journal.core.models import AlertType, ThesisStatus
+from opentrace.agents.journal.ingestion.report_import import import_scheduled_reports
 
 console = Console()
 journal_app = typer.Typer(
@@ -65,7 +65,7 @@ def _resolve_llm_config() -> Optional[dict]:
 
     # Build a minimal config dict that ConfiguredLLMClient understands,
     # inheriting the standard app defaults for everything not specified.
-    from tradingagents.default_config import DEFAULT_CONFIG
+    from opentrace.default_config import DEFAULT_CONFIG
     config = dict(DEFAULT_CONFIG)
     if journal_provider:
         config["llm_provider"] = journal_provider
@@ -84,7 +84,7 @@ def _get_store(db_path: Optional[str] = None) -> JournalStore:
 def _get_executor():
     """Try to initialize an Alpaca executor for live data."""
     try:
-        from tradingagents.execution import AlpacaExecutor
+        from opentrace.execution import AlpacaExecutor
 
         api_key = os.getenv("APCA_API_KEY_ID") or os.getenv("ALPACA_API_KEY")
         secret_key = os.getenv("APCA_API_SECRET_KEY") or os.getenv("ALPACA_SECRET_KEY")
@@ -262,7 +262,7 @@ def check_now(
     db_path: Optional[str] = typer.Option(None, "--db", help="Database path"),
 ):
     """Run a single monitoring tick immediately."""
-    from tradingagents.agents.journal.monitoring.scheduler import JournalScheduler
+    from opentrace.agents.journal.monitoring.scheduler import JournalScheduler
 
     store = _get_store(db_path)
     executor = _get_executor()
@@ -426,7 +426,7 @@ def daemon(
     interval: int = typer.Option(15, "--interval", "-i", help="Market-hours interval (minutes)"),
 ):
     """Start the journal scheduler daemon (foreground, Ctrl+C to stop)."""
-    from tradingagents.agents.journal.monitoring.scheduler import JournalScheduler
+    from opentrace.agents.journal.monitoring.scheduler import JournalScheduler
 
     store = _get_store(db_path)
     executor = _get_executor()
@@ -877,7 +877,7 @@ def lesson_memory_stats(
 ):
     """Show lesson memory (ChromaDB) statistics."""
     try:
-        from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
+        from opentrace.agents.journal.learning.lesson_memory import LessonMemory
         memory = LessonMemory()
         stats = memory.get_stats()
 
@@ -922,7 +922,7 @@ def query_lessons(
 ):
     """Search lessons using semantic similarity."""
     try:
-        from tradingagents.agents.journal.learning.lesson_memory import LessonMemory
+        from opentrace.agents.journal.learning.lesson_memory import LessonMemory
         memory = LessonMemory()
 
         console.print(f"[dim]Searching for: '{query}'...[/dim]\n")

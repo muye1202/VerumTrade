@@ -3,11 +3,11 @@ import asyncio
 from typing import Dict, Any, Iterable
 from fastapi import WebSocket
 
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.graph.provider_settings import serialize_provider_settings
-from tradingagents.graph.reasoning_trace import build_agent_reasoning_trace
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.execution.portfolio_context import fetch_portfolio_context
+from opentrace.graph.opentrace_graph import OpenTraceGraph
+from opentrace.graph.provider_settings import serialize_provider_settings
+from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
+from opentrace.default_config import DEFAULT_CONFIG
+from opentrace.execution.portfolio_context import fetch_portfolio_context
 from cli.analysis_utils import _msg_type_and_content, _extract_tool_calls
 from api.database import SessionLocal
 from api.models import AnalysisSession
@@ -143,7 +143,7 @@ def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[s
 
 async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     """
-    Runs the TradingAgentsGraph analysis and streams intermediate messages,
+    Runs the OpenTraceGraph analysis and streams intermediate messages,
     tool calls, and report updates over a WebSocket.
     """
     all_logs = []
@@ -272,7 +272,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             "position_size_pct": req.execution.position_size_pct,
         }
         
-    graph = TradingAgentsGraph(
+    graph = OpenTraceGraph(
         continuation_analysts, config=config, debug=True
     )
     
@@ -442,7 +442,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
 
 async def run_analysis_sync(req) -> Dict[str, Any]:
     """
-    Runs the TradingAgentsGraph analysis synchronously and returns the final state.
+    Runs the OpenTraceGraph analysis synchronously and returns the final state.
     Used for REST API endpoints where streaming isn't required.
     """
     config = DEFAULT_CONFIG.copy()
@@ -484,7 +484,7 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         finally:
             db.close()
 
-    graph = TradingAgentsGraph(
+    graph = OpenTraceGraph(
         continuation_analysts, config=config, debug=False
     )
 

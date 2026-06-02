@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tradingagents"
+name = "opentrace"
 version = "0.1.0"
 description = "OpenTrace: agentic market research, trading analysis, and portfolio workflows."
 readme = "README.md"
@@ -62,7 +62,7 @@ dependencies = [
 Homepage = "https://github.com/muye1202/OpenTrace"
 
 [project.scripts]
-tradingagents = "cli.main:app"
+opentrace = "cli.main:app"
 
 [tool.setuptools.packages.find]
-include = ["api*", "cli*", "tradingagents*"]
+include = ["api*", "cli*", "opentrace*"]

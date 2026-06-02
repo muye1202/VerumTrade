@@ -1,4 +1,4 @@
-﻿"""
+"""
 Import canonical v2 scheduled-order reports into the journal database.
 
 Scans:
@@ -19,8 +19,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tradingagents.agents.journal import JournalStore
-from tradingagents.agents.journal.ingestion.report_import import import_scheduled_reports
+from opentrace.agents.journal import JournalStore
+from opentrace.agents.journal.ingestion.report_import import import_scheduled_reports
 
 
 def _build_parser() -> argparse.ArgumentParser:
