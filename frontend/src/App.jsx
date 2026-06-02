@@ -2074,17 +2074,18 @@ function App() {
         ) : (
           <div className="welcome-container">
             <div className="welcome-hero">
-              <p className="welcome-kicker">Agentic Equity Research</p>
               <h1 className="welcome-headline">
-                {mainPageMode === 'discovery'
-                  ? <>Find the names <em>worth</em> your attention.</>
-                  : <>What are we <em>researching</em> today?</>}
+                <span className="welcome-spark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1" />
+                  </svg>
+                </span>
+                {mainPageMode === 'discovery' ? 'Find your next idea' : 'What are we researching today?'}
               </h1>
-              <p className="welcome-subhead">
-                {mainPageMode === 'discovery'
-                  ? 'Run a disciplined discovery pipeline that scans the market, surfaces live themes, and ranks the candidates worth a deeper look.'
-                  : 'Point a desk of specialist agents at any ticker — fundamentals, market structure, news, and sentiment — and get a reasoned call you can actually follow.'}
-              </p>
+            </div>
+
+            <section className="composer-wrapper large">
+              {renderComposer(true)}
               <div className="welcome-mode-toggle segmented-modes" role="tablist" aria-label="Analysis mode">
                 <button
                   role="tab"
@@ -2103,29 +2104,7 @@ function App() {
                   Stock Discovery
                 </button>
               </div>
-            </div>
-
-            <section className="composer-wrapper large">
-              {renderComposer(true)}
               {renderConfigStrip()}
-
-              {mainPageMode === 'single' && (
-                <div className="gemini-suggestions">
-                  <p className="suggestions-label">Start from a desk favorite</p>
-                  {[
-                    ['Momentum read', 'NVDA', 'short_term'],
-                    ['Swing setup', 'TSLA', 'swing'],
-                    ['Long-term core', 'SPY', 'long_term'],
-                    ['Fundamentals deep-dive', 'AAPL', 'short_term'],
-                  ].map(([label, symbol, horizon]) => (
-                    <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
-                      <span className="suggestion-ticker">{symbol}</span>
-                      <span className="suggestion-row-text">{label}</span>
-                      <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" /></svg>
-                    </button>
-                  ))}
-                </div>
-              )}
             </section>
           </div>
         )}

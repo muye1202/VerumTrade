@@ -5,36 +5,36 @@
   --font-mono: "IBM Plex Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
 
   font-family: var(--font-body);
-  color: #f1ece0;
-  background: #14130f;
+  color: #f5f4ee;
+  background: #262624;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
-  /* Dark — warm ink */
-  --bg: #14130f;
-  --bg-soft: #1c1a14;
-  --surface: rgba(31, 29, 22, 0.82);
-  --surface-strong: #211e17;
-  --surface-muted: rgba(244, 232, 200, 0.05);
-  --border: rgba(238, 226, 196, 0.11);
-  --border-strong: rgba(238, 226, 196, 0.2);
-  --text: #f1ece0;
-  --muted: #a8a08c;
-  --faint: #756f5e;
+  /* Dark — Claude warm charcoal */
+  --bg: #262624;
+  --bg-soft: #1f1e1d;
+  --surface: rgba(48, 48, 46, 0.7);
+  --surface-strong: #30302e;
+  --surface-muted: rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f5f4ee;
+  --muted: #b4b0a6;
+  --faint: #87837a;
 
-  /* Gilt brand accent */
-  --accent: #d7b25e;
-  --accent-soft: #e7cd8f;
-  --accent-ink: #211a08;
+  /* Clay brand accent (Claude "book cloth") */
+  --accent: #d97757;
+  --accent-soft: #e0a18a;
+  --accent-ink: #2a160d;
 
-  /* Semantic finance tones */
+  /* Semantic tones */
   --gain: #6db38a;
-  --loss: #db6a4e;
-  --danger: #db6a4e;
+  --loss: #d97757;
+  --danger: #e0795a;
 
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
-  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.18);
   --sidebar: 292px;
   --radius-lg: 22px;
   --radius-md: 14px;
@@ -42,31 +42,31 @@
 }
 
 [data-theme="light"] {
-  color: #211f18;
-  background: #f6f1e6;
+  color: #292824;
+  background: #faf9f5;
 
-  /* Light — warm paper */
-  --bg: #f6f1e6;
-  --bg-soft: #ece3d2;
-  --surface: rgba(255, 253, 247, 0.9);
-  --surface-strong: #fffdf7;
-  --surface-muted: rgba(33, 28, 14, 0.05);
-  --border: rgba(40, 34, 18, 0.13);
-  --border-strong: rgba(40, 34, 18, 0.22);
-  --text: #211f18;
-  --muted: #5f5949;
-  --faint: #8a8270;
+  /* Light — Claude warm paper */
+  --bg: #faf9f5;
+  --bg-soft: #f0eee6;
+  --surface: rgba(255, 255, 255, 0.85);
+  --surface-strong: #ffffff;
+  --surface-muted: rgba(40, 38, 30, 0.045);
+  --border: rgba(40, 38, 30, 0.12);
+  --border-strong: rgba(40, 38, 30, 0.18);
+  --text: #292824;
+  --muted: #6c685e;
+  --faint: #989488;
 
-  --accent: #9a7616;
-  --accent-soft: #b89236;
-  --accent-ink: #fdf8ea;
+  --accent: #c2613f;
+  --accent-soft: #d08868;
+  --accent-ink: #ffffff;
 
   --gain: #2f7d53;
-  --loss: #b23a22;
-  --danger: #b23a22;
+  --loss: #c2613f;
+  --danger: #bf4d36;
 
-  --shadow: 0 18px 44px rgba(58, 48, 24, 0.12);
-  --shadow-soft: 0 6px 18px rgba(58, 48, 24, 0.08);
+  --shadow: 0 12px 30px rgba(50, 44, 30, 0.08);
+  --shadow-soft: 0 3px 12px rgba(50, 44, 30, 0.06);
 }
 
 * {
@@ -77,23 +77,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 34%),
-    radial-gradient(circle at 96% 4%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 30%),
-    linear-gradient(160deg, var(--bg), var(--bg-soft));
-  background-attachment: fixed;
-}
-
-/* Fine paper grain for atmosphere — sits behind everything */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.45;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
+  background: var(--bg);
 }
 
 #root {
@@ -205,11 +189,10 @@ select:focus-visible {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+  background: var(--accent);
   color: var(--accent-ink);
   font-weight: 900;
   letter-spacing: -0.08em;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .brand strong,
@@ -237,16 +220,14 @@ select:focus-visible {
   gap: 10px;
   width: 100%;
   padding: 13px 14px;
-  border-radius: 14px;
-  background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+  border-radius: 12px;
+  background: var(--accent);
   color: var(--accent-ink);
-  font-weight: 700;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 24%, transparent);
+  font-weight: 600;
 }
 
 .new-chat:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 9px 24px color-mix(in srgb, var(--accent) 32%, transparent);
+  background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 
 .new-chat span {
@@ -613,70 +594,45 @@ h1 {
 }
 
 .welcome-hero {
-  text-align: left;
+  text-align: center;
   width: 100%;
-  max-width: 820px;
-  margin-bottom: 30px;
-}
-
-.welcome-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 0 18px;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  animation: heroRise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.welcome-kicker::before {
-  content: "";
-  width: 26px;
-  height: 1px;
-  background: linear-gradient(90deg, var(--accent), transparent);
+  max-width: 740px;
+  margin-bottom: 22px;
 }
 
 .welcome-headline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   font-family: var(--font-display);
   font-optical-sizing: auto;
-  font-size: clamp(38px, 5.4vw, 62px);
-  line-height: 1.02;
-  letter-spacing: -0.015em;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
   font-weight: 500;
-  margin: 0 0 18px;
+  margin: 0;
   color: var(--text);
-  animation: heroRise 700ms cubic-bezier(0.22, 1, 0.36, 1) 60ms both;
+  animation: heroRise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.welcome-headline em {
-  font-style: italic;
+.welcome-spark {
+  display: inline-flex;
   color: var(--accent);
-  font-weight: 460;
-}
-
-.welcome-subhead {
-  max-width: 600px;
-  margin: 0 0 26px;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1.62;
-  animation: heroRise 700ms cubic-bezier(0.22, 1, 0.36, 1) 130ms both;
+  animation: sparkSpin 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .welcome-mode-toggle {
   display: inline-flex;
+  align-self: center;
   width: auto;
-  margin: 0;
-  animation: heroRise 700ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both;
+  margin: 2px auto 0;
+  animation: heroRise 600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
 }
 
 .welcome-mode-toggle .segmented-item {
   flex: 0 0 auto;
-  padding: 10px 22px;
+  padding: 9px 20px;
   font-size: 14px;
   border-radius: 10px;
 }
@@ -686,11 +642,9 @@ h1 {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* legacy greeting hook retained for safety */
-.greeting-gradient {
-  color: var(--accent);
-  font-family: var(--font-display);
-  font-style: italic;
+@keyframes sparkSpin {
+  from { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
 }
 
 .composer-wrapper {
@@ -1250,13 +1204,12 @@ h1 {
 }
 
 .submit-circle.primary {
-  background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+  background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 [data-theme="light"] .submit-circle.primary {
-  background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+  background: var(--accent);
   color: var(--accent-ink);
 }
 
@@ -2576,21 +2529,19 @@ input:checked + .slider:before {
 }
 
 .primary-btn {
-  background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+  background: var(--accent);
   color: var(--accent-ink);
   border: none;
   border-radius: 12px;
   padding: 10px 24px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 22%, transparent);
-  transition: transform 0.18s ease, box-shadow 0.2s ease;
+  transition: background 0.18s ease;
 }
 
 .primary-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 9px 24px color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 
 .secondary-btn {
