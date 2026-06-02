@@ -2074,14 +2074,8 @@ function App() {
         ) : (
           <div className="welcome-container">
             <div className="welcome-hero">
-              <h1 className="welcome-headline">
-                <span className="welcome-spark" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                    <path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1" />
-                  </svg>
-                </span>
-                {mainPageMode === 'discovery' ? 'Find your next idea' : 'What are we researching today?'}
-              </h1>
+              <h2 className="welcome-greeting"><span className="greeting-gradient">Hi Trader</span></h2>
+              <h1 className="welcome-title">Where should we start?</h1>
             </div>
 
             <section className="composer-wrapper large">
