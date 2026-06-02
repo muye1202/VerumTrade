@@ -25,15 +25,19 @@ import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
 import CatalystDiagnosticsPanel from './CatalystDiagnosticsPanel';
 import {
+  AZURE_FOUNDRY_REASONING_EFFORTS,
   PROVIDER_DEFAULTS,
   buildProviderSettingsPayload,
   createDefaultProviderEndpoints,
+  getAzureFoundryReasoningMode,
   getProviderBaseUrl,
   normalizeProviderEndpoints,
 } from './providerConfig';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
+const DEFAULT_API_KEYS = Object.fromEntries(Object.keys(PROVIDER_DEFAULTS).map((id) => [id, '']));
+const DEFAULT_ACTIVE_PROVIDERS = Object.fromEntries(Object.keys(PROVIDER_DEFAULTS).map((id) => [id, true]));
 
 const HORIZONS = [
   { value: '1-2 weeks', label: 'Short term', detail: '1-2 weeks' },
@@ -101,6 +105,10 @@ const MODES = [
 
 const SHALLOW_MODELS = [
   { value: 'openai|gpt-4o-mini', label: 'GPT-4o Mini', detail: 'OpenAI default' },
+  { value: 'azure-foundry|gpt-5-mini', label: 'Azure GPT-5 Mini', detail: 'Azure Foundry' },
+  { value: 'azure-foundry|DeepSeek-R1', label: 'Azure DeepSeek-R1', detail: 'Native reasoning' },
+  { value: 'azure-foundry|DeepSeek-V3.1', label: 'Azure DeepSeek-V3.1', detail: 'Native reasoning' },
+  { value: 'azure-foundry|gpt-4o-mini', label: 'Azure GPT-4o Mini', detail: 'Azure Foundry' },
   { value: 'qwen3-cn|qwen3.6-flash', label: 'Qwen3.6-Flash', detail: 'Fast, cost-effective' },
   { value: 'anthropic|claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', detail: 'Balanced performance' },
   { value: 'anthropic|claude-haiku-4-5-20251001', label: 'Claude 4.5 Haiku', detail: 'Fast anthropic' },
@@ -108,6 +116,12 @@ const SHALLOW_MODELS = [
 
 const DEEP_MODELS = [
   { value: 'openai|gpt-4o-mini', label: 'GPT-4o Mini', detail: 'OpenAI default' },
+  { value: 'azure-foundry|gpt-5-mini', label: 'Azure GPT-5 Mini', detail: 'Azure Foundry' },
+  { value: 'azure-foundry|DeepSeek-R1', label: 'Azure DeepSeek-R1', detail: 'Native reasoning' },
+  { value: 'azure-foundry|DeepSeek-R1-0528', label: 'Azure DeepSeek-R1-0528', detail: 'Native reasoning' },
+  { value: 'azure-foundry|DeepSeek-V3.1', label: 'Azure DeepSeek-V3.1', detail: 'Native reasoning' },
+  { value: 'azure-foundry|gpt-4o', label: 'Azure GPT-4o', detail: 'Azure Foundry' },
+  { value: 'azure-foundry|gpt-4o-mini', label: 'Azure GPT-4o Mini', detail: 'Azure Foundry' },
   { value: 'glm|glm-4.7-flash', label: 'GLM-4.7-Flash', detail: 'Fast, cost-effective' },
   { value: 'qwen3-cn|qwen3.5-plus', label: 'Qwen3.5-Plus', detail: 'Strong reasoning' },
   { value: 'qwen3-cn|qwen3.6-plus', label: 'Qwen3.6-Plus', detail: 'Strong reasoning v3.6' },
@@ -550,7 +564,7 @@ function App() {
 
   const [apiKeys, setApiKeys] = useState(() => {
     const saved = localStorage.getItem('apiKeys');
-    return saved ? JSON.parse(saved) : { openai: '', anthropic: '', 'qwen3-cn': '', deepseek: '', glm: '', openrouter: '' };
+    return { ...DEFAULT_API_KEYS, ...(saved ? JSON.parse(saved) : {}) };
   });
   const [providerEndpoints, setProviderEndpoints] = useState(() => {
     const saved = localStorage.getItem('providerEndpoints');
@@ -559,7 +573,7 @@ function App() {
 
   const [activeProviders, setActiveProviders] = useState(() => {
     const saved = localStorage.getItem('activeProviders');
-    return saved ? JSON.parse(saved) : { openai: true, anthropic: true, 'qwen3-cn': true, deepseek: true, glm: true, openrouter: true };
+    return { ...DEFAULT_ACTIVE_PROVIDERS, ...(saved ? JSON.parse(saved) : {}) };
   });
 
   const [customModels, setCustomModels] = useState(() => {
@@ -574,6 +588,7 @@ function App() {
 
   const [newModelInputs, setNewModelInputs] = useState({});
   const [newModelThinking, setNewModelThinking] = useState({});
+  const [newModelReasoningEffort, setNewModelReasoningEffort] = useState({});
 
   useEffect(() => {
     localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
@@ -598,25 +613,40 @@ function App() {
   const allShallowModels = [...SHALLOW_MODELS];
   const allDeepModels = [...DEEP_MODELS];
 
+  const upsertModelOption = (list, item) => {
+    const existingIndex = list.findIndex(m => m.value === item.value);
+    if (existingIndex === -1) {
+      list.push(item);
+      return;
+    }
+    list[existingIndex] = { ...list[existingIndex], ...item };
+  };
+
   Object.entries(customModels).forEach(([providerId, models]) => {
     if (!Array.isArray(models)) return;
     models.forEach(entry => {
       // Support legacy plain-string entries and new {name, scope} objects
       const modelName = typeof entry === 'string' ? entry : entry.name;
       const scope = typeof entry === 'string' ? 'both' : (entry.scope || 'both');
-      const item = { value: `${providerId}|${modelName}`, label: modelName, detail: 'Custom' };
-      if (scope !== 'deep' && !allShallowModels.some(m => m.value === item.value)) allShallowModels.push(item);
-      if (scope !== 'shallow' && !allDeepModels.some(m => m.value === item.value)) allDeepModels.push(item);
+      const providerName = PROVIDER_DEFAULTS[providerId]?.name || providerId;
+      const item = {
+        value: `${providerId}|${modelName}`,
+        label: `${providerName}: ${modelName}`,
+        detail: 'Custom',
+        customModel: true,
+      };
+      if (scope !== 'deep') upsertModelOption(allShallowModels, item);
+      if (scope !== 'shallow') upsertModelOption(allDeepModels, item);
     });
   });
 
   const availableShallowModels = allShallowModels
     .filter(m => activeProviders[m.value.split('|')[0]])
-    .filter(m => !hiddenPredefinedModels.includes(m.value));
+    .filter(m => m.customModel || !hiddenPredefinedModels.includes(m.value));
 
   const availableDeepModels = allDeepModels
     .filter(m => activeProviders[m.value.split('|')[0]])
-    .filter(m => !hiddenPredefinedModels.includes(m.value));
+    .filter(m => m.customModel || !hiddenPredefinedModels.includes(m.value));
 
   const selectedShallowThinker = availableShallowModels.some(m => m.value === shallowThinker)
     ? shallowThinker
@@ -709,16 +739,41 @@ function App() {
     const [deepProvider, deepModel] = deepVal.split('|');
     const [shallowProvider, shallowModel] = shallowVal.split('|');
 
+    const getCustomModelEntry = (provider, modelName) => {
+      const providerCustoms = customModels[provider] || [];
+      return providerCustoms.find(m => (typeof m === 'string' ? m : m.name) === modelName);
+    };
+
     const isThinkingEnabled = (provider, modelName) => {
       if (provider !== 'qwen3-cn') return false;
-      const qwenCustoms = customModels['qwen3-cn'] || [];
-      const customMatch = qwenCustoms.find(m => (typeof m === 'string' ? m : m.name) === modelName);
+      const customMatch = getCustomModelEntry(provider, modelName);
       if (customMatch && typeof customMatch === 'object') {
         return !!customMatch.enableThinking;
       }
       const lowerName = modelName.toLowerCase();
       return lowerName.startsWith('qwen3-max') || lowerName.includes('thinking') || lowerName.startsWith('qwq');
     };
+
+    const getAzureFoundryReasoningEffort = () => {
+      const selectedAzureModels = [
+        [deepProvider, deepModel],
+        [shallowProvider, shallowModel],
+      ].filter(([provider]) => provider === 'azure-foundry');
+
+      for (const [, modelName] of selectedAzureModels) {
+        if (getAzureFoundryReasoningMode(modelName) !== 'effort') continue;
+        const customMatch = getCustomModelEntry('azure-foundry', modelName);
+        if (
+          (customMatch && typeof customMatch === 'object' && customMatch.enableThinking)
+          || getAzureFoundryReasoningMode(modelName) === 'effort'
+        ) {
+          return customMatch.reasoningEffort || 'medium';
+        }
+      }
+      return null;
+    };
+
+    const azureFoundryReasoningEffort = getAzureFoundryReasoningEffort();
 
     return {
       ticker: (overrides.ticker ?? ticker).trim().toUpperCase(),
@@ -737,6 +792,8 @@ function App() {
       mock: false,
       qwen_enable_thinking: isThinkingEnabled(deepProvider, deepModel) || isThinkingEnabled(shallowProvider, shallowModel),
       qwen_thinking_budget: 7000,
+      azure_foundry_enable_thinking: !!azureFoundryReasoningEffort,
+      azure_foundry_reasoning_effort: azureFoundryReasoningEffort || undefined,
       execution: {
         enabled: false,
         provider: 'alpaca',
@@ -836,7 +893,29 @@ function App() {
     const shallowVal = overrides.shallowThinker ?? selectedShallowThinker;
 
     const [deepProvider, deepModel] = deepVal.split('|');
-    const [, shallowModel] = shallowVal.split('|');
+    const [shallowProvider, shallowModel] = shallowVal.split('|');
+
+    const getAzureFoundryReasoningEffort = () => {
+      const selectedAzureModels = [
+        [deepProvider, deepModel],
+        [shallowProvider, shallowModel],
+      ].filter(([provider]) => provider === 'azure-foundry');
+
+      for (const [, modelName] of selectedAzureModels) {
+        if (getAzureFoundryReasoningMode(modelName) !== 'effort') continue;
+        const azureCustoms = customModels['azure-foundry'] || [];
+        const customMatch = azureCustoms.find(m => (typeof m === 'string' ? m : m.name) === modelName);
+        if (
+          (customMatch && typeof customMatch === 'object' && customMatch.enableThinking)
+          || getAzureFoundryReasoningMode(modelName) === 'effort'
+        ) {
+          return customMatch.reasoningEffort || 'medium';
+        }
+      }
+      return null;
+    };
+
+    const azureFoundryReasoningEffort = getAzureFoundryReasoningEffort();
 
     return {
       analysis_mode: 'discovery',
@@ -854,6 +933,8 @@ function App() {
       provider_settings: buildProviderSettingsPayload({ apiKeys, providerEndpoints }),
       shallow_thinker: shallowModel,
       deep_thinker: deepModel,
+      azure_foundry_enable_thinking: !!azureFoundryReasoningEffort,
+      azure_foundry_reasoning_effort: azureFoundryReasoningEffort || undefined,
       execution: {
         enabled: false,
         provider: 'alpaca',
@@ -1276,13 +1357,33 @@ function App() {
     const name = (newModelInputs[providerId] || '').trim();
     if (!name) return;
     const scope = newModelScope[providerId] || 'both';
-    const enableThinking = providerId === 'qwen3-cn' ? !!newModelThinking[providerId] : false;
+    const azureReasoningMode = providerId === 'azure-foundry'
+      ? getAzureFoundryReasoningMode(name)
+      : 'none';
+    const enableThinking = providerId === 'qwen3-cn'
+      ? !!newModelThinking[providerId]
+      : providerId === 'azure-foundry'
+        ? azureReasoningMode === 'native' || (azureReasoningMode === 'effort' && !!newModelThinking[providerId])
+        : false;
+    const reasoningEffort = providerId === 'azure-foundry' && azureReasoningMode === 'effort'
+      ? (newModelReasoningEffort[providerId] || 'medium')
+      : undefined;
     setCustomModels(prev => ({
       ...prev,
-      [providerId]: [...(prev[providerId] || []), { name, scope, enableThinking }],
+      [providerId]: (() => {
+        const nextEntry = { name, scope, enableThinking, reasoningEffort };
+        const current = prev[providerId] || [];
+        const existingIndex = current.findIndex(
+          entry => (typeof entry === 'string' ? entry : entry.name) === name,
+        );
+        if (existingIndex === -1) return [...current, nextEntry];
+        return current.map((entry, index) => (index === existingIndex ? nextEntry : entry));
+      })(),
     }));
+    setHiddenPredefinedModels(prev => prev.filter(key => key !== `${providerId}|${name}`));
     setNewModelInputs(prev => ({ ...prev, [providerId]: '' }));
     setNewModelThinking(prev => ({ ...prev, [providerId]: false }));
+    setNewModelReasoningEffort(prev => ({ ...prev, [providerId]: 'medium' }));
   };
 
   const deleteModel = (providerId, index) => {
@@ -1390,6 +1491,9 @@ function App() {
             const scope = newModelScope[provider.id] || 'both';
             const scopeMeta = SCOPE_META[scope];
             const predefined = getPredefinedModelsForProvider(provider.id);
+            const pendingAzureReasoningMode = provider.id === 'azure-foundry'
+              ? getAzureFoundryReasoningMode(newModelInputs[provider.id])
+              : 'none';
 
             return (
               <div key={provider.id} className={`provider-card ${isActive ? 'active' : ''}`}>
@@ -1462,12 +1566,21 @@ function App() {
                           .filter(entry => !hiddenPredefinedModels.includes(`${provider.id}|${entry.name}`))
                           .map((entry, idx) => {
                             const meta = SCOPE_META[entry.scope] || SCOPE_META.both;
+                            const azureReasoningMode = provider.id === 'azure-foundry'
+                              ? getAzureFoundryReasoningMode(entry.name)
+                              : 'none';
                             return (
                               <div key={`predefined-${idx}`} className="model-list-item">
                                 <span className="model-scope-badge" style={{ color: meta.color, borderColor: `${meta.color}44` }}>{meta.label}</span>
                                 <span className="model-list-name" title={entry.name}>
                                   {entry.label} <small style={{ color: 'var(--faint)', fontFamily: 'inherit' }}>({entry.name})</small>
                                 </span>
+                                {azureReasoningMode === 'effort' && (
+                                  <span className="model-scope-badge" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Effort</span>
+                                )}
+                                {azureReasoningMode === 'native' && (
+                                  <span className="model-scope-badge" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Native</span>
+                                )}
                                 <button
                                   type="button"
                                   className="model-delete-btn"
@@ -1492,6 +1605,14 @@ function App() {
                               <span className="model-list-name" title={modelName}>{modelName}</span>
                               {entry && typeof entry === 'object' && entry.enableThinking && (
                                 <span className="model-scope-badge" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Thinking</span>
+                              )}
+                              {provider.id === 'azure-foundry' && entry && typeof entry === 'object' && entry.enableThinking && getAzureFoundryReasoningMode(modelName) === 'effort' && (
+                                <span className="model-scope-badge" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>
+                                  {entry.reasoningEffort || 'medium'}
+                                </span>
+                              )}
+                              {provider.id === 'azure-foundry' && getAzureFoundryReasoningMode(modelName) === 'native' && (
+                                <span className="model-scope-badge" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>Native</span>
                               )}
                               <button className="model-delete-btn" onClick={() => deleteModel(provider.id, i)} title="Remove model">
                                 <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
@@ -1519,7 +1640,7 @@ function App() {
                           onChange={(e) => setNewModelInputs(prev => ({ ...prev, [provider.id]: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === 'Enter') addModel(provider.id); }}
                         />
-                        {provider.id === 'qwen3-cn' && (
+                        {(provider.id === 'qwen3-cn' || (provider.id === 'azure-foundry' && pendingAzureReasoningMode === 'effort')) && (
                           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none', marginRight: '4px' }}>
                             <input
                               type="checkbox"
@@ -1529,6 +1650,24 @@ function App() {
                             />
                             Thinking Mode
                           </label>
+                        )}
+                        {provider.id === 'azure-foundry' && newModelThinking[provider.id] && pendingAzureReasoningMode === 'effort' && (
+                          <select
+                            className="model-name-input"
+                            style={{ flex: '0 0 118px' }}
+                            value={newModelReasoningEffort[provider.id] || 'medium'}
+                            onChange={(e) => setNewModelReasoningEffort(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                            title="Reasoning effort"
+                          >
+                            {AZURE_FOUNDRY_REASONING_EFFORTS.map((effort) => (
+                              <option key={effort.value} value={effort.value}>{effort.label}</option>
+                            ))}
+                          </select>
+                        )}
+                        {provider.id === 'azure-foundry' && pendingAzureReasoningMode === 'native' && (
+                          <span className="model-scope-badge" style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.27)', textTransform: 'none', letterSpacing: 'normal' }}>
+                            Native reasoning
+                          </span>
                         )}
                         <button
                           type="button"
@@ -1935,26 +2074,35 @@ function App() {
         ) : (
           <div className="welcome-container">
             <div className="welcome-hero">
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
-                <div className="segmented-modes" style={{ display: 'flex', width: '380px', padding: '6px', borderRadius: '24px', background: 'var(--surface-strong)', boxShadow: 'var(--shadow)' }}>
-                  <button
-                    className={`segmented-item ${mainPageMode === 'single' ? 'active' : ''}`}
-                    onClick={() => setMainPageMode('single')}
-                    style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
-                  >
-                    Single Ticker
-                  </button>
-                  <button
-                    className={`segmented-item ${mainPageMode === 'discovery' ? 'active' : ''}`}
-                    onClick={() => setMainPageMode('discovery')}
-                    style={{ padding: '12px', fontSize: '15px', borderRadius: '18px' }}
-                  >
-                    Stock Discovery
-                  </button>
-                </div>
+              <p className="welcome-kicker">Agentic Equity Research</p>
+              <h1 className="welcome-headline">
+                {mainPageMode === 'discovery'
+                  ? <>Find the names <em>worth</em> your attention.</>
+                  : <>What are we <em>researching</em> today?</>}
+              </h1>
+              <p className="welcome-subhead">
+                {mainPageMode === 'discovery'
+                  ? 'Run a disciplined discovery pipeline that scans the market, surfaces live themes, and ranks the candidates worth a deeper look.'
+                  : 'Point a desk of specialist agents at any ticker — fundamentals, market structure, news, and sentiment — and get a reasoned call you can actually follow.'}
+              </p>
+              <div className="welcome-mode-toggle segmented-modes" role="tablist" aria-label="Analysis mode">
+                <button
+                  role="tab"
+                  aria-selected={mainPageMode === 'single'}
+                  className={`segmented-item ${mainPageMode === 'single' ? 'active' : ''}`}
+                  onClick={() => setMainPageMode('single')}
+                >
+                  Single Ticker
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={mainPageMode === 'discovery'}
+                  className={`segmented-item ${mainPageMode === 'discovery' ? 'active' : ''}`}
+                  onClick={() => setMainPageMode('discovery')}
+                >
+                  Stock Discovery
+                </button>
               </div>
-              <h2 style={{ textAlign: 'center' }}><span className="greeting-gradient">Hi Trader</span></h2>
-              <h1 style={{ textAlign: 'center' }}>Where should we start?</h1>
             </div>
 
             <section className="composer-wrapper large">
@@ -1963,15 +2111,15 @@ function App() {
 
               {mainPageMode === 'single' && (
                 <div className="gemini-suggestions">
-                  <p className="suggestions-label">Try asking</p>
+                  <p className="suggestions-label">Start from a desk favorite</p>
                   {[
-                    ['Analyze NVDA', 'NVDA', 'short_term', '📈'],
-                    ['Swing trade TSLA', 'TSLA', 'swing', '🚗'],
-                    ['Long term SPY', 'SPY', 'long_term', '🏦'],
-                    ['Research AAPL', 'AAPL', 'short_term', '🍎'],
-                  ].map(([label, symbol, horizon, icon]) => (
+                    ['Momentum read', 'NVDA', 'short_term'],
+                    ['Swing setup', 'TSLA', 'swing'],
+                    ['Long-term core', 'SPY', 'long_term'],
+                    ['Fundamentals deep-dive', 'AAPL', 'short_term'],
+                  ].map(([label, symbol, horizon]) => (
                     <button key={`${symbol}-${horizon}`} className="suggestion-row" onClick={() => startAnalysis({ ticker: symbol, timeHorizon: horizon })}>
-                      <span className="suggestion-row-icon">{icon}</span>
+                      <span className="suggestion-ticker">{symbol}</span>
                       <span className="suggestion-row-text">{label}</span>
                       <svg className="suggestion-row-arrow" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" /></svg>
                     </button>

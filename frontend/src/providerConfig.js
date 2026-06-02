@@ -4,6 +4,11 @@ export const PROVIDER_DEFAULTS = {
     apiKeyUrl: 'https://platform.openai.com/api-keys',
     baseUrl: 'https://api.openai.com/v1',
   },
+  'azure-foundry': {
+    name: 'Azure Foundry',
+    apiKeyUrl: 'https://ai.azure.com/',
+    baseUrl: '',
+  },
   anthropic: {
     name: 'Anthropic',
     apiKeyUrl: 'https://console.anthropic.com/',
@@ -29,6 +34,22 @@ export const PROVIDER_DEFAULTS = {
     apiKeyUrl: 'https://openrouter.ai/settings/keys',
     baseUrl: 'https://openrouter.ai/api/v1',
   },
+};
+
+export const AZURE_FOUNDRY_REASONING_EFFORTS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+export const getAzureFoundryReasoningMode = (modelName) => {
+  const name = String(modelName || '').trim().toLowerCase();
+  if (!name) return 'none';
+  if (name.includes('deepseek') || name.includes('r1')) return 'native';
+  if (name.startsWith('gpt-5') || name.startsWith('o1') || name.startsWith('o3') || name.startsWith('o4')) {
+    return 'effort';
+  }
+  return 'none';
 };
 
 export const createDefaultProviderEndpoints = () => (
