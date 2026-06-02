@@ -70,7 +70,7 @@ class IntelligenceDrivenRecommender:
         Run discovery pipeline and return legacy-compatible payload.
 
         Args:
-            discovery_track: ``"enricher"`` for Stage 1â†’2 pipeline,
+            discovery_track: ``"enricher"`` for Stage 1→2 pipeline,
                 ``"anomaly_scan"`` for Track B momentum anomaly scans,
                 ``"dual_track"`` to run both tracks together and merge results.
 
@@ -760,7 +760,7 @@ class IntelligenceDrivenRecommender:
         for r in rankings:
             source_str = r.get("source", "?")
             if source_str == "both":
-                source_str = "**both** â˜…"
+                source_str = "**both** ★"
             lines.append(
                 f"| {r['ticker']} | {r['composite']:.1f} | {source_str} | {r.get('signal_alignment', '')} |"
             )

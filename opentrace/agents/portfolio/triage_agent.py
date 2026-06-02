@@ -61,8 +61,8 @@ class PortfolioTriageAgent:
     Parameters
     ----------
     llm
-        The *deep-think* LLM instance (``ChatOpenAI``, ``ChatAnthropic``, â€¦).
-        This is the same model used for debate judges / research managers â€” it
+        The *deep-think* LLM instance (``ChatOpenAI``, ``ChatAnthropic``, …).
+        This is the same model used for debate judges / research managers — it
         needs strong reasoning ability to weigh many factors at once.
     tools
         LangChain ``@tool``-decorated callables the agent may invoke during its
@@ -121,9 +121,9 @@ class PortfolioTriageAgent:
         Returns
         -------
         dict
-            ``selected``  â€“ list of ``{ticker, priority, rationale}``
-            ``skipped``   â€“ list of ``{ticker, rationale}``
-            ``research_notes`` â€“ free-text summary the agent produced
+            ``selected``  – list of ``{ticker, priority, rationale}``
+            ``skipped``   – list of ``{ticker, rationale}``
+            ``research_notes`` – free-text summary the agent produced
         """
         trade_date = trade_date or datetime.now().strftime("%Y-%m-%d")
 
@@ -133,7 +133,7 @@ class PortfolioTriageAgent:
 
         if len(positions) <= n_select:
             logger.info(
-                "Portfolio has %d positions â‰¤ N=%d; selecting all.",
+                "Portfolio has %d positions ≤ N=%d; selecting all.",
                 len(positions),
                 n_select,
             )
@@ -142,12 +142,12 @@ class PortfolioTriageAgent:
                     {
                         "ticker": p["symbol"],
                         "priority": i + 1,
-                        "rationale": "All positions selected (portfolio size â‰¤ N).",
+                        "rationale": "All positions selected (portfolio size ≤ N).",
                     }
                     for i, p in enumerate(positions)
                 ],
                 "skipped": [],
-                "research_notes": "Triage skipped â€” portfolio size â‰¤ requested N.",
+                "research_notes": "Triage skipped — portfolio size ≤ requested N.",
             }
 
         # ---- Build initial messages ----
@@ -174,11 +174,11 @@ class PortfolioTriageAgent:
                 args = tc.get("args") or tc.get("function", {}).get("arguments", {})
                 tc_id = tc.get("id", f"tc_{round_idx}_{name}")
 
-                logger.info("  â†³ tool %s(%s)", name, _truncate(str(args), 120))
+                logger.info("  ↳ tool %s(%s)", name, _truncate(str(args), 120))
                 result = self._safe_invoke_tool(name, args)
                 messages.append(ToolMessage(content=str(result), tool_call_id=tc_id))
         else:
-            # Exhausted all rounds â€” force a final answer
+            # Exhausted all rounds — force a final answer
             messages.append(
                 HumanMessage(
                     content=(
@@ -226,13 +226,13 @@ skipped this cycle to save time and cost (each deep analysis takes ~5-10 min \
 with multiple LLM agents).
 
 ## Selection Criteria (ranked by importance)
-1. **Breaking / Material News** â€” earnings surprises, M&A, regulatory actions, \
+1. **Breaking / Material News** — earnings surprises, M&A, regulatory actions, \
 lawsuits, management changes, analyst upgrades/downgrades
-2. **Extreme Unrealized P&L** â€” losses > 10% (cut-loss candidates) or gains > 20% \
+2. **Extreme Unrealized P&L** — losses > 10% (cut-loss candidates) or gains > 20% \
 (profit-taking candidates)
-3. **Concentration Risk** â€” positions > 15% of portfolio value
-4. **Unusual Volatility** â€” sudden moves not yet reflected in the metrics
-5. **Thesis Drift** â€” any reason the original investment thesis may have changed
+3. **Concentration Risk** — positions > 15% of portfolio value
+4. **Unusual Volatility** — sudden moves not yet reflected in the metrics
+5. **Thesis Drift** — any reason the original investment thesis may have changed
 
 ## Research Strategy
 You have {self.max_tool_rounds} tool-call rounds.  Be efficient:
@@ -247,7 +247,7 @@ materially change your ranking.
 
 ## Dates
 - Current date: {trade_date}
-- Suggested news window: {news_start} â†’ {trade_date}"""
+- Suggested news window: {news_start} → {trade_date}"""
 
         portfolio_table = _format_positions_table(positions, portfolio_summary)
 
@@ -258,9 +258,9 @@ materially change your ranking.
 
 Select exactly **{n_select}** stocks for deep analysis.
 
-**Step 1** â€” Examine the table above and decide which tickers deserve research.
-**Step 2** â€” Use tools to investigate those tickers.
-**Step 3** â€” Produce your final selection as a fenced JSON block:
+**Step 1** — Examine the table above and decide which tickers deserve research.
+**Step 2** — Use tools to investigate those tickers.
+**Step 3** — Produce your final selection as a fenced JSON block:
 
 ```json
 {{
@@ -368,7 +368,7 @@ def _extract_json_block(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # Raw braces â€” find outermost balanced pair
+    # Raw braces — find outermost balanced pair
     start = text.find("{")
     if start >= 0:
         depth = 0
@@ -428,9 +428,9 @@ def _heuristic_fallback(
     Last-resort selection when the LLM output can't be parsed.
 
     Scores each position by a combination of:
-      â€¢ absolute unrealized P&L %  (extreme moves â†’ high score)
-      â€¢ position size               (larger positions â†’ higher score)
-      â€¢ loss penalty                (big losers get extra priority)
+      • absolute unrealized P&L %  (extreme moves → high score)
+      • position size               (larger positions → higher score)
+      • loss penalty                (big losers get extra priority)
     """
     scored: list[tuple[str, float, dict]] = []
     for p in positions:
@@ -465,7 +465,7 @@ def _heuristic_fallback(
         "selected": selected,
         "skipped": skipped,
         "research_notes": (
-            f"âš  Heuristic fallback used (LLM output could not be parsed). "
+            f"⚠ Heuristic fallback used (LLM output could not be parsed). "
             f"Agent raw notes: {_truncate(agent_notes, 500)}"
         ),
     }

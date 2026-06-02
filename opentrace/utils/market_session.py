@@ -59,10 +59,10 @@ def describe_us_market_session(now: Optional[datetime] = None) -> dict[str, Any]
     Describe the current US stock market session using US/Eastern baseline windows.
 
     Baseline windows (ET, weekday-aware; does not detect US market holidays):
-    - Pre-market: 04:00â€“09:30
-    - Regular-hours: 09:30â€“16:00
-    - After-market: 16:00â€“20:00
-    - Overnight: 20:00â€“04:00
+    - Pre-market: 04:00–09:30
+    - Regular-hours: 09:30–16:00
+    - After-market: 16:00–20:00
+    - Overnight: 20:00–04:00
     - Weekend: Sat/Sun
     """
     et_tz = get_us_eastern_tzinfo()
@@ -74,7 +74,7 @@ def describe_us_market_session(now: Optional[datetime] = None) -> dict[str, Any]
         session_label = "WEEKEND"
         is_regular_open = False
         window = "Sat/Sun"
-        note = "Weekend: no regular trading; orders wonâ€™t fill until the next eligible session."
+        note = "Weekend: no regular trading; orders won’t fill until the next eligible session."
     else:
         pre_start = time(4, 0)
         reg_start = time(9, 30)
@@ -84,22 +84,22 @@ def describe_us_market_session(now: Optional[datetime] = None) -> dict[str, Any]
         if pre_start <= t < reg_start:
             session_label = "PRE-MARKET"
             is_regular_open = False
-            window = "04:00â€“09:30 ET"
+            window = "04:00–09:30 ET"
             note = "Pre-market session: regular market is closed."
         elif reg_start <= t < reg_end:
             session_label = "REGULAR-HOURS"
             is_regular_open = True
-            window = "09:30â€“16:00 ET"
+            window = "09:30–16:00 ET"
             note = "Regular session: market orders can execute immediately; conditional orders may fill later."
         elif reg_end <= t < aft_end:
             session_label = "AFTER-MARKET"
             is_regular_open = False
-            window = "16:00â€“20:00 ET"
+            window = "16:00–20:00 ET"
             note = "After-hours session: regular market is closed."
         else:
             session_label = "OVERNIGHT"
             is_regular_open = False
-            window = "20:00â€“04:00 ET"
+            window = "20:00–04:00 ET"
             note = "Overnight: no extended-hours liquidity until the next pre-market session."
 
     now_iso = dt.isoformat()
@@ -124,7 +124,7 @@ def describe_us_market_session(now: Optional[datetime] = None) -> dict[str, Any]
     return out
 
 
-now_et = _now_et  # public alias â€” import as: from opentrace.utils.market_session import now_et
+now_et = _now_et  # public alias — import as: from opentrace.utils.market_session import now_et
 
 
 def format_market_session_context(desc: dict[str, Any]) -> str:

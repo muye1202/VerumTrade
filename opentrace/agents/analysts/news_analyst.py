@@ -19,6 +19,7 @@ from opentrace.agents.analysts.discovery_lane import (
 )
 from opentrace.agents.analysts.workbench import (
     build_minimum_evidence_question,
+    build_no_tools_available_prompt_block,
     build_workbench_prompt_block,
     finalize_analyst_workbench_output,
 )
@@ -38,7 +39,7 @@ def create_news_analyst(llm):
         catalyst_structured = state.get("catalyst_event_report_structured", {})
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
-        window_text = f"the next {spec.weeks_range[0]}â€“{spec.weeks_range[1]} weeks"
+        window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
 
         enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
         tool_round_cap = int(get_config().get("analyst_tool_round_cap", 4) or 0)
@@ -92,13 +93,15 @@ def create_news_analyst(llm):
             "\n- Company catalysts: summarize key storylines; map each to likely price impact direction and time window."
             "\n- Macro/regime: risk-on/off tone, rates/inflation themes, and how they could affect the ticker/sector."
             "\n- Sentiment/positioning signals from the vendor output (e.g., Alpha Vantage news sentiment scores) if present."
-            f"\n- Event-driven risk: list 3â€“5 plausible upcoming catalysts/risks over {window_text} (donâ€™t invent dates; describe them generically if unknown)."
+            f"\n- Event-driven risk: list 3–5 plausible upcoming catalysts/risks over {window_text} (don’t invent dates; describe them generically if unknown)."
             "\n- Bottom line: short-term news-driven bias (bullish/bearish/neutral) + what headline would invalidate it."
             "\n- Do not output `FINAL TRANSACTION PROPOSAL`; provide domain bias and evidence only. The trader/risk judge owns executable BUY/HOLD/SELL decisions."
             "\n\nEnd with a compact Markdown table: theme, bullish/bearish impulse, confidence, time horizon, and key watch item."
         )
         system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
         system_message += build_workbench_prompt_block("news", selected_question)
+        if not tools:
+            system_message += build_no_tools_available_prompt_block()
 
         if portfolio_context:
             system_message += (

@@ -42,8 +42,10 @@ ITEM_CATALYST_MAP = {
 
 def fetch_recent_filings(
     ticker: Optional[str] = None,
-    form_types: List[str] = ["8-K", "4"],
-    lookback_hours: int = 24,
+    curr_date: Optional[str] = None,
+    form_types: Optional[List[str] | str] = None,
+    lookback_days: int = 45,
+    lookback_hours: Optional[int] = None,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
     """
@@ -51,8 +53,22 @@ def fetch_recent_filings(
 
     Returns structured filing metadata with ticker mapping.
     """
-    end_dt = datetime.utcnow()
-    start_dt = end_dt - timedelta(hours=lookback_hours)
+    if form_types is None:
+        form_types = ["10-Q", "10-K", "8-K"]
+    elif isinstance(form_types, str):
+        form_types = [form_types]
+
+    if curr_date:
+        try:
+            end_dt = datetime.strptime(str(curr_date)[:10], "%Y-%m-%d")
+        except Exception:
+            end_dt = datetime.utcnow()
+    else:
+        end_dt = datetime.utcnow()
+    if lookback_hours is not None:
+        start_dt = end_dt - timedelta(hours=int(lookback_hours))
+    else:
+        start_dt = end_dt - timedelta(days=int(lookback_days))
 
     results = []
     for form_type in form_types:

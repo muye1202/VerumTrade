@@ -131,7 +131,7 @@ async def get_dark_pool_short_volume(
     - Rising short volume trend suggests increasing bearish positioning
     - Falling short volume may indicate short covering
     
-    Note: Short volume â‰  short interest. Short volume is daily flow,
+    Note: Short volume ≠ short interest. Short volume is daily flow,
     short interest is outstanding short positions.
     """
     import requests
@@ -175,23 +175,23 @@ Try again tomorrow or check that {symbol} is an NMS security.
         recent_avg = sum(ratios[:2]) / 2
         older_avg = sum(ratios[2:min(5, len(ratios))]) / min(3, len(ratios) - 2)
         if recent_avg > older_avg * 1.1:
-            trend = "ðŸ“ˆ RISING - Short volume increasing"
+            trend = "📈 RISING - Short volume increasing"
         elif recent_avg < older_avg * 0.9:
-            trend = "ðŸ“‰ FALLING - Short volume decreasing (potential covering)"
+            trend = "📉 FALLING - Short volume decreasing (potential covering)"
         else:
-            trend = "âž¡ï¸ STABLE - Short volume consistent"
+            trend = "➡️ STABLE - Short volume consistent"
     else:
         trend = "N/A - Insufficient history"
     
     # Interpretation
     if short_ratio > 60:
-        interpretation = "âš ï¸ Very high short volume - significant bearish activity or heavy hedging"
+        interpretation = "⚠️ Very high short volume - significant bearish activity or heavy hedging"
     elif short_ratio > 50:
-        interpretation = "ðŸ”´ Elevated short volume - above-average bearish activity"
+        interpretation = "🔴 Elevated short volume - above-average bearish activity"
     elif short_ratio > 40:
-        interpretation = "âšª Normal short volume range"
+        interpretation = "⚪ Normal short volume range"
     else:
-        interpretation = "ðŸŸ¢ Low short volume - less bearish activity than typical"
+        interpretation = "🟢 Low short volume - less bearish activity than typical"
     
     # Format daily history
     history_lines = []
@@ -322,17 +322,17 @@ Real-time dark pool prints require paid services like:
     signals = []
     
     if volume_vs_avg > 150:
-        signals.append("ðŸ“ˆ Volume surge - potential institutional activity")
+        signals.append("📈 Volume surge - potential institutional activity")
     elif volume_vs_avg < 50:
-        signals.append("ðŸ“‰ Low volume - reduced institutional interest")
+        signals.append("📉 Low volume - reduced institutional interest")
     
     if avg_short > 55:
-        signals.append("ðŸ”´ Elevated short activity - bearish institutional flow")
+        signals.append("🔴 Elevated short activity - bearish institutional flow")
     elif avg_short < 35:
-        signals.append("ðŸŸ¢ Low short activity - less bearish pressure")
+        signals.append("🟢 Low short activity - less bearish pressure")
     
     if not signals:
-        signals.append("âšª Normal trading patterns - no strong institutional signals")
+        signals.append("⚪ Normal trading patterns - no strong institutional signals")
     
     return f"""## Off-Exchange Trading Context: {symbol} ({curr_date})
 

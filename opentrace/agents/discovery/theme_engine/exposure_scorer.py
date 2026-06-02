@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-Theme Engine â€” Step 4: LLM Exposure Scorer
+Theme Engine — Step 4: LLM Exposure Scorer
 
 Re-validates each ThemeExposureCandidate against the company's actual
 business description and fresh evidence headlines, producing calibrated
@@ -9,7 +9,7 @@ confidence scores and concise narrative justifications.
 This is the only LLM call in the theme engine. It is fully optional:
   - When allow_llm_call=False (default) seed scores pass through unchanged.
   - When allow_llm_call=True candidates are grouped by theme_id (one LLM
-    call per theme, â‰¤15 calls instead of one per ticker) and results are
+    call per theme, ≤15 calls instead of one per ticker) and results are
     cached for 24 h.
 
 Usage:
@@ -59,10 +59,10 @@ Respond ONLY with this JSON structure:
 }
 
 Scoring guide:
-  0.90+ â†’ core business IS this bottleneck node
-  0.70â€“0.89 â†’ meaningful, partial exposure
-  0.50â€“0.69 â†’ indirect benefit
-  < 0.50 â†’ weak or speculative â€” lower than current seed
+  0.90+ → core business IS this bottleneck node
+  0.70–0.89 → meaningful, partial exposure
+  0.50–0.69 → indirect benefit
+  < 0.50 → weak or speculative — lower than current seed
 
 Return scorings for EVERY ticker provided. Be conservative; thin evidence
 warrants a lower score. exposure_type must be one of: direct, indirect,
@@ -78,7 +78,7 @@ class ExposureScorer:
     Step 4: LLM re-scoring of ThemeExposureCandidates.
 
     Groups candidates by theme_id and issues one LLM call per theme batch
-    (â‰¤15 calls for the full taxonomy).  Results are cached at theme level
+    (≤15 calls for the full taxonomy).  Results are cached at theme level
     for 24 h so repeated runs within a day are free.
     """
 
@@ -117,7 +117,7 @@ class ExposureScorer:
                              cache_misses counts.
 
         Returns:
-            List[ThemeExposureCandidate] â€” same length and order as input.
+            List[ThemeExposureCandidate] — same length and order as input.
         """
         if not candidates:
             return candidates
@@ -125,7 +125,7 @@ class ExposureScorer:
             return candidates
 
         # Group by theme_id preserving input order
-        groups: Dict[str, List[int]] = {}  # theme_id â†’ list of indices
+        groups: Dict[str, List[int]] = {}  # theme_id → list of indices
         for idx, cand in enumerate(candidates):
             groups.setdefault(cand.theme_id, []).append(idx)
 
@@ -298,7 +298,7 @@ class ExposureScorer:
             s = scoring_map.get(cand.ticker.upper())
             if s is None:
                 self.logger.debug(
-                    "Step 4: no scoring returned for %s/%s â€” keeping original",
+                    "Step 4: no scoring returned for %s/%s — keeping original",
                     cand.ticker,
                     cand.theme_id,
                 )

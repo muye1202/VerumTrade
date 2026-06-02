@@ -38,6 +38,7 @@ from opentrace.agents.utils.market_data.vwap_tools import (
     get_intraday_vwap_position,
     get_multi_day_vwap_context,
 )
+from opentrace.agents.utils.market_data.fundamentals_parser import build_fundamentals_packet
 from opentrace.dataflows.vendors.finnhub.finnhub_vendor import get_earnings_calendar_finnhub
 
 _COMMON_FALSE_TICKERS = {
@@ -1056,7 +1057,11 @@ async def get_fundamentals_data_bundle(
         ),
     }
     results = {key: await task for key, task in tasks.items()}
-    return format_evidence_bundle("Fundamentals Data Bundle", ticker, curr_date, results)
+    return json.dumps(
+        build_fundamentals_packet(ticker, curr_date, results),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 @tool

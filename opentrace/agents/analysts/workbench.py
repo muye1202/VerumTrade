@@ -141,6 +141,20 @@ def _as_str_list(value: Any) -> list[str]:
 
 
 def _clamp_float(value: Any, default: float = 0.0, low: float = 0.0, high: float = 1.0) -> float:
+    if isinstance(value, str):
+        qualitative = {
+            "critical": 0.95,
+            "extreme": 0.9,
+            "high": 0.75,
+            "medium": 0.5,
+            "moderate": 0.5,
+            "low": 0.25,
+            "none": 0.0,
+            "n/a": 0.0,
+        }
+        text = value.strip().lower()
+        if text in qualitative:
+            return qualitative[text]
     try:
         number = float(value)
     except Exception:
@@ -177,10 +191,15 @@ def _status(value: Any) -> ObservationStatus:
 
 def _normalize_observation(domain: AnalystDomain, raw: Any, idx: int) -> AnalystObservation:
     item = raw if isinstance(raw, dict) else {"claim": raw}
+    claim = item.get("claim")
+    if claim is None:
+        claim = item.get("text")
+    if claim is None:
+        claim = item.get("description")
     return {
         "id": str(item.get("id") or f"obs_{domain}_{idx:03d}"),
         "domain": _domain(item.get("domain") or domain),
-        "claim": str(item.get("claim") or "").strip(),
+        "claim": str(claim or "").strip(),
         "source_fact_ids": _as_str_list(item.get("source_fact_ids")),
         "surprise_score": _clamp_float(item.get("surprise_score"), 0.0),
         "why_it_matters": str(item.get("why_it_matters") or "").strip(),
@@ -340,18 +359,48 @@ def strip_executable_proposals(text: Any) -> str:
     return out.strip()
 
 
+def strip_textual_tool_calls(text: Any) -> str:
+    """Remove provider-emitted pseudo tool calls that were not real LangChain tool calls."""
+    out = str(text or "")
+    out = re.sub(r"(?is)<function_calls>.*?</function_calls>", "", out)
+    out = re.sub(r"(?is)<invoke\b.*?</invoke>", "", out)
+    out = re.sub(r"(?im)^\s*<parameter\b.*?</parameter>\s*$", "", out)
+    out = re.sub(r"(?im)^\s*</?(function_calls|invoke)\b[^>]*>\s*$", "", out)
+    return out.strip()
+
+
+def contains_textual_tool_call(text: Any) -> bool:
+    return bool(
+        re.search(
+            r"(?is)<function_calls>|<invoke\b|<parameter\b",
+            str(text or ""),
+        )
+    )
+
+
+def _strip_markdown_json_fence(text: str) -> str:
+    candidate = str(text or "").strip()
+    candidate = re.sub(r"^\s*```(?:json)?\s*", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s*```\s*$", "", candidate)
+    return candidate.strip()
+
+
 def extract_ledger_and_memo(domain: str, content: Any) -> tuple[AnalystLedger, str]:
     text = str(content or "")
-    pattern = r"BEGIN_ANALYST_LEDGER_JSON\s*(\{.*?\})\s*END_ANALYST_LEDGER_JSON"
+    pattern = (
+        r"\*{0,2}\s*BEGIN_ANALYST_LEDGER_JSON\s*\*{0,2}"
+        r"\s*(.*?)\s*"
+        r"\*{0,2}\s*END_ANALYST_LEDGER_JSON\s*\*{0,2}"
+    )
     matches = list(re.finditer(pattern, text, flags=re.DOTALL | re.IGNORECASE))
     raw_ledger: dict[str, Any] = {}
     if matches:
         try:
-            raw_ledger = json.loads(matches[-1].group(1))
+            raw_ledger = json.loads(_strip_markdown_json_fence(matches[-1].group(1)))
         except Exception:
             raw_ledger = {}
         text = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE)
-    return normalize_ledger(domain, raw_ledger), strip_executable_proposals(text)
+    return normalize_ledger(domain, raw_ledger), strip_textual_tool_calls(strip_executable_proposals(text))
 
 
 def _join(items: list[str], empty: str = "-") -> str:
@@ -550,14 +599,30 @@ def merge_coverage_gaps(ledger: AnalystLedger, gaps: list[CoverageGap]) -> Analy
 
 
 def _memo_observation_candidates(text: Any) -> list[str]:
-    memo = strip_executable_proposals(text)
+    memo = strip_textual_tool_calls(strip_executable_proposals(text))
     candidates: list[str] = []
+    skip_json_depth = 0
     for raw_line in memo.splitlines():
         line = re.sub(r"\s+", " ", raw_line).strip()
         line = re.sub(r"^[-*]\s+", "", line)
         line = re.sub(r"^\d+[\.)]\s+", "", line)
         line = line.strip()
+        if line.startswith("```"):
+            continue
+        if line.startswith("{") or line.startswith("["):
+            skip_json_depth += 1
+            continue
+        if skip_json_depth:
+            if line.endswith("}") or line.endswith("]"):
+                skip_json_depth = max(0, skip_json_depth - 1)
+            continue
         if not line or line.startswith("#") or line.startswith("|"):
+            continue
+        if re.search(r"(?i)BEGIN_ANALYST_LEDGER_JSON|END_ANALYST_LEDGER_JSON", line):
+            continue
+        if re.search(r"(?i)</?(function_calls|invoke|parameter)\b", line):
+            continue
+        if re.match(r'^["\w_ -]+:\s*', line) or re.match(r'^["\w_ -]+"\s*:', line):
             continue
         if len(line) < 24:
             continue
@@ -732,8 +797,18 @@ Final output contract:
 - Every active hypothesis must include id, claim, origin, support, against, confidence, falsifier, and unresolved_questions.
 - Active hypotheses should be capped to 2-4 total, with at most 2 default_prior hypotheses and at least one non-default origin when material anomalies exist.
 - Every question must include triggered_by, decision_relevance, expected_information_gain, evidence_surprise, estimated_tool_cost, cheapest_tool, and stop_condition.
+- `surprise_score`, `decision_relevance`, `expected_information_gain`, `evidence_surprise`, and `estimated_tool_cost` must be numeric 0.0-1.0 values. `cheapest_tool` must exactly equal one available tool name; do not write combined names such as "tool_a / tool_b".
 - After the JSON block, write the human memo using these sections: Domain Inference, Active Hypotheses, Key Observations, Questions Investigated, Discarded Explanations, Unexplained But Decision-Relevant, Watch Items / Falsifiers.
 - Do not output executable BUY/HOLD/SELL proposals.{allowed}"""
+
+
+def build_no_tools_available_prompt_block() -> str:
+    return (
+        "\n\nTool access for this analyst turn is closed. Do not request, describe, or emit "
+        "tool calls, XML function_calls blocks, invoke tags, or JSON tool-call proposals. "
+        "Use the evidence already present in the conversation and emit the required "
+        "BEGIN_ANALYST_LEDGER_JSON / END_ANALYST_LEDGER_JSON ledger plus memo."
+    )
 
 
 def finalize_analyst_workbench_output(domain: str, content: Any) -> dict[str, Any]:

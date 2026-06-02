@@ -7,7 +7,7 @@ Final scoring engine that applies strict structural exclusions and calculates a 
 """
 Stage 2: Numeric Scoring & Filtering.
 
-Pure computation â€” zero LLM calls.  Consumes Stage 1 enrichment scorecards,
+Pure computation — zero LLM calls.  Consumes Stage 1 enrichment scorecards,
 applies hard filters (eliminate ~60-70%), computes a 5-factor weighted
 composite score on survivors, and returns the top 8-12 candidates.
 
@@ -36,7 +36,7 @@ from .pipeline_utils import compute_return_pct
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Sector ETF mapping â€” maps GICS-style sector names to their most liquid ETF.
+# Sector ETF mapping — maps GICS-style sector names to their most liquid ETF.
 # Used for sector momentum scoring.  yfinance `info["sector"]` returns these
 # strings (or close variants).
 # ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@ class Stage2Scorer:
         sector_weight_multipliers: Optional[Dict[str, float]] = None,
     ) -> List[Stage2ScoredCandidate]:
         """
-        Run Stage 2: hard filters â†’ composite scoring â†’ rank â†’ top N.
+        Run Stage 2: hard filters → composite scoring → rank → top N.
 
         Args:
             scorecards: Stage 1 enrichment output (per-ticker data).
@@ -639,7 +639,7 @@ class Stage2Scorer:
     # ------------------------------------------------------------------
     @staticmethod
     def _score_earnings_surprise(sc: Stage1EnrichmentScorecard) -> float:
-        """15% weight â€” Earnings surprise history + magnitude trend."""
+        """15% weight — Earnings surprise history + magnitude trend."""
         beat_rate_norm = _clamp(sc.earnings_beat_rate_4q, 0.0, 100.0)
         # Slope ranges roughly from -20 to +20 per quarter
         trend_norm = _normalize(sc.earnings_surprise_trend_slope, -10.0, 15.0)
@@ -648,7 +648,7 @@ class Stage2Scorer:
     @staticmethod
     def _score_estimate_revision(sc: Stage1EnrichmentScorecard) -> float:
         """
-        20% weight â€” Estimate revision momentum.
+        20% weight — Estimate revision momentum.
         """
         breadth_norm = _normalize(sc.eps_revision_breadth_30d, 0.0, 100.0)
         magnitude_norm = _normalize(sc.eps_revision_magnitude_30d, -10.0, 20.0)
@@ -658,7 +658,7 @@ class Stage2Scorer:
     @staticmethod
     def _score_technical_momentum(sc: Stage1EnrichmentScorecard) -> float:
         """
-        20% weight â€” Technical momentum with multi-timeframe alignment.
+        20% weight — Technical momentum with multi-timeframe alignment.
         """
         roc_norm = _normalize(sc.roc_20d, -20.0, 25.0)
         adx_norm = _normalize(sc.adx, 10.0, 50.0)
@@ -674,7 +674,7 @@ class Stage2Scorer:
 
     @staticmethod
     def _score_breakout_persistence(sc: Stage1EnrichmentScorecard) -> float:
-        """15% weight â€” New high proximity and breakout persistence."""
+        """15% weight — New high proximity and breakout persistence."""
         # Distance from 52w high: 0% gap = 100, -20% = 0
         high_proximity = _normalize(sc.distance_from_52w_high_pct, -20.0, 0.0)
         # New high count: 0/20 = 0, 15/20 = 100
@@ -685,14 +685,14 @@ class Stage2Scorer:
 
     @staticmethod
     def _score_accum_distrib(sc: Stage1EnrichmentScorecard) -> float:
-        """10% weight â€” Accumulation/distribution ratio."""
-        # Ratio 0.5 (more distribution) â†’ 0, ratio 3.0+ â†’ 100
+        """10% weight — Accumulation/distribution ratio."""
+        # Ratio 0.5 (more distribution) → 0, ratio 3.0+ → 100
         return round(_normalize(sc.accum_distrib_ratio_20d, 0.5, 3.0), 2)
 
     @staticmethod
     def _score_options_flow(sc: Stage1EnrichmentScorecard) -> float:
         """
-        20% weight â€” Unusual call activity / smart money signal.
+        20% weight — Unusual call activity / smart money signal.
         options_unusual_score is scaled 0-100 in Stage 1.
         Normalise to [0, 100].
         """
@@ -700,7 +700,7 @@ class Stage2Scorer:
 
     def _score_sector_momentum(self, sc: Stage1EnrichmentScorecard) -> float:
         """
-        15% weight â€” Sector ETF relative performance vs SPY.
+        15% weight — Sector ETF relative performance vs SPY.
         Uses cached sector ROC values (pre-fetched at start of scoring run).
         """
         sector_roc = self._get_sector_roc(sc.ticker)
@@ -711,7 +711,7 @@ class Stage2Scorer:
     @staticmethod
     def _score_short_squeeze(sc: Stage1EnrichmentScorecard) -> float:
         """
-        10% weight â€” Short interest squeeze potential.
+        10% weight — Short interest squeeze potential.
         Combines short_interest_pct_float and days_to_cover.
         Higher short interest + higher days-to-cover = more squeeze fuel.
         """

@@ -99,6 +99,7 @@ def select_allowed_question(
     exposed_tool_names: Iterable[str] | None = None,
 ) -> AnalystQuestion | None:
     normalized = normalize_ledger(str(ledger.get("analyst_domain") or "market"), ledger)
+    critic_flags = list(dict(ledger).get("critic_flags") or []) if isinstance(ledger, dict) else []
     resolved = set(normalized.get("resolved_questions", []))
     do_not_fetch_again = set(normalized.get("do_not_fetch_again", []))
     open_ids = set(normalized.get("open_questions", []))
@@ -108,6 +109,10 @@ def select_allowed_question(
     for question in normalized.get("question_backlog", []):
         qid = str(question.get("id") or "")
         tool_name = str(question.get("cheapest_tool") or "")
+        if not str(question.get("question") or "").strip():
+            critic_flags.append(f"{qid}:blank_question")
+        if exposed and tool_name and tool_name not in exposed:
+            critic_flags.append(f"{qid}:unknown_cheapest_tool:{tool_name}")
         if not qid or qid in resolved:
             continue
         if open_ids and qid not in open_ids:
@@ -120,6 +125,8 @@ def select_allowed_question(
             continue
         candidates.append(question)
 
+    if isinstance(ledger, dict):
+        ledger["critic_flags"] = list(dict.fromkeys(critic_flags))
     if not candidates:
         return None
     return max(candidates, key=calculate_question_priority)

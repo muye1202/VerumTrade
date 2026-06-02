@@ -27,7 +27,7 @@ from opentrace.execution.decision_guard import build_market_snapshot, evaluate_d
 from opentrace.agents.utils.agent_runtime.evidence_graph import build_decision_trace
 from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
 from opentrace.dataflows.config import set_config
-from opentrace.graph.provider_settings import resolve_llm_endpoint
+from opentrace.graph.provider_settings import azure_foundry_reasoning_mode, resolve_llm_endpoint
 
 # Import the new abstract tool methods from agent_utils
 from opentrace.agents.utils.agent_runtime.agent_utils import (
@@ -418,7 +418,7 @@ class OpenTraceGraph:
         )
 
         # Initialize LLMs
-        if self.config["llm_provider"].lower() in {"openai", "ollama", "openrouter", "qwen3-cn", "deepseek", "glm"}:
+        if self.config["llm_provider"].lower() in {"openai", "azure-foundry", "ollama", "openrouter", "qwen3-cn", "deepseek", "glm"}:
             provider = self.config["llm_provider"].lower()
             endpoint = resolve_llm_endpoint(provider, self.config)
             openai_kwargs = {}
@@ -516,6 +516,18 @@ class OpenTraceGraph:
                 kwargs["model_kwargs"] = mk
                 return kwargs
 
+            def _with_reasoning_effort(kwargs: Dict[str, Any], effort: Optional[str]) -> Dict[str, Any]:
+                effort = (effort or "").strip().lower()
+                if effort not in {"low", "medium", "high"}:
+                    return kwargs
+                if "reasoning_effort" in getattr(ChatOpenAI, "model_fields", {}):
+                    kwargs["reasoning_effort"] = effort
+                    return kwargs
+                mk = kwargs.get("model_kwargs") or {}
+                mk["reasoning_effort"] = effort
+                kwargs["model_kwargs"] = mk
+                return kwargs
+
             # Some DashScope reasoning-capable models require stream mode when thinking is enabled.
             deep_streaming = bool(
                 self.config.get("llm_provider", "").lower() == "qwen3-cn"
@@ -545,6 +557,24 @@ class OpenTraceGraph:
                 openrouter_deep_extra = _openrouter_extra_for_model(
                     self.config.get("deep_think_llm", "")
                 )
+            azure_foundry_deep_reasoning_effort = None
+            if (
+                self.config["llm_provider"].lower() == "azure-foundry"
+                and self.config.get("azure_foundry_enable_thinking")
+                and azure_foundry_reasoning_mode(self.config.get("deep_think_llm", "")) == "effort"
+            ):
+                azure_foundry_deep_reasoning_effort = self.config.get(
+                    "azure_foundry_reasoning_effort", "medium"
+                )
+            azure_foundry_quick_reasoning_effort = None
+            if (
+                self.config["llm_provider"].lower() == "azure-foundry"
+                and self.config.get("azure_foundry_enable_thinking")
+                and azure_foundry_reasoning_mode(self.config.get("quick_think_llm", "")) == "effort"
+            ):
+                azure_foundry_quick_reasoning_effort = self.config.get(
+                    "azure_foundry_reasoning_effort", "medium"
+                )
 
             if provider == "qwen3-cn":
                 base_llm_cls = StreamCompatibleChatOpenAI
@@ -569,12 +599,15 @@ class OpenTraceGraph:
 
             self.deep_thinking_llm = deep_llm_cls(
                 model=self.config["deep_think_llm"],
-                **_with_streaming(
-                    _with_extra_params(
-                        openai_kwargs.copy(),
-                        _merge_extra_params(qwen_extra, openrouter_deep_extra),
+                **_with_reasoning_effort(
+                    _with_streaming(
+                        _with_extra_params(
+                            openai_kwargs.copy(),
+                            _merge_extra_params(qwen_extra, openrouter_deep_extra),
+                        ),
+                        deep_streaming,
                     ),
-                    deep_streaming,
+                    azure_foundry_deep_reasoning_effort,
                 ),
             )
             if provider == "glm" and deep_llm_cls is GLMFlashSerialChatOpenAI:
@@ -612,9 +645,12 @@ class OpenTraceGraph:
 
             self.quick_thinking_llm = quick_llm_cls(
                 model=self.config["quick_think_llm"],
-                **_with_extra_params(
-                    _with_streaming(openai_kwargs.copy(), quick_streaming),
-                    _merge_extra_params(qwen_quick_extra, openrouter_quick_extra),
+                **_with_reasoning_effort(
+                    _with_extra_params(
+                        _with_streaming(openai_kwargs.copy(), quick_streaming),
+                        _merge_extra_params(qwen_quick_extra, openrouter_quick_extra),
+                    ),
+                    azure_foundry_quick_reasoning_effort,
                 ),
             )
             if provider == "glm" and quick_llm_cls is GLMFlashSerialChatOpenAI:
@@ -1473,5 +1509,3 @@ class OpenTraceGraph:
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""
         return self.signal_processor.process_signal(full_signal)
-
-

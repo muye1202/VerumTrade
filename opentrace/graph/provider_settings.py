@@ -8,6 +8,11 @@ _PROVIDER_ENV: Dict[str, Dict[str, Any]] = {
         "base_urls": ("OPENAI_BASE_URL",),
         "default_base_url": "https://api.openai.com/v1",
     },
+    "azure-foundry": {
+        "api_keys": ("AZURE_FOUNDRY_API_KEY",),
+        "base_urls": ("AZURE_FOUNDRY_BASE_URL",),
+        "default_base_url": None,
+    },
     "anthropic": {
         "api_keys": ("ANTHROPIC_API_KEY",),
         "base_urls": ("ANTHROPIC_BASE_URL",),
@@ -55,6 +60,18 @@ def _clean(value: Any) -> Optional[str]:
 
 def _provider_key(provider: str) -> str:
     return (provider or "").strip().lower()
+
+
+def azure_foundry_reasoning_mode(model_name: str) -> str:
+    """Return Azure Foundry reasoning mode: effort, native, or none."""
+    name = (model_name or "").strip().lower()
+    if not name:
+        return "none"
+    if "deepseek" in name or "r1" in name:
+        return "native"
+    if name.startswith(("gpt-5", "o1", "o3", "o4")):
+        return "effort"
+    return "none"
 
 
 def _request_settings_for_provider(

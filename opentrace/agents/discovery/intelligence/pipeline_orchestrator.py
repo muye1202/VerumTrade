@@ -22,10 +22,10 @@ from opentrace.agents.discovery.theme_engine.exposure_scorer import ExposureScor
 
 class IntelligenceScanner:
     """
-    Top-level discovery orchestrator for Stage 0 â†’ Stage 1 â†’ Stage 2 pipeline.
+    Top-level discovery orchestrator for Stage 0 → Stage 1 → Stage 2 pipeline.
 
     Supports three discovery tracks:
-      - ``"enricher"`` (default): Stage 1 enrichment â†’ Stage 2 scoring
+      - ``"enricher"`` (default): Stage 1 enrichment → Stage 2 scoring
       - ``"anomaly_scan"``: Track B short-term momentum anomaly scans
       - ``"dual_track"``: Both tracks run together; results merged with convergence bonus
     """
@@ -364,7 +364,7 @@ class IntelligenceScanner:
             )
 
     # ------------------------------------------------------------------
-    # Track A: Enricher â†’ Stage 2 scoring (existing pipeline)
+    # Track A: Enricher → Stage 2 scoring (existing pipeline)
     # ------------------------------------------------------------------
 
     def _run_track_a(

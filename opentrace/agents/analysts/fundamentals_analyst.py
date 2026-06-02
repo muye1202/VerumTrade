@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from opentrace.agents.utils.agent_runtime.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions
+from opentrace.agents.utils.agent_runtime.agent_utils import get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_insider_sentiment, get_insider_transactions, get_recent_sec_filings
 from opentrace.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from opentrace.agents.utils.agent_runtime.context_budget import build_report_evidence_summary
 from opentrace.agents.utils.market_data.bundle_tools import (
@@ -19,6 +19,7 @@ from opentrace.agents.analysts.discovery_lane import (
 )
 from opentrace.agents.analysts.workbench import (
     build_minimum_evidence_question,
+    build_no_tools_available_prompt_block,
     build_workbench_prompt_block,
     finalize_analyst_workbench_output,
 )
@@ -39,7 +40,7 @@ def create_fundamentals_analyst(llm):
         catalyst_structured = state.get("catalyst_event_report_structured", {})
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
-        window_text = f"the next {spec.weeks_range[0]}â€“{spec.weeks_range[1]} weeks"
+        window_text = f"the next {spec.weeks_range[0]}-{spec.weeks_range[1]} weeks"
 
         enable_bundle_tools = bool(get_config().get("enable_bundle_tools", True))
         tool_round_cap = int(get_config().get("analyst_tool_round_cap", 4) or 0)
@@ -52,6 +53,7 @@ def create_fundamentals_analyst(llm):
             get_balance_sheet,
             get_cashflow,
             get_income_statement,
+            get_recent_sec_filings,
             get_insider_sentiment,
             get_insider_transactions,
         ]
@@ -92,17 +94,19 @@ def create_fundamentals_analyst(llm):
             "\n5) Prefer one batched tool-call response. If `get_fundamentals_data_bundle` is available, use it first."
             "\n6) Allow at most one fallback tool round if data is missing/invalid."
             "\n\nReport requirements (keep it to-the-point and trade-relevant):"
-            "\n- Near-term fundamental narrative: what changed recently and what could change next (donâ€™t invent dates)."
+            "\n- Near-term fundamental narrative: what changed recently and what could change next (don't invent dates)."
             "\n- Earnings sensitivity: which line items/segments/margins matter most; what the market is likely keying on."
             "\n- Balance-sheet/liquidity: cash, debt, liquidity runway, refinancing risk (if discernible)."
             "\n- Valuation/expectations: whether expectations look stretched vs recent fundamentals (use available ratios; avoid long debates)."
             "\n- Insider activity: summarize net buying/selling and any notable patterns."
-            f"\n- Bottom line: bullish/bearish fundamental bias for a {holding_text} horizon + 2â€“3 concrete risks that would invalidate it."
+            f"\n- Bottom line: bullish/bearish fundamental bias for a {holding_text} horizon + 2-3 concrete risks that would invalidate it."
             "\n- Do not output `FINAL TRANSACTION PROPOSAL`; provide domain bias and evidence only. The trader/risk judge owns executable BUY/HOLD/SELL decisions."
             f"\n\nEnd with a compact Markdown table summarizing: key metric(s), directionality, why it matters over {window_text}, and the risk if wrong."
         )
         system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
         system_message += build_workbench_prompt_block("fundamentals", selected_question)
+        if not tools:
+            system_message += build_no_tools_available_prompt_block()
 
         if portfolio_context:
             system_message += (

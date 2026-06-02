@@ -365,7 +365,7 @@ def update_display(layout, spinner_text=None):
             progress_table.add_row("", agent, status_cell)
 
         # Add horizontal line after each team
-        progress_table.add_row("â”€" * 20, "â”€" * 20, "â”€" * 20, style="dim")
+        progress_table.add_row("─" * 20, "─" * 20, "─" * 20, style="dim")
 
     layout["progress"].update(
         Panel(progress_table, title="Progress", border_style="cyan", padding=(1, 2))
@@ -517,7 +517,7 @@ def get_user_selections():
     welcome_content = f"{welcome_ascii}\n"
     welcome_content += "[bold green]OpenTrace: Agentic Market Research & Trading Analysis - CLI[/bold green]\n\n"
     welcome_content += "[bold]Workflow Steps:[/bold]\n"
-    welcome_content += "I. Analyst Team â†’ II. Research Team â†’ III. Trader â†’ IV. Risk Management â†’ V. Portfolio Management\n\n"
+    welcome_content += "I. Analyst Team → II. Research Team → III. Trader → IV. Risk Management → V. Portfolio Management\n\n"
     welcome_content += (
         "[dim]OpenTrace by [muye1202](https://github.com/muye1202/OpenTrace)[/dim]"
     )
@@ -598,11 +598,11 @@ def get_user_selections():
             "Select [Discovery Source]:",
             choices=[
                 questionary.Choice(
-                    "Fresh run â€” run the full discovery pipeline",
+                    "Fresh run — run the full discovery pipeline",
                     value="fresh",
                 ),
                 questionary.Choice(
-                    "Resume â€” load ticker list from a previous discovery report and run deep analysis",
+                    "Resume — load ticker list from a previous discovery report and run deep analysis",
                     value="resume",
                 ),
             ],
@@ -782,8 +782,8 @@ def get_user_selections():
         skip_completed = questionary.select(
             "Skip Completed Analysts?",
             choices=[
-                questionary.Choice("Yes â€” Skip analysts with existing reports", value=True),
-                questionary.Choice("No  â€” Rerun all analysts", value=False),
+                questionary.Choice("Yes — Skip analysts with existing reports", value=True),
+                questionary.Choice("No  — Rerun all analysts", value=False),
             ],
             instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
             style=questionary.Style(
@@ -807,7 +807,7 @@ def get_user_selections():
         create_question_box(
             f"Step {horizon_step}: Holding Period",
             "Select the target holding period for trade ideas (affects all agent prompts)",
-            "1â€“2 months",
+            "1–2 months",
         )
     )
     selected_time_horizon = select_time_horizon()
@@ -863,8 +863,8 @@ def get_user_selections():
         triage_choice = questionary.select(
             "Enable portfolio triage?",
             choices=[
-                questionary.Choice("Yes â€” AI picks the most important stocks", value="yes"),
-                questionary.Choice("No  â€” analyze every position", value="no"),
+                questionary.Choice("Yes — AI picks the most important stocks", value="yes"),
+                questionary.Choice("No  — analyze every position", value="no"),
             ],
             instruction="\\n- Use arrow keys to navigate\\n- Press Enter to select",
             style=questionary.Style(

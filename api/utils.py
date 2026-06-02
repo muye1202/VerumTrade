@@ -262,6 +262,10 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
         config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
     if req.qwen_thinking_budget is not None:
         config["qwen_thinking_budget"] = req.qwen_thinking_budget
+    if req.azure_foundry_enable_thinking is not None:
+        config["azure_foundry_enable_thinking"] = req.azure_foundry_enable_thinking
+    if req.azure_foundry_reasoning_effort is not None:
+        config["azure_foundry_reasoning_effort"] = req.azure_foundry_reasoning_effort
     
     # Optional execution config
     if req.execution:
@@ -464,6 +468,10 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         config["qwen_enable_thinking_quick"] = req.qwen_enable_thinking
     if req.qwen_thinking_budget is not None:
         config["qwen_thinking_budget"] = req.qwen_thinking_budget
+    if req.azure_foundry_enable_thinking is not None:
+        config["azure_foundry_enable_thinking"] = req.azure_foundry_enable_thinking
+    if req.azure_foundry_reasoning_effort is not None:
+        config["azure_foundry_reasoning_effort"] = req.azure_foundry_reasoning_effort
 
     previous_session = None
     previous_reports = {}
