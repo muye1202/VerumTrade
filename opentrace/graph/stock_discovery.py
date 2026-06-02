@@ -17,7 +17,7 @@ from opentrace.agents.discovery.intelligence_integration import (
     IntelligenceDrivenRecommender,
 )
 from opentrace.default_config import DEFAULT_CONFIG
-from opentrace.graph.provider_settings import resolve_llm_endpoint
+from opentrace.graph.provider_settings import azure_foundry_reasoning_mode, resolve_llm_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,28 @@ class StockDiscoveryGraph:
                 return {"reasoning": {"enabled": True}}
             return {}
 
+        def _with_reasoning_effort(kwargs: Dict[str, Any], effort: Optional[str]) -> Dict[str, Any]:
+            effort = (effort or "").strip().lower()
+            if effort not in {"low", "medium", "high"}:
+                return kwargs
+            if "reasoning_effort" in getattr(ChatOpenAI, "model_fields", {}):
+                kwargs["reasoning_effort"] = effort
+                return kwargs
+            mk = kwargs.get("model_kwargs") or {}
+            mk["reasoning_effort"] = effort
+            kwargs["model_kwargs"] = mk
+            return kwargs
+
+        azure_foundry_reasoning_effort = None
+        if (
+            provider == "azure-foundry"
+            and self.config.get("azure_foundry_enable_thinking")
+            and azure_foundry_reasoning_mode(model) == "effort"
+        ):
+            azure_foundry_reasoning_effort = self.config.get(
+                "azure_foundry_reasoning_effort", "medium"
+            )
+
         # Use appropriate LLM class based on provider
         if provider == "glm":
             from opentrace.graph.opentrace_graph import GLMFlashSerialChatOpenAI, GLMCompatibleChatOpenAI
@@ -143,18 +165,25 @@ class StockDiscoveryGraph:
                 ),
             )
         else:
+            llm_kwargs = {
+                "api_key": api_key,
+                "base_url": base_url,
+            }
+            if not azure_foundry_reasoning_effort:
+                llm_kwargs["temperature"] = 0.7
             return ChatOpenAI(
                 model=model,
-                api_key=api_key,
-                base_url=base_url,
-                temperature=0.7,
+                **_with_reasoning_effort(
+                    llm_kwargs,
+                    azure_foundry_reasoning_effort,
+                ),
             )
 
     def _supports_web_search(self) -> bool:
         """Check if the configured LLM provider supports web search."""
         provider = self.config.get("llm_provider", "openai").lower()
         # GLM and OpenAI support web search natively or via tools
-        return provider in {"glm", "openai"}
+        return provider in {"glm", "openai", "azure-foundry"}
 
     def run_discovery(
         self,

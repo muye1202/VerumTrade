@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
         "dataflows/data_cache",
     ),
 
-    # LLM settings (providers: openai, anthropic, google, deepseek, openrouter, ollama, qwen3-cn, glm)
+    # LLM settings (providers: openai, azure-foundry, anthropic, google, deepseek, openrouter, ollama, qwen3-cn, glm)
     "llm_provider": os.getenv("OPENTRACE_LLM_PROVIDER", "openai"),
     "deep_think_llm": "o4-mini",
     "quick_think_llm": "gpt-4o-mini",
@@ -51,6 +51,8 @@ DEFAULT_CONFIG = {
         if os.getenv("OPENTRACE_ANTHROPIC_THINKING_BUDGET")
         else 1024
     ),
+    "azure_foundry_enable_thinking": _env_flag("OPENTRACE_AZURE_FOUNDRY_ENABLE_THINKING", False),
+    "azure_foundry_reasoning_effort": os.getenv("OPENTRACE_AZURE_FOUNDRY_REASONING_EFFORT", "medium"),
 
     # Prompt/context budgeting (important for providers with strict context windows).
     "context_budget_mode": os.getenv("OPENTRACE_CONTEXT_BUDGET_MODE", "adaptive"),

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 class ExecutionSettings(BaseModel):
     enabled: bool = False
@@ -35,6 +35,11 @@ class AnalysisRequest(BaseModel):
     mock: bool = Field(default=False, description="If true, bypass LLM and return mock stream")
     qwen_enable_thinking: Optional[bool] = Field(default=None, description="Whether Qwen thinking mode is enabled")
     qwen_thinking_budget: Optional[int] = Field(default=None, description="Qwen thinking budget")
+    azure_foundry_enable_thinking: Optional[bool] = Field(default=None, description="Whether Azure Foundry reasoning is enabled")
+    azure_foundry_reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+        default=None,
+        description="Azure Foundry reasoning effort for reasoning models",
+    )
 
 class DiscoveryRequest(BaseModel):
     analysis_date: str = Field(..., description="Analysis date in YYYY-MM-DD format")
@@ -50,6 +55,11 @@ class DiscoveryRequest(BaseModel):
     )
     shallow_thinker: str = Field(default="gpt-4o-mini", description="Model for shallow tasks")
     deep_thinker: str = Field(default="gpt-4o", description="Model for deep reasoning")
+    azure_foundry_enable_thinking: Optional[bool] = Field(default=None, description="Whether Azure Foundry reasoning is enabled")
+    azure_foundry_reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+        default=None,
+        description="Azure Foundry reasoning effort for reasoning models",
+    )
     mock: bool = Field(default=False, description="If true, return mock stream without running pipeline")
 
 

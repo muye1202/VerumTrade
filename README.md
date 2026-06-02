@@ -43,7 +43,7 @@ It is built for two audiences:
   the lessons back into agent memory.
 - 🛰️ **AI stock discovery** — a multi-stage screener finds promising tickers, then runs the full
   pipeline on the best candidates.
-- 🔌 **Bring your own model & data** — 8 LLM providers (incl. local Ollama) and 6+ market-data
+- 🔌 **Bring your own model & data** — 9 LLM providers (incl. local Ollama) and 6+ market-data
   vendors with automatic fallback. Start free with Yahoo Finance and one LLM key.
 - 💸 **Paper or live execution** — optional Alpaca integration with position-size and concentration
   guardrails.
@@ -64,7 +64,7 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | **Discovery** | Multi-stage **stock-discovery** pipeline + a macro **Theme Engine** |
 | **Decision rigor** | Structured **Decision Schema** + pre-execution **Decision Guard** validation |
 | **Execution** | Live/paper **Alpaca** execution with concentration & position-size guardrails and 5 order types |
-| **Reach** | 8 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Qwen, GLM, OpenRouter, Ollama) and a multi-vendor data layer with fallback |
+| **Reach** | 9 LLM providers (OpenAI, Azure Foundry, Anthropic, Google, DeepSeek, Qwen, GLM, OpenRouter, Ollama) and a multi-vendor data layer with fallback |
 | **Engineering** | A **context-budget** manager for token control, plus full FastAPI + React + Typer/Rich apps |
 
 ---
@@ -114,7 +114,7 @@ cp .env.example .env        # Linux / macOS
 copy .env.example .env       # Windows
 ```
 
-Open `.env` and paste in at least one LLM provider key (OpenAI, Anthropic, Google, DeepSeek, etc.). That's all you need — market data from Yahoo Finance works with no key at all.
+Open `.env` and paste in at least one LLM provider key (OpenAI, Azure Foundry, Anthropic, Google, DeepSeek, etc.). That's all you need — market data from Yahoo Finance works with no key at all.
 
 > [!TIP]
 > See [`.env.example`](.env.example) for every supported key and what it does.
@@ -196,7 +196,7 @@ opentrace analyze
 | **Analysts** | Which specialists to include — Catalyst/Event-Risk, Market, Social, News, Fundamentals |
 | **Research depth** | How many debate rounds: **Shallow** (fast) · **Medium** · **Deep** (thorough) |
 | **Time horizon** | Target holding period (1–2 weeks up to 2–3 months) |
-| **LLM Provider** | OpenAI, Google, Anthropic, DeepSeek, Qwen, GLM, OpenRouter, or Ollama |
+| **LLM Provider** | OpenAI, Azure Foundry, Google, Anthropic, DeepSeek, Qwen, GLM, OpenRouter, or Ollama |
 | **Models** | Quick-thinking model (analysts) and deep-thinking model (judges) |
 | **Execution** | Analysis only, or also place a paper trade via Alpaca |
 
@@ -245,7 +245,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"]      = "google"          # or "openai", "anthropic", "deepseek", etc.
+config["llm_provider"]      = "google"          # or "openai", "azure-foundry", "anthropic", "deepseek", etc.
 config["deep_think_llm"]    = "gemini-2.5-flash"
 config["quick_think_llm"]   = "gemini-2.0-flash"
 
@@ -470,7 +470,7 @@ All defaults live in [`opentrace/default_config.py`](opentrace/default_config.py
 
 | Key | What it controls | Example values |
 |:--|:--|:--|
-| `llm_provider` | Which LLM backend to use | `openai` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` · `ollama` |
+| `llm_provider` | Which LLM backend to use | `openai` · `azure-foundry` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` · `ollama` |
 | `deep_think_llm` | Model for judges & managers | `"o4-mini"` · `"gemini-2.5-flash"` · `"claude-sonnet-4-20250514"` |
 | `quick_think_llm` | Model for analysts & researchers | `"gpt-4o-mini"` · `"gemini-2.0-flash"` |
 | `max_debate_rounds` | Bull ↔ Bear debate rounds | `1` (default), capped at `3` |

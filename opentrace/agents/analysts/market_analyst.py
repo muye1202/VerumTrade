@@ -34,6 +34,7 @@ from opentrace.agents.analysts.discovery_lane import (
 )
 from opentrace.agents.analysts.workbench import (
     build_minimum_evidence_question,
+    build_no_tools_available_prompt_block,
     build_workbench_prompt_block,
     finalize_analyst_workbench_output,
 )
@@ -208,6 +209,8 @@ Report requirements (keep it to-the-point, but specific):
         )
         system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
         system_message += build_workbench_prompt_block("market", selected_question)
+        if not tools:
+            system_message += build_no_tools_available_prompt_block()
 
         if portfolio_context:
             system_message += (

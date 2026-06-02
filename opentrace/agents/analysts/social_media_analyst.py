@@ -19,6 +19,7 @@ from opentrace.agents.analysts.discovery_lane import (
 )
 from opentrace.agents.analysts.workbench import (
     build_minimum_evidence_question,
+    build_no_tools_available_prompt_block,
     build_workbench_prompt_block,
     finalize_analyst_workbench_output,
 )
@@ -97,6 +98,8 @@ def create_social_media_analyst(llm):
         )
         system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
         system_message += build_workbench_prompt_block("sentiment", selected_question)
+        if not tools:
+            system_message += build_no_tools_available_prompt_block()
 
         if portfolio_context:
             system_message += (

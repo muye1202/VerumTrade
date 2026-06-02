@@ -62,6 +62,10 @@ def _build_config(req: DiscoveryRequest) -> dict:
     config["llm_provider"] = req.llm_provider.lower()
     config["backend_url"] = req.backend_url or ""
     config["provider_settings"] = serialize_provider_settings(req.provider_settings)
+    if req.azure_foundry_enable_thinking is not None:
+        config["azure_foundry_enable_thinking"] = req.azure_foundry_enable_thinking
+    if req.azure_foundry_reasoning_effort is not None:
+        config["azure_foundry_reasoning_effort"] = req.azure_foundry_reasoning_effort
 
     config.setdefault("theme_engine", {})
     config["theme_engine"]["scan_mode"] = req.scan_mode
