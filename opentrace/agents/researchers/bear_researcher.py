@@ -11,6 +11,7 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from opentrace.graph.debate_schema import (
+    debate_validation_context_from_state,
     require_valid_research_turns,
 )
 
@@ -84,24 +85,22 @@ DEBATE CONTRACT:
 - Include a concrete plan implication and falsification condition.
 - If you cannot cite admissible evidence for a claim, write NO_ADMISSIBLE_EVIDENCE and do not use that claim to support the plan.
 - End with RESEARCH_DEBATE_TURN_JSON followed by valid JSON containing turn_id, speaker, issue_id, position, claim, evidence_ids, rebuttal_to, plan_implication, falsification_condition, and confidence.
+- plan_implication MUST be an object, not prose:
+  {{"field":"execution_mode","proposed_value":"wait_for_trigger","rationale":"Avoid chasing overbought momentum."}}
+- Use exactly one field per debate turn. If several fields are affected, choose the most important one.
 """
 
         response = llm.invoke(prompt)
 
         argument = f"Bear Analyst: {response.content}"
+        debate_context = debate_validation_context_from_state(state)
         validation = require_valid_research_turns(
             response.content,
             stage="bear_researcher",
-            evidence_ids=[
-                str(item.get("evidence_id"))
-                for item in state.get("evidence_ledger", []) or []
-                if isinstance(item, dict) and item.get("evidence_id")
-            ],
-            active_issue_ids=[
-                str(item.get("issue_id"))
-                for item in state.get("contested_issues", []) or []
-                if isinstance(item, dict) and item.get("issue_id")
-            ],
+            evidence_ids=debate_context["evidence_ids"],
+            active_issue_ids=debate_context["issue_ids"],
+            evidence_aliases=debate_context["evidence_aliases"],
+            active_issues=debate_context["issues"],
         )
         all_turns = [*(state.get("research_debate_turns") or []), *validation["accepted_turns"]]
 

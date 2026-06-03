@@ -153,6 +153,16 @@ def build_analysis_reports_payload(final_state: Dict[str, Any] | None) -> Dict[s
     }
 
 
+def extract_stream_reports_payload(chunk: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Build the incremental report payload from a streamed graph chunk."""
+    state = chunk or {}
+    return {
+        key: state.get(key)
+        for key in REPORT_PAYLOAD_KEYS
+        if key in state and state.get(key) is not None
+    }
+
+
 async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     """
     Runs the OpenTraceGraph analysis and streams intermediate messages,
@@ -361,60 +371,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
                     chunk_updates.append(tool_item)
                     all_logs.append(tool_item)
 
-            reports = {}
-            # Analyst Team
-            if chunk.get("market_report"):
-                reports["market_report"] = chunk["market_report"]
-            if chunk.get("sentiment_report"):
-                reports["sentiment_report"] = chunk["sentiment_report"]
-            if chunk.get("news_report"):
-                reports["news_report"] = chunk["news_report"]
-            if chunk.get("catalyst_report"):
-                reports["catalyst_report"] = chunk["catalyst_report"]
-            if chunk.get("catalyst_event_bundle"):
-                reports["catalyst_event_bundle"] = chunk["catalyst_event_bundle"]
-            if chunk.get("catalyst_event_report_structured"):
-                reports["catalyst_event_report_structured"] = chunk["catalyst_event_report_structured"]
-            if chunk.get("catalyst_parse_telemetry"):
-                reports["catalyst_parse_telemetry"] = chunk["catalyst_parse_telemetry"]
-            if chunk.get("fundamentals_report"):
-                reports["fundamentals_report"] = chunk["fundamentals_report"]
-
-            if chunk.get("evidence_source_facts"):
-                reports["evidence_source_facts"] = chunk["evidence_source_facts"]
-            if chunk.get("evidence_graph"):
-                reports["evidence_graph"] = chunk["evidence_graph"]
-            if chunk.get("evidence_graph_audit"):
-                reports["evidence_graph_audit"] = chunk["evidence_graph_audit"]
-            if chunk.get("decision_trace"):
-                reports["decision_trace"] = chunk["decision_trace"]
-            if chunk.get("trader_decision_brief"):
-                reports["trader_decision_brief"] = chunk["trader_decision_brief"]
-            if chunk.get("trade_setup_diagnosis"):
-                reports["trade_setup_diagnosis"] = chunk["trade_setup_diagnosis"]
-            if chunk.get("scenario_analysis"):
-                reports["scenario_analysis"] = chunk["scenario_analysis"]
-            if chunk.get("execution_plan_compiler"):
-                reports["execution_plan_compiler"] = chunk["execution_plan_compiler"]
-            if chunk.get("trader_self_audit"):
-                reports["trader_self_audit"] = chunk["trader_self_audit"]
-            if chunk.get("agent_reasoning_trace"):
-                reports["agent_reasoning_trace"] = chunk["agent_reasoning_trace"]
-
-            # Debate State
-            if chunk.get("investment_debate_state"):
-                reports["investment_debate_state"] = chunk["investment_debate_state"]
-
-            # Trading Team
-            if chunk.get("trader_investment_plan"):
-                reports["trader_investment_plan"] = chunk["trader_investment_plan"]
-
-            # Risk State
-            if chunk.get("risk_debate_state"):
-                reports["risk_debate_state"] = chunk["risk_debate_state"]
-
-            if chunk.get("final_trade_decision"):
-                reports["final_trade_decision"] = chunk["final_trade_decision"]
+            reports = extract_stream_reports_payload(chunk)
 
             if chunk_updates or reports:
                 payload = {

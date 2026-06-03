@@ -112,6 +112,8 @@ def require_valid_research_turns(
     stage: str,
     evidence_ids: list[str] | set[str],
     active_issue_ids: list[str] | set[str],
+    evidence_aliases: dict[str, list[str]] | None = None,
+    active_issues: list[dict[str, Any]] | None = None,
 ) -> ResearchDebateValidation:
     turns = extract_research_debate_turns_from_text(text)
     if not turns:
@@ -119,6 +121,14 @@ def require_valid_research_turns(
             stage,
             "missing parseable RESEARCH_DEBATE_TURN_JSON block",
         )
+    turns = [
+        _normalize_research_turn(
+            turn,
+            evidence_aliases=evidence_aliases or {},
+            active_issues=active_issues or [],
+        )
+        for turn in turns
+    ]
     validation = validate_research_debate_turns(
         turns,
         evidence_ids=evidence_ids,
@@ -131,6 +141,55 @@ def require_valid_research_turns(
             details=validation["rejected_turns"],
         )
     return validation
+
+
+def debate_context_ids_from_state(state: dict[str, Any] | None) -> tuple[list[str], list[str]]:
+    context = debate_validation_context_from_state(state)
+    return context["evidence_ids"], context["issue_ids"]
+
+
+def debate_validation_context_from_state(state: dict[str, Any] | None) -> dict[str, Any]:
+    state = state or {}
+    ledger = state.get("evidence_ledger")
+    if not isinstance(ledger, list) or not ledger:
+        from opentrace.graph.evidence_ledger_schema import (
+            build_evidence_ledger,
+            validate_admissible_evidence,
+        )
+
+        ledger = build_evidence_ledger(state)
+        admissibility = validate_admissible_evidence(
+            ledger,
+            time_horizon=str(state.get("time_horizon") or ""),
+        )
+    else:
+        admissibility = state.get("admissibility_report")
+        if not isinstance(admissibility, dict):
+            from opentrace.graph.evidence_ledger_schema import validate_admissible_evidence
+
+            admissibility = validate_admissible_evidence(
+                ledger,
+                time_horizon=str(state.get("time_horizon") or ""),
+            )
+    issues = state.get("contested_issues")
+    if not isinstance(issues, list) or not issues:
+        issues = frame_contested_issues(ledger, admissibility)
+    evidence_ids = [
+            str(item.get("evidence_id"))
+            for item in ledger
+            if isinstance(item, dict) and item.get("evidence_id")
+    ]
+    issue_ids = [
+            str(item.get("issue_id"))
+            for item in issues
+            if isinstance(item, dict) and item.get("issue_id")
+    ]
+    return {
+        "evidence_ids": evidence_ids,
+        "issue_ids": issue_ids,
+        "issues": issues,
+        "evidence_aliases": _evidence_aliases_from_state(state, ledger),
+    }
 
 
 def validate_research_debate_turns(
@@ -285,6 +344,98 @@ def _research_turn_rejection_reason(
     if not str(turn.get("claim") or "").strip():
         return "missing claim"
     return ""
+
+
+def _normalize_research_turn(
+    turn: dict[str, Any],
+    *,
+    evidence_aliases: dict[str, list[str]],
+    active_issues: list[dict[str, Any]],
+) -> dict[str, Any]:
+    normalized = dict(turn)
+    evidence_ids: list[str] = []
+    for raw_ref in turn.get("evidence_ids") or []:
+        ref = str(raw_ref)
+        mapped = evidence_aliases.get(ref, [ref])
+        evidence_ids.extend(mapped)
+    normalized["evidence_ids"] = list(dict.fromkeys(evidence_ids))
+
+    issue_id = str(normalized.get("issue_id") or "").strip()
+    active_issue_ids = {
+        str(issue.get("issue_id"))
+        for issue in active_issues
+        if isinstance(issue, dict) and issue.get("issue_id")
+    }
+    if issue_id not in active_issue_ids:
+        normalized_issue = _issue_for_evidence(normalized["evidence_ids"], active_issues)
+        if normalized_issue:
+            normalized["issue_id"] = normalized_issue
+    return normalized
+
+
+def _issue_for_evidence(evidence_ids: list[str], active_issues: list[dict[str, Any]]) -> str:
+    cited = set(evidence_ids)
+    best_issue = ""
+    best_overlap = 0
+    for issue in active_issues:
+        if not isinstance(issue, dict):
+            continue
+        candidate = set(str(item) for item in issue.get("candidate_evidence") or [])
+        overlap = len(cited & candidate)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_issue = str(issue.get("issue_id") or "")
+    if best_issue:
+        return best_issue
+    if len(active_issues) == 1 and isinstance(active_issues[0], dict):
+        return str(active_issues[0].get("issue_id") or "")
+    return ""
+
+
+def _evidence_aliases_from_state(
+    state: dict[str, Any],
+    ledger: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    aliases: dict[str, list[str]] = {}
+    for item in ledger:
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        if not evidence_id:
+            continue
+        for key in ("evidence_id", "source_ref", "source_node_id"):
+            alias = str(item.get(key) or "").strip()
+            if alias:
+                aliases.setdefault(alias, []).append(evidence_id)
+
+    graph = state.get("evidence_graph") if isinstance(state.get("evidence_graph"), dict) else {}
+    for fact in graph.get("facts") or []:
+        if not isinstance(fact, dict):
+            continue
+        fact_id = str(fact.get("id") or "").strip()
+        mapped = aliases.get(fact_id, [])
+        if not mapped:
+            continue
+        for source_id in fact.get("source_ids") or []:
+            alias = str(source_id or "").strip()
+            if alias:
+                aliases.setdefault(alias, []).extend(mapped)
+
+    for inference in graph.get("inferences") or []:
+        if not isinstance(inference, dict):
+            continue
+        inference_id = str(inference.get("id") or "").strip()
+        mapped: list[str] = []
+        for fact_id in inference.get("depends_on") or []:
+            mapped.extend(aliases.get(str(fact_id), []))
+        if inference_id and mapped:
+            aliases.setdefault(inference_id, []).extend(mapped)
+
+    return {
+        key: list(dict.fromkeys(value))
+        for key, value in aliases.items()
+        if key and value
+    }
 
 
 def _issue_bucket(item: dict[str, Any]) -> str:

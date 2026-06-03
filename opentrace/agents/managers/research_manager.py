@@ -77,6 +77,23 @@ Rationale: An explanation of why these arguments lead to your conclusion.
 Strategic Actions: Concrete steps for implementing the recommendation.
 Sizing Guidance: Recommend an appropriate position size. The system will NOT ask the user for a sizing percentage; the trader may either specify an explicit share QUANTITY or omit QUANTITY and instead provide POSITION_SIZE_PCT (interpreted as % of available capital/effective buying power).
 Thesis Ledger: Include a compact machine-readable JSON object named THESIS_LEDGER_JSON with winning_thesis, accepted_claims, rejected_claims, unresolved_uncertainties, and recommended_plan_constraints. Every accepted claim must cite evidence IDs or inference IDs from the evidence graph projection.
+THESIS_LEDGER_JSON schema:
+{{
+  "winning_thesis": "string",
+  "accepted_claims": [
+    {{
+      "claim_id": "C-001",
+      "claim": "string",
+      "evidence_ids": ["E-MKT-001"],
+      "effect": "execution_mode=wait_for_trigger"
+    }}
+  ],
+  "rejected_claims": [],
+  "unresolved_uncertainties": [],
+  "recommended_plan_constraints": {{
+    "execution_mode": "wait_for_trigger"
+  }}
+}}
 Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting. 
  
 Here are your past reflections on mistakes:
@@ -114,7 +131,10 @@ Accepted structured debate turns:
             "count": investment_debate_state["count"],
         }
 
-        thesis_ledger = _extract_thesis_ledger(response.content)
+        thesis_ledger = _normalize_thesis_ledger(
+            _extract_thesis_ledger(response.content),
+            state.get("research_debate_turns") or [],
+        )
         thesis_validation = require_valid_thesis_ledger(
             thesis_ledger,
             stage="research_manager",
@@ -134,6 +154,96 @@ Accepted structured debate turns:
         }
 
     return research_manager_node
+
+
+def _normalize_thesis_ledger(
+    thesis_ledger: dict,
+    research_turns: list[dict],
+) -> dict:
+    if not isinstance(thesis_ledger, dict) or not thesis_ledger:
+        return {}
+    normalized = dict(thesis_ledger)
+    accepted_claims = normalized.get("accepted_claims")
+    if isinstance(accepted_claims, list):
+        normalized_claims = []
+        for idx, raw_claim in enumerate(accepted_claims, 1):
+            if not isinstance(raw_claim, dict):
+                normalized_claims.append(raw_claim)
+                continue
+            claim = dict(raw_claim)
+            if not str(claim.get("claim_id") or "").strip():
+                claim["claim_id"] = f"C-{idx:03d}"
+            if not str(claim.get("effect") or "").strip():
+                effect = _effect_for_claim(claim, research_turns)
+                if effect:
+                    claim["effect"] = effect
+            normalized_claims.append(claim)
+        normalized["accepted_claims"] = normalized_claims
+
+    constraints = normalized.get("recommended_plan_constraints")
+    if not isinstance(constraints, dict) or not constraints:
+        derived = _constraints_from_claims(normalized.get("accepted_claims") or [])
+        if not derived:
+            derived = _constraints_from_turns(research_turns)
+        if derived:
+            normalized["recommended_plan_constraints"] = derived
+    return normalized
+
+
+def _effect_for_claim(claim: dict, research_turns: list[dict]) -> str:
+    claim_refs = {str(item) for item in claim.get("evidence_ids") or [] if str(item)}
+    claim_text = str(claim.get("claim") or "").strip().lower()
+    best_turn = None
+    best_score = 0
+    for turn in research_turns:
+        if not isinstance(turn, dict):
+            continue
+        turn_refs = {str(item) for item in turn.get("evidence_ids") or [] if str(item)}
+        overlap = len(claim_refs & turn_refs)
+        if claim_text and claim_text == str(turn.get("claim") or "").strip().lower():
+            overlap += 2
+        if overlap > best_score:
+            best_score = overlap
+            best_turn = turn
+    implication = best_turn.get("plan_implication") if isinstance(best_turn, dict) else None
+    if not isinstance(implication, dict):
+        return ""
+    field = str(implication.get("field") or "").strip()
+    proposed_value = str(implication.get("proposed_value") or "").strip()
+    if not field or not proposed_value:
+        return ""
+    return f"{field}={proposed_value}"
+
+
+def _constraints_from_claims(accepted_claims: list) -> dict:
+    constraints = {}
+    for claim in accepted_claims:
+        if not isinstance(claim, dict):
+            continue
+        effect = str(claim.get("effect") or "").strip()
+        if "=" not in effect:
+            continue
+        field, value = effect.split("=", 1)
+        field = field.strip()
+        value = value.strip()
+        if field and value:
+            constraints[field] = value
+    return constraints
+
+
+def _constraints_from_turns(research_turns: list[dict]) -> dict:
+    constraints = {}
+    for turn in research_turns:
+        if not isinstance(turn, dict):
+            continue
+        implication = turn.get("plan_implication")
+        if not isinstance(implication, dict):
+            continue
+        field = str(implication.get("field") or "").strip()
+        proposed_value = implication.get("proposed_value")
+        if field and proposed_value is not None:
+            constraints[field] = proposed_value
+    return constraints
 
 
 def _extract_thesis_ledger(text: str) -> dict:
