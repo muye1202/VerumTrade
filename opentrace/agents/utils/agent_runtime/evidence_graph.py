@@ -11,6 +11,7 @@ from opentrace.graph.evidence_ledger_schema import (
     rank_critical_evidence,
     validate_admissible_evidence,
 )
+from opentrace.graph.debate_schema import frame_contested_issues
 
 
 EvidenceDomain = Literal["market", "sentiment", "news", "fundamentals", "catalyst"]
@@ -540,6 +541,7 @@ def create_capture_evidence_facts_node(domain: str):
             "critical_evidence_ids": [
                 item["evidence_id"] for item in rank_critical_evidence(ledger)
             ],
+            "contested_issues": frame_contested_issues(ledger, admissibility),
         }
 
     return capture_evidence_facts_node
@@ -561,6 +563,7 @@ def create_evidence_graph_node():
             "critical_evidence_ids": [
                 item["evidence_id"] for item in rank_critical_evidence(ledger)
             ],
+            "contested_issues": frame_contested_issues(ledger, admissibility),
         }
 
     return evidence_graph_node
@@ -586,6 +589,7 @@ def format_evidence_projection(
     title = str(audience).replace("_", " ").title()
     lines = [f"# Evidence Graph Projection: {title}"]
     _append_evidence_ledger(lines, state or {})
+    _append_contested_issues(lines, state or {})
     _append_catalyst_risk_snapshot(lines, state or {})
     if audience == "bull":
         lines.append("Bullish inferences:")
@@ -645,6 +649,33 @@ def _append_evidence_ledger(lines: list[str], state: Dict[str, Any]) -> None:
                 claim=str(item.get("claim") or "")[:180],
                 source_ref=item.get("source_ref", ""),
                 supports=supports or "none",
+            )
+        )
+
+
+def _append_contested_issues(lines: list[str], state: Dict[str, Any]) -> None:
+    issues = state.get("contested_issues")
+    if not isinstance(issues, list) or not issues:
+        ledger = state.get("evidence_ledger")
+        if not isinstance(ledger, list) or not ledger:
+            ledger = build_evidence_ledger(state)
+        admissibility = state.get("admissibility_report")
+        if not isinstance(admissibility, dict):
+            admissibility = validate_admissible_evidence(
+                ledger,
+                time_horizon=str(state.get("time_horizon") or ""),
+            )
+        issues = frame_contested_issues(ledger, admissibility)
+    if not issues:
+        return
+    lines.append("CONTESTED ISSUES")
+    for issue in issues[:3]:
+        lines.append(
+            "- {issue_id}: {question} (evidence: {evidence}; fields: {fields})".format(
+                issue_id=issue.get("issue_id", ""),
+                question=str(issue.get("question") or "")[:180],
+                evidence=", ".join(str(item) for item in issue.get("candidate_evidence") or []),
+                fields=", ".join(str(item) for item in issue.get("decision_fields_at_risk") or []),
             )
         )
 

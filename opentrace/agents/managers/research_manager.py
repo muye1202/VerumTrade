@@ -12,6 +12,7 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from opentrace.execution.decision_guard import build_market_snapshot
+from opentrace.graph.debate_schema import require_valid_thesis_ledger
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,11 @@ def create_research_manager(llm, memory):
                 "memories", past_memory_str, settings["section_max_chars_memory"]
             ),
             "reports": format_evidence_projection(state, "research_manager"),
+            "research_turns": cap_section(
+                "research_turns",
+                json.dumps(state.get("research_debate_turns") or [], ensure_ascii=False, indent=2),
+                settings["section_max_chars_response"],
+            ),
         }
         sections = cap_sections_with_soft_token_cap(
             sections_before, settings["soft_cap_tokens"]
@@ -84,7 +90,10 @@ Canonical market snapshot for price anchoring:
 
 Here is the debate:
 Debate History:
-{sections["history_tail"]}"""
+{sections["history_tail"]}
+
+Accepted structured debate turns:
+{sections["research_turns"]}"""
 
         response = invoke_with_backoff(
             llm,
@@ -105,10 +114,22 @@ Debate History:
             "count": investment_debate_state["count"],
         }
 
+        thesis_ledger = _extract_thesis_ledger(response.content)
+        thesis_validation = require_valid_thesis_ledger(
+            thesis_ledger,
+            stage="research_manager",
+            evidence_ids=[
+                str(item.get("evidence_id"))
+                for item in state.get("evidence_ledger", []) or []
+                if isinstance(item, dict) and item.get("evidence_id")
+            ],
+        )
+
         return {
             "investment_debate_state": new_investment_debate_state,
             "investment_plan": response.content,
-            "thesis_ledger": _extract_thesis_ledger(response.content),
+            "thesis_ledger": thesis_ledger,
+            "thesis_ledger_validation": thesis_validation,
             "market_snapshot": market_snapshot,
         }
 

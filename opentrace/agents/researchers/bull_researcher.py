@@ -10,6 +10,9 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
     prompt_diagnostics,
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
+from opentrace.graph.debate_schema import (
+    require_valid_research_turns,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -78,11 +81,27 @@ DEBATE CONTRACT:
 - For each material claim, name the decision field affected: action, execution_mode, order_type, entry_condition, stop_loss, take_profit, position_size_pct, trigger_condition, time_horizon, or invalidation_condition.
 - Include a concrete plan implication and falsification condition.
 - If you cannot cite admissible evidence for a claim, write NO_ADMISSIBLE_EVIDENCE and do not use that claim to support the plan.
+- End with RESEARCH_DEBATE_TURN_JSON followed by valid JSON containing turn_id, speaker, issue_id, position, claim, evidence_ids, rebuttal_to, plan_implication, falsification_condition, and confidence.
 """
 
         response = llm.invoke(prompt)
 
         argument = f"Bull Analyst: {response.content}"
+        validation = require_valid_research_turns(
+            response.content,
+            stage="bull_researcher",
+            evidence_ids=[
+                str(item.get("evidence_id"))
+                for item in state.get("evidence_ledger", []) or []
+                if isinstance(item, dict) and item.get("evidence_id")
+            ],
+            active_issue_ids=[
+                str(item.get("issue_id"))
+                for item in state.get("contested_issues", []) or []
+                if isinstance(item, dict) and item.get("issue_id")
+            ],
+        )
+        all_turns = [*(state.get("research_debate_turns") or []), *validation["accepted_turns"]]
 
         new_investment_debate_state = {
             "history": history + "\n" + argument,
@@ -92,6 +111,10 @@ DEBATE CONTRACT:
             "count": investment_debate_state["count"] + 1,
         }
 
-        return {"investment_debate_state": new_investment_debate_state}
+        return {
+            "investment_debate_state": new_investment_debate_state,
+            "research_debate_turns": all_turns,
+            "research_debate_validation": validation,
+        }
 
     return bull_node

@@ -7,6 +7,7 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
     prompt_diagnostics,
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
+from opentrace.graph.debate_schema import require_risk_response_contract
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ RISK PATCH CONTRACT:
 - Do not provide general commentary unless it is attached to a patch, rejection, or no-op rationale."""
 
         response = llm.invoke(prompt)
+        require_risk_response_contract(response.content, stage="safe_debator")
 
         argument = f"Safe Analyst: {response.content}"
 

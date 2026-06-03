@@ -26,6 +26,7 @@ from opentrace.utils.market_session import now_et
 from opentrace.execution.decision_guard import build_market_snapshot, evaluate_data_quality_fault
 from opentrace.agents.trader.decision_brief import build_trader_plan_v1
 from opentrace.agents.utils.agent_runtime.evidence_graph import build_decision_trace
+from opentrace.graph.debate_schema import DebateWorkflowHardFault
 from opentrace.graph.decision_diff import build_decision_diff
 from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
 from opentrace.dataflows.config import set_config
@@ -921,6 +922,12 @@ class OpenTraceGraph:
             final_state.get("final_trade_decision", ""),
             expected_ticker=expected_ticker,
         )
+        if err:
+            raise DebateWorkflowHardFault(
+                "risk_manager",
+                "invalid final BEGIN_DECISION_JSON block",
+                details=err,
+            )
         trader_intent = self._extract_trader_intent_from_state(final_state)
         structured_intent = ""
         if isinstance(structured, dict):
