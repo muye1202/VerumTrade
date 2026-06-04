@@ -338,13 +338,13 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
       {header}
       <div className="report-section-body markdown-content">
         {sectionKey === 'evidence_graph' ? (
-          <EvidenceGraphPanel data={data} />
+          <EvidenceGraphPanel data={data} reports={allReports} />
         ) : sectionKey === 'decision_trace' ? (
-          <DecisionTracePanel trace={data} evidenceGraph={allReports?.evidence_graph} />
+          <DecisionTracePanel trace={data} evidenceGraph={allReports?.evidence_graph} reports={allReports} />
         ) : sectionKey === 'debate_workflow' ? (
           <DebateWorkflowPanel reports={allReports} />
         ) : sectionKey === 'agent_reasoning_trace' ? (
-          <TraderReasoningPanel data={data} />
+          <TraderReasoningPanel data={data} reports={allReports} />
         ) : sectionKey === 'trader_investment_plan' ? (
           <>
             <ReportMarkdown
@@ -354,7 +354,7 @@ const ReportSection = memo(({ sectionKey, label, data, isExpanded, onToggle, all
             {allReports?.agent_reasoning_trace && (
               <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 <h4 style={{ marginBottom: '16px', color: '#e5e7eb' }}>Reasoning Trace</h4>
-                <TraderReasoningPanel data={allReports.agent_reasoning_trace} />
+                <TraderReasoningPanel data={allReports.agent_reasoning_trace} reports={allReports} />
               </div>
             )}
           </>

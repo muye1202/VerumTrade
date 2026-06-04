@@ -17,6 +17,12 @@ _NA_STRINGS = {"N/A", "NA", "NONE", "-"}
 _ALLOWED_PLAN_MODES = {"IMMEDIATE", "CONDITIONAL"}
 _ALLOWED_SESSIONS = {"ANY", "PREMARKET", "MARKET_HOURS", "AFTERHOURS", "OVERNIGHT", "WEEKEND"}
 _ALLOWED_EXECUTION_INTENTS = {"ACT_NOW", "WAIT_FOR_TRIGGER"}
+_FINAL_TRACE_FIELDS = (
+    "rationale_evidence_ids",
+    "accepted_patches",
+    "rejected_patches",
+    "no_material_change_reason",
+)
 
 
 def extract_decision_json_block(text: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -201,6 +207,39 @@ def _normalize_override_reason(value: Any) -> Optional[str]:
     return s or None
 
 
+def _attach_final_trace_fields(norm: Dict[str, Any], decision: Dict[str, Any]) -> None:
+    for field in _FINAL_TRACE_FIELDS:
+        if field in decision:
+            norm[field] = decision.get(field)
+
+
+def validate_final_decision_contract(decision: Dict[str, Any]) -> list[str]:
+    violations: list[str] = []
+    if not isinstance(decision, dict):
+        return ["final decision must be an object"]
+    for field in _FINAL_TRACE_FIELDS:
+        if field not in decision:
+            violations.append(f"{field} is required")
+    rationale_ids = decision.get("rationale_evidence_ids")
+    if "rationale_evidence_ids" in decision and (
+        not isinstance(rationale_ids, list)
+        or not all(isinstance(item, str) and item.strip() for item in rationale_ids)
+    ):
+        violations.append("rationale_evidence_ids must be a non-empty list of strings")
+    accepted = decision.get("accepted_patches")
+    if "accepted_patches" in decision and not isinstance(accepted, list):
+        violations.append("accepted_patches must be a list")
+    rejected = decision.get("rejected_patches")
+    if "rejected_patches" in decision and not isinstance(rejected, list):
+        violations.append("rejected_patches must be a list")
+    reason = decision.get("no_material_change_reason")
+    if "no_material_change_reason" in decision and reason is not None and not str(reason).strip():
+        violations.append("no_material_change_reason must be null or non-empty")
+    if isinstance(accepted, list) and not accepted and reason is None:
+        violations.append("no_material_change_reason is required when no patches are accepted")
+    return violations
+
+
 def validate_v1_decision(
     decision: Dict[str, Any],
     *,
@@ -229,6 +268,7 @@ def validate_v1_decision(
         if norm["execution_intent"] != "act_now":
             raise ValueError("v1 requires execution_intent=act_now.")
         norm["override_reason"] = _normalize_override_reason(decision.get("override_reason"))
+        _attach_final_trace_fields(norm, decision)
     except Exception as e:
         return None, str(e)
 
@@ -444,6 +484,7 @@ def validate_v2_decision(
         elif isinstance(norm["default_action"], dict):
             action = str(norm["default_action"].get("action") or "HOLD").upper()
         norm["action"] = action if action in _ALLOWED_ACTIONS else "HOLD"
+        _attach_final_trace_fields(norm, decision)
 
     except Exception as e:
         return None, str(e)

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Literal, TypedDict
+
+from pydantic import ValidationError
+
+from opentrace.graph.structured_schemas import EvidenceItem
 
 
 EvidencePolarity = Literal["bullish", "bearish", "neutral", "mixed"]
@@ -91,15 +96,21 @@ def validate_admissible_evidence(
     ledger: list[dict[str, Any]] | None,
     *,
     time_horizon: str = "",
+    as_of_date: str | None = None,
 ) -> EvidenceAdmissibilityReport:
     accepted: list[str] = []
     downgraded: list[dict[str, str]] = []
     rejected: list[dict[str, str]] = []
     seen_refs: set[str] = set()
+    candidates: list[dict[str, Any]] = []
 
     for item in ledger or []:
         evidence_id = str(item.get("evidence_id") or "").strip()
         if not evidence_id:
+            continue
+        schema_error = _schema_rejection_reason(item)
+        if schema_error:
+            rejected.append({"evidence_id": evidence_id, "reason": schema_error})
             continue
         source_ref = str(item.get("source_ref") or "").strip()
         if not source_ref and not str(item.get("source_tool") or "").strip():
@@ -108,15 +119,31 @@ def validate_admissible_evidence(
         if not str(item.get("observed_at") or "").strip():
             rejected.append({"evidence_id": evidence_id, "reason": "missing timestamp"})
             continue
+        if _is_stale(item, time_horizon=time_horizon, as_of_date=as_of_date):
+            rejected.append({"evidence_id": evidence_id, "reason": "stale relative to selected time horizon"})
+            continue
         if source_ref in seen_refs:
             downgraded.append({"evidence_id": evidence_id, "reason": "duplicate source reference"})
             continue
         seen_refs.add(source_ref)
-        if time_horizon and not str(item.get("time_horizon") or "").strip():
+        if time_horizon and not _horizon_compatible(str(item.get("time_horizon") or ""), time_horizon):
             downgraded.append({"evidence_id": evidence_id, "reason": "missing time horizon"})
             continue
         if not item.get("supports") and not item.get("contradicts"):
             downgraded.append({"evidence_id": evidence_id, "reason": "no decision implication"})
+            continue
+        candidates.append(item)
+
+    for item in candidates:
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        contradiction = _stronger_contradicting_item(item, candidates)
+        if contradiction:
+            downgraded.append(
+                {
+                    "evidence_id": evidence_id,
+                    "reason": f"contradicted by fresher or higher-quality evidence {contradiction}",
+                }
+            )
             continue
         accepted.append(evidence_id)
 
@@ -125,6 +152,128 @@ def validate_admissible_evidence(
         "downgraded_evidence": downgraded,
         "rejected_evidence": rejected,
     }
+
+
+def _schema_rejection_reason(item: dict[str, Any]) -> str:
+    try:
+        EvidenceItem.model_validate(_strict_evidence_payload(item))
+    except ValidationError as exc:
+        errors = exc.errors()
+        if not errors:
+            return "schema validation failed"
+        first = errors[0]
+        loc = ".".join(str(part) for part in first.get("loc", ()))
+        msg = str(first.get("msg") or "schema validation failed")
+        return f"schema validation failed: {loc} {msg}".strip()
+    return ""
+
+
+def _strict_evidence_payload(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "evidence_id": item.get("evidence_id"),
+        "ticker": item.get("ticker"),
+        "source_agent": item.get("source_agent"),
+        "source_tool": item.get("source_tool") or None,
+        "source_ref": item.get("source_ref") or None,
+        "observed_at": item.get("observed_at"),
+        "claim": item.get("claim"),
+        "fact_type": item.get("fact_type"),
+        "polarity": item.get("polarity"),
+        "time_horizon": item.get("time_horizon"),
+        "confidence": item.get("confidence"),
+        "materiality": item.get("materiality"),
+        "supports": item.get("supports") or [],
+        "contradicts": item.get("contradicts") or [],
+        "raw_excerpt": item.get("raw_excerpt") or None,
+        "numeric_values": item.get("numeric_values") or {},
+    }
+
+
+def _is_stale(
+    item: dict[str, Any],
+    *,
+    time_horizon: str,
+    as_of_date: str | None,
+) -> bool:
+    if not as_of_date:
+        return False
+    observed = _parse_datetime(str(item.get("observed_at") or ""))
+    as_of = _parse_datetime(as_of_date)
+    if not observed or not as_of:
+        return False
+    max_age_days = _max_age_days(time_horizon or str(item.get("time_horizon") or ""))
+    return (as_of - observed).total_seconds() > max_age_days * 86400
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        try:
+            parsed = datetime.strptime(raw[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _max_age_days(time_horizon: str) -> int:
+    horizon = str(time_horizon or "").lower()
+    if "day" in horizon or "intraday" in horizon:
+        return 3
+    if "week" in horizon:
+        return 21
+    if "month" in horizon:
+        return 75
+    if "year" in horizon:
+        return 420
+    return 30
+
+
+def _horizon_compatible(item_horizon: str, selected_horizon: str) -> bool:
+    if not item_horizon.strip():
+        return False
+    return item_horizon.strip().lower() == selected_horizon.strip().lower()
+
+
+def _stronger_contradicting_item(
+    item: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> str:
+    item_id = str(item.get("evidence_id") or "")
+    item_supports = {str(value) for value in item.get("supports") or []}
+    item_contradicts = {str(value) for value in item.get("contradicts") or []}
+    item_time = _parse_datetime(str(item.get("observed_at") or ""))
+    item_score = _evidence_strength(item)
+    for other in candidates:
+        other_id = str(other.get("evidence_id") or "")
+        if not other_id or other_id == item_id:
+            continue
+        other_supports = {str(value) for value in other.get("supports") or []}
+        other_contradicts = {str(value) for value in other.get("contradicts") or []}
+        if not ((item_supports & other_contradicts) or (item_contradicts & other_supports)):
+            continue
+        other_time = _parse_datetime(str(other.get("observed_at") or ""))
+        other_score = _evidence_strength(other)
+        fresher = bool(item_time and other_time and other_time > item_time)
+        stronger = other_score > item_score
+        if fresher or stronger:
+            return other_id
+    return ""
+
+
+def _evidence_strength(item: dict[str, Any]) -> float:
+    return (
+        _clamp01(item.get("confidence"), 0.5)
+        * _clamp01(item.get("materiality"), 0.5)
+        * (1.0 if str(item.get("source_ref") or item.get("source_tool") or "").strip() else 0.4)
+    )
 
 
 def rank_critical_evidence(

@@ -79,6 +79,7 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
+from .decision_schema import validate_final_decision_contract
 from .openai_compat import sanitize_openai_compatible_response_dict
 from .glm_compat import sanitize_glm_chat_completion_response_dict
 from opentrace.agents.utils.llm.llm_concurrency import llm_inflight_slot
@@ -928,6 +929,15 @@ class OpenTraceGraph:
                 "invalid final BEGIN_DECISION_JSON block",
                 details=err,
             )
+        contract_violations = validate_final_decision_contract(
+            structured if isinstance(structured, dict) else {}
+        )
+        if contract_violations:
+            raise DebateWorkflowHardFault(
+                "risk_manager",
+                "invalid final decision contract",
+                details=contract_violations,
+            )
         trader_intent = self._extract_trader_intent_from_state(final_state)
         structured_intent = ""
         if isinstance(structured, dict):
@@ -1011,6 +1021,13 @@ class OpenTraceGraph:
         final_state["market_snapshot"] = market_snapshot
 
         if isinstance(structured, dict):
+            contract_violations = validate_final_decision_contract(structured)
+            if contract_violations:
+                validation_error = (
+                    f"{validation_error}; final decision contract: {contract_violations}"
+                    if validation_error
+                    else f"final decision contract: {contract_violations}"
+                )
             action = str(structured.get("action", "")).strip().upper()
             if action in {"BUY", "SELL"} and bool(market_snapshot.get("price_anchor_conflict")):
                 conflict_msg = str(

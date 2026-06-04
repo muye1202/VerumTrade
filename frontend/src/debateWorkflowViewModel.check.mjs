@@ -16,6 +16,62 @@ const reports = {
     bear_history: 'Bear Analyst: Valuation and post-earnings reversal risk argue for patience.',
     judge_decision: 'Research Manager: BUY, but only with sizing discipline and catalyst confirmation.',
   },
+  evidence_ledger: [
+    {
+      evidence_id: 'E-MKT-001',
+      claim: 'RSI is elevated and argues against full-size entry.',
+      source_agent: 'market_analyst',
+      source_tool: 'get_indicators',
+      polarity: 'bearish',
+      confidence: 0.82,
+      materiality: 0.7,
+      criticality: 0.57,
+    },
+  ],
+  admissibility_report: {
+    accepted_evidence_ids: ['E-MKT-001'],
+    downgraded_evidence: [],
+    rejected_evidence: [],
+  },
+  critical_evidence_ids: ['E-MKT-001'],
+  contested_issues: [
+    {
+      issue_id: 'I-001',
+      question: 'Act now or wait?',
+      candidate_evidence: ['E-MKT-001'],
+      decision_fields_at_risk: ['execution_mode', 'position_size_pct'],
+    },
+  ],
+  research_debate_turns: [
+    {
+      turn_id: 'BEAR-001',
+      evidence_ids: ['E-MKT-001'],
+      plan_implication: { field: 'execution_mode', proposed_value: 'wait_for_trigger' },
+    },
+  ],
+  thesis_ledger: {
+    winning_thesis: 'Cautious long setup after confirmation.',
+    accepted_claims: [{ claim_id: 'C-001', evidence_ids: ['E-MKT-001'], effect: 'execution_mode=wait_for_trigger' }],
+    rejected_claims: [],
+    unresolved_uncertainties: [],
+    recommended_plan_constraints: { max_size_pct: 0.04 },
+  },
+  trader_plan_v1: {
+    plan_id: 'trader_plan_v1',
+    action: 'BUY',
+    execution_mode: 'act_now',
+    order_type: 'LIMIT',
+    position_size_pct: 0.1,
+    entry_condition: 'Enter now.',
+    stop_loss: 84.5,
+    take_profit: 115,
+    rationale_links: {
+      action: ['E-MKT-001'],
+      execution_mode: ['E-MKT-001'],
+      position_size_pct: ['E-MKT-001'],
+    },
+  },
+  trader_plan_validation: { valid: true, violations: [] },
   trader_investment_plan: [
     'FINAL TRANSACTION PROPOSAL',
     'ACTION: BUY',
@@ -39,6 +95,33 @@ const reports = {
     'Final decision: preserve capital.',
     'BEGIN_DECISION_JSON {"action":"HOLD","ticker":"INTC","position_size_pct":null,"stop_loss":84.5,"take_profit":115,"execution_intent":"wait_for_trigger","rationale":"Risk debate shifted the proposal from immediate action to conditional confirmation."} END_DECISION_JSON',
   ].join('\n'),
+  risk_patches: [
+    {
+      patch_id: 'P-SAFE-001',
+      author: 'safe_analyst',
+      field: 'position_size_pct',
+      old_value: 0.1,
+      new_value: 0.04,
+      evidence_ids: ['E-MKT-001'],
+    },
+  ],
+  risk_patch_validation: [
+    {
+      patch_id: 'P-SAFE-001',
+      valid: true,
+      reason: '',
+      patch: { field: 'position_size_pct', new_value: 0.04 },
+    },
+  ],
+  decision_diff: {
+    decision_diff: {
+      from_trader_plan: { position_size_pct: 0.1, execution_mode: 'act_now' },
+      to_final_decision: { position_size_pct: 0.04, execution_mode: 'wait_for_trigger' },
+    },
+    accepted_patches: ['P-SAFE-001'],
+    rejected_patches: [],
+    no_material_change_reason: null,
+  },
 };
 
 const turns = splitDebateHistory(reports.risk_debate_state.history);
@@ -49,7 +132,14 @@ assert.match(turns[1].content, /Reduce sizing/);
 const viewModel = buildDebateWorkflowViewModel(reports);
 
 assert.equal(viewModel.hasDebate, true);
-assert.equal(viewModel.workflowSteps.length, 7);
+assert.equal(viewModel.workflowSteps.length, 9);
+assert.equal(viewModel.evidenceImpact.acceptedCount, 1);
+assert.equal(viewModel.evidenceImpact.topEvidence[0].id, 'E-MKT-001');
+assert.equal(viewModel.issues[0].fields.includes('position_size_pct'), true);
+assert.equal(viewModel.thesisImpact.acceptedClaims[0].claim_id, 'C-001');
+assert.equal(viewModel.traderPlanImpact.rationaleLinkCount, 3);
+assert.equal(viewModel.riskPatchImpact.valid[0].patch_id, 'P-SAFE-001');
+assert.equal(viewModel.decisionDiffImpact.acceptedPatches[0], 'P-SAFE-001');
 assert.equal(viewModel.researchArena.participants.length, 2);
 assert.equal(viewModel.researchArena.judge.role, 'Research Manager');
 assert.equal(viewModel.riskArena.participants.length, 3);

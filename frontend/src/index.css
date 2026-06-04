@@ -5004,3 +5004,181 @@ input:checked + .slider:before {
   background: var(--surface-muted);
 }
 
+.dwp-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.dwp-impact-card,
+.trp-contract,
+.eg-ledger-item {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.dwp-impact-card > strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.1rem;
+  margin-bottom: 2px;
+}
+
+.dwp-impact-card > span,
+.dwp-impact-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dwp-evidence-row,
+.dwp-issue-row,
+.dwp-patch-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.dwp-evidence-row:first-child,
+.dwp-issue-row:first-child,
+.dwp-patch-row:first-child {
+  border-top: 0;
+}
+
+.dwp-field-row,
+.eg-ledger-links,
+.dtp-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dwp-field-pill,
+.eg-ledger-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.eg-ledger-link.support {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.eg-ledger-link.counter {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.18);
+}
+
+.dwp-plan-grid,
+.dtp-diff-grid {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.4fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.dwp-plan-grid span,
+.dtp-diff-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dwp-plan-grid code,
+.dwp-evidence-row code,
+.dwp-issue-row code,
+.dwp-patch-row code,
+.dtp-diff-row code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dwp-patch-row.is-valid {
+  color: #bbf7d0;
+}
+
+.dwp-patch-row.is-rejected {
+  color: #fecaca;
+}
+
+.eg-ledger-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.eg-ledger-summary span,
+.eg-ledger-status {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.trp-contract {
+  display: grid;
+  gap: 12px;
+}
+
+.trp-contract__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.trp-contract__header h4,
+.trp-contract__header p {
+  margin: 0;
+}
+
+.trp-contract__header p {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.trp-contract__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.trp-contract__grid div {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.trp-contract__grid span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.trp-contract__violations {
+  display: grid;
+  gap: 6px;
+  color: #fecaca;
+}
+
+.dtp-diff-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}

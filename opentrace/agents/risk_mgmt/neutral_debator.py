@@ -76,17 +76,20 @@ Here is the current conversation history: {sections["history_tail"]} {sections["
 
 Engage actively by analyzing both sides critically, addressing weaknesses in the risky and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility.
 
-RISK PATCH CONTRACT:
-- End with exactly one of: PLAN_PATCH, REJECT_PATCH, or NO_MATERIAL_CHANGE.
+RISK PATCH CONTRACT (MANDATORY):
+- The LAST LINE of your response MUST be exactly one of these literal tokens, on its own line: PLAN_PATCH, REJECT_PATCH, or NO_MATERIAL_CHANGE.
+- If you are not changing the plan, end with NO_MATERIAL_CHANGE. When in doubt, use NO_MATERIAL_CHANGE.
 - A PLAN_PATCH must modify one executable field: action, execution_mode, order_type, entry_price, entry_condition, stop_loss, take_profit, position_size_pct, max_loss_pct, trigger_condition, time_horizon, or invalidation_condition.
 - Every PLAN_PATCH must cite evidence IDs from the evidence projection.
-- Format PLAN_PATCH as valid JSON with patch_id, author, target_plan_version, patch_type, field, old_value, new_value, evidence_ids, reason, expected_effect, and materiality.
+- Format PLAN_PATCH as valid JSON with patch_id, author, target_plan_version, patch_type, field, old_value, new_value, evidence_ids, reason, expected_effect, and materiality, immediately followed by the PLAN_PATCH token line.
 - Do not provide general commentary unless it is attached to a patch, rejection, or no-op rationale."""
 
         response = llm.invoke(prompt)
-        require_risk_response_contract(response.content, stage="neutral_debator")
+        response_content = require_risk_response_contract(
+            response.content, stage="neutral_debator"
+        )
 
-        argument = f"Neutral Analyst: {response.content}"
+        argument = f"Neutral Analyst: {response_content}"
 
         new_risk_debate_state = {
             "history": history + "\n" + argument,

@@ -225,13 +225,42 @@ const AuditRow = ({ issue }) => (
   </div>
 );
 
+const LedgerItem = ({ item, status }) => (
+  <div className={`eg-ledger-item eg-ledger-item--${status}`}>
+    <div className="eg-fact-header">
+      <code className="eg-fact-id">{item.evidence_id}</code>
+      <DomainBadge domain={String(item.source_agent || '').replace(/_analyst$/, '') || 'market'} />
+      <StanceBadge stance={item.polarity || 'mixed'} />
+      <span className="eg-badge eg-ledger-status">{status}</span>
+    </div>
+    <p className="eg-fact-claim">{item.claim}</p>
+    <div className="eg-fact-meta">
+      <ConfidenceBar value={Number(item.confidence || 0)} />
+      {item.materiality !== undefined && <span className="eg-fact-source">materiality: {Math.round(Number(item.materiality || 0) * 100)}%</span>}
+      {item.criticality !== undefined && <span className="eg-fact-source">criticality: {Math.round(Number(item.criticality || 0) * 100)}%</span>}
+      {item.observed_at && <span className="eg-fact-date">{item.observed_at}</span>}
+    </div>
+    {(item.supports?.length > 0 || item.contradicts?.length > 0) && (
+      <div className="eg-ledger-links">
+        {item.supports?.map((value) => <span key={`s-${value}`} className="eg-ledger-link support">{value}</span>)}
+        {item.contradicts?.map((value) => <span key={`c-${value}`} className="eg-ledger-link counter">{value}</span>)}
+      </div>
+    )}
+  </div>
+);
+
 /* ════════════════════════════════════════════════════
    Main panel
    ════════════════════════════════════════════════════ */
-const EvidenceGraphPanel = ({ data }) => {
+const EvidenceGraphPanel = ({ data, reports }) => {
   const [domainFilter, setDomainFilter] = useState('all');
 
   const graph = data || {};
+  const allReports = reports || {};
+  const evidenceLedger = useMemo(() => allReports.evidence_ledger || graph.evidence_ledger || [], [allReports.evidence_ledger, graph.evidence_ledger]);
+  const admissibility = allReports.admissibility_report || graph.admissibility_report || {};
+  const acceptedEvidenceIds = useMemo(() => new Set((admissibility.accepted_evidence_ids || []).map(String)), [admissibility.accepted_evidence_ids]);
+  const criticalEvidenceIds = allReports.critical_evidence_ids || graph.critical_evidence_ids || [];
   const facts = useMemo(() => graph.facts || [], [graph.facts]);
   const inferences = useMemo(() => graph.inferences || [], [graph.inferences]);
   const conflicts = useMemo(() => graph.conflicts || [], [graph.conflicts]);
@@ -273,7 +302,7 @@ const EvidenceGraphPanel = ({ data }) => {
 
   const highSeverityCount = auditIssues.filter(a => a.severity === 'high').length;
 
-  if (!facts.length && !inferences.length && !conflicts.length && !auditIssues.length) {
+  if (!facts.length && !inferences.length && !conflicts.length && !auditIssues.length && !evidenceLedger.length) {
     return (
       <div className="eg-panel">
         <div className="eg-empty">
@@ -289,11 +318,37 @@ const EvidenceGraphPanel = ({ data }) => {
       {/* ── Top summary strip ───────────── */}
       <div className="eg-summary-strip">
         <StatCard label="Facts" value={facts.length} accent="#60a5fa" />
+        <StatCard label="Ledger" value={evidenceLedger.length} accent="#93c5fd" />
         <StatCard label="Inferences" value={inferences.length} accent="#a78bfa" />
         <StatCard label="Conflicts" value={conflicts.length} accent="#f59e0b" />
         <StatCard label="Audit Issues" value={auditIssues.length} accent={highSeverityCount > 0 ? '#ef4444' : '#60a5fa'} />
         <StatCard label="Avg. Confidence" value={`${Math.round(avgConfidence * 100)}%`} accent="#34d399" />
       </div>
+
+      {evidenceLedger.length > 0 && (
+        <CollapsibleSection
+          title="Evidence Ledger"
+          count={`${acceptedEvidenceIds.size}/${evidenceLedger.length} accepted`}
+          defaultOpen={true}
+          accent="#93c5fd"
+        >
+          <div className="eg-ledger-summary">
+            <span>{criticalEvidenceIds.length} critical evidence ID{criticalEvidenceIds.length === 1 ? '' : 's'}</span>
+            <span>{(admissibility.downgraded_evidence || []).length} downgraded</span>
+            <span>{(admissibility.rejected_evidence || []).length} rejected</span>
+          </div>
+          {evidenceLedger
+            .slice()
+            .sort((a, b) => Number(b.criticality || 0) - Number(a.criticality || 0))
+            .map((item) => (
+              <LedgerItem
+                key={item.evidence_id}
+                item={item}
+                status={acceptedEvidenceIds.has(String(item.evidence_id)) ? 'accepted' : 'review'}
+              />
+            ))}
+        </CollapsibleSection>
+      )}
 
       {/* ── Stance distribution ─────────── */}
       <div className="eg-stance-bar">

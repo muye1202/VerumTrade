@@ -161,7 +161,51 @@ const CollapsibleBlock = ({ title, hint, defaultOpen = false, children }) => {
   );
 };
 
-const DecisionTracePanel = ({ trace, evidenceGraph }) => {
+const FinalContractPanel = ({ reports }) => {
+  const decisionDiff = reports?.decision_diff || {};
+  const structured = reports?.final_trade_decision_structured || {};
+  const diff = decisionDiff.decision_diff || null;
+  const rationaleIds = structured.rationale_evidence_ids || [];
+  const acceptedPatches = decisionDiff.accepted_patches?.length ? decisionDiff.accepted_patches : structured.accepted_patches || [];
+  const rejectedPatches = decisionDiff.rejected_patches?.length ? decisionDiff.rejected_patches : structured.rejected_patches || [];
+  const noChangeReason = decisionDiff.no_material_change_reason || structured.no_material_change_reason;
+  if (!diff && !rationaleIds.length && !acceptedPatches.length && !rejectedPatches.length && !noChangeReason) return null;
+  return (
+    <section className="dtp-section">
+      <div className="dtp-section__title-row">
+        <h4>Final Decision Contract</h4>
+        <TraceBadge tone={diff ? 'warning' : 'neutral'}>{diff ? 'material diff' : 'no diff'}</TraceBadge>
+      </div>
+      {rationaleIds.length > 0 && (
+        <div className="dtp-id-row">
+          {rationaleIds.map((id) => <code key={id}>{id}</code>)}
+        </div>
+      )}
+      {diff ? (
+        <div className="dtp-diff-grid">
+          {Object.keys(diff.to_final_decision || {}).map((field) => (
+            <div key={field} className="dtp-diff-row">
+              <span>{field}</span>
+              <code>{String(diff.from_trader_plan?.[field] ?? 'N/A')}</code>
+              <code>{String(diff.to_final_decision?.[field] ?? 'N/A')}</code>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="dtp-muted">{noChangeReason || 'No material change reason captured.'}</p>
+      )}
+      <div className="dtp-source-list">
+        {acceptedPatches.map((patchId) => <TraceBadge key={String(patchId)} tone="buy">accepted {String(patchId)}</TraceBadge>)}
+        {rejectedPatches.map((patch, index) => {
+          const label = typeof patch === 'object' ? `${patch.patch_id || 'patch'}: ${patch.reason || 'rejected'}` : String(patch);
+          return <TraceBadge key={`${label}-${index}`} tone="warning">rejected {label}</TraceBadge>;
+        })}
+      </div>
+    </section>
+  );
+};
+
+const DecisionTracePanel = ({ trace, evidenceGraph, reports }) => {
   const viewModel = useMemo(
     () => getDecisionTraceViewModel(trace, evidenceGraph),
     [trace, evidenceGraph],
@@ -211,6 +255,8 @@ const DecisionTracePanel = ({ trace, evidenceGraph }) => {
           </ReactMarkdown>
         </div>
       </section>
+
+      <FinalContractPanel reports={reports} />
 
       <section className="dtp-section">
         <div className="dtp-section__title-row">

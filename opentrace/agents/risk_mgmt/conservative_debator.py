@@ -84,9 +84,11 @@ RISK PATCH CONTRACT:
 - Do not provide general commentary unless it is attached to a patch, rejection, or no-op rationale."""
 
         response = llm.invoke(prompt)
-        require_risk_response_contract(response.content, stage="safe_debator")
+        response_content = require_risk_response_contract(
+            response.content, stage="safe_debator"
+        )
 
-        argument = f"Safe Analyst: {response.content}"
+        argument = f"Safe Analyst: {response_content}"
 
         new_risk_debate_state = {
             "history": history + "\n" + argument,

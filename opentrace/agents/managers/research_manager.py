@@ -88,12 +88,24 @@ THESIS_LEDGER_JSON schema:
       "effect": "execution_mode=wait_for_trigger"
     }}
   ],
-  "rejected_claims": [],
-  "unresolved_uncertainties": [],
+  "rejected_claims": [
+    {{
+      "claim_id": "C-002",
+      "reason": "string",
+      "evidence_ids": ["E-MKT-002"]
+    }}
+  ],
+  "unresolved_uncertainties": [
+    {{
+      "uncertainty": "string",
+      "decision_effect": "may widen stop_loss"
+    }}
+  ],
   "recommended_plan_constraints": {{
     "execution_mode": "wait_for_trigger"
   }}
 }}
+Each unresolved_uncertainties item MUST be an object with "uncertainty" and "decision_effect" string fields (never a bare string). Use [] when there are none.
 Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting. 
  
 Here are your past reflections on mistakes:
@@ -180,6 +192,23 @@ def _normalize_thesis_ledger(
             normalized_claims.append(claim)
         normalized["accepted_claims"] = normalized_claims
 
+    uncertainties = normalized.get("unresolved_uncertainties")
+    if isinstance(uncertainties, list):
+        normalized["unresolved_uncertainties"] = [
+            item
+            for item in (_coerce_uncertainty(raw) for raw in uncertainties)
+            if item is not None
+        ]
+
+    rejected_claims = normalized.get("rejected_claims")
+    if isinstance(rejected_claims, list):
+        normalized_rejected = []
+        for idx, raw_claim in enumerate(rejected_claims, 1):
+            claim = _coerce_rejected_claim(raw_claim, idx)
+            if claim is not None:
+                normalized_rejected.append(claim)
+        normalized["rejected_claims"] = normalized_rejected
+
     constraints = normalized.get("recommended_plan_constraints")
     if not isinstance(constraints, dict) or not constraints:
         derived = _constraints_from_claims(normalized.get("accepted_claims") or [])
@@ -188,6 +217,41 @@ def _normalize_thesis_ledger(
         if derived:
             normalized["recommended_plan_constraints"] = derived
     return normalized
+
+
+def _coerce_uncertainty(raw) -> dict | None:
+    """Heal an unresolved_uncertainties item into the {uncertainty, decision_effect} shape.
+
+    Models frequently emit bare strings here; wrap them rather than hard-faulting,
+    since this field is advisory and does not feed the trade decision.
+    """
+    if isinstance(raw, dict):
+        uncertainty = str(raw.get("uncertainty") or "").strip()
+        if not uncertainty:
+            return None
+        return {
+            "uncertainty": uncertainty,
+            "decision_effect": str(raw.get("decision_effect") or "").strip(),
+        }
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    return {"uncertainty": text, "decision_effect": ""}
+
+
+def _coerce_rejected_claim(raw, idx: int) -> dict | None:
+    """Heal a rejected_claims item into the {claim_id, reason, evidence_ids} shape."""
+    if isinstance(raw, dict):
+        reason = str(raw.get("reason") or "").strip()
+        if not reason:
+            return None
+        claim_id = str(raw.get("claim_id") or "").strip() or f"R-{idx:03d}"
+        evidence_ids = [str(item) for item in raw.get("evidence_ids") or [] if str(item)]
+        return {"claim_id": claim_id, "reason": reason, "evidence_ids": evidence_ids}
+    reason = str(raw or "").strip()
+    if not reason:
+        return None
+    return {"claim_id": f"R-{idx:03d}", "reason": reason, "evidence_ids": []}
 
 
 def _effect_for_claim(claim: dict, research_turns: list[dict]) -> str:

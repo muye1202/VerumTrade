@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 
 from opentrace.dataflows.config import get_config
@@ -18,6 +19,7 @@ from opentrace.agents.trader.decision_brief import build_trader_plan_v1
 from opentrace.execution.decision_guard import build_market_snapshot
 from opentrace.graph.evidence_ledger_schema import build_evidence_ledger
 from opentrace.graph.plan_patch_schema import (
+    apply_valid_plan_patches,
     extract_plan_patches_from_text,
     validate_plan_patches,
 )
@@ -64,11 +66,38 @@ def create_risk_manager(llm, memory):
             structured_decision=None,
             snapshot_source=config.get("decision_snapshot_source", "executor_quote_first"),
         )
+        trader_plan_v1 = state.get("trader_plan_v1")
+        if not isinstance(trader_plan_v1, dict) or not trader_plan_v1:
+            trader_plan_v1 = build_trader_plan_v1(state)
+        evidence_ledger = state.get("evidence_ledger")
+        if not isinstance(evidence_ledger, list):
+            evidence_ledger = build_evidence_ledger(state)
+        risk_patches = extract_plan_patches_from_text(history)
+        risk_patch_validation = validate_plan_patches(
+            risk_patches,
+            trader_plan=trader_plan_v1,
+            evidence_ids=[
+                str(item.get("evidence_id"))
+                for item in evidence_ledger
+                if isinstance(item, dict) and item.get("evidence_id")
+            ],
+        )
+        enforced_trader_plan_v1 = apply_valid_plan_patches(
+            trader_plan_v1,
+            risk_patch_validation,
+        )
+        trader_plan_with_enforcement = (
+            f"{trader_plan}\n\n"
+            "ENFORCED TRADER PLAN V1 JSON:\n"
+            f"{json.dumps(enforced_trader_plan_v1, ensure_ascii=False, indent=2)}"
+        )
 
         settings = get_budget_settings()
         sections_before = {
             "trader_plan": cap_section(
-                "trader_plan", trader_plan, settings["section_max_chars_trader_plan"]
+                "trader_plan",
+                trader_plan_with_enforcement,
+                settings["section_max_chars_trader_plan"],
             ),
             "history_tail": cap_section(
                 "history_tail", history, settings["section_max_chars_history"]
@@ -90,6 +119,11 @@ def create_risk_manager(llm, memory):
             "catalyst": cap_section(
                 "catalyst",
                 f"{catalyst_structured}\n\n{catalyst_report}",
+                settings["section_max_chars_response"],
+            ),
+            "risk_patch_validation": cap_section(
+                "risk_patch_validation",
+                f"RISK PATCH VALIDATION JSON:\n{json.dumps(risk_patch_validation, ensure_ascii=False, indent=2)}",
                 settings["section_max_chars_response"],
             ),
         }
@@ -166,6 +200,9 @@ Deliverables:
 {sections["history_tail"]}
 
 ---
+{sections["risk_patch_validation"]}
+
+---
 
 Focus on actionable insights and continuous improvement.
 
@@ -182,6 +219,11 @@ OUTPUT CONTRACT (STRICT):
   {{ ... }}
   END_DECISION_JSON
 - The executor uses ONLY this JSON block for trading execution.
+- The canonical JSON block must include final trace fields:
+  - `rationale_evidence_ids`: evidence IDs supporting the final executable fields.
+  - `accepted_patches`: accepted patch IDs, or [].
+  - `rejected_patches`: rejected patch IDs or objects with reasons, or [].
+  - `no_material_change_reason`: null when there is a material change; otherwise a concrete reason.
 - Trader-selected execution intent for this ticker: `{trader_intent}`.
 
 JSON RULES:
@@ -217,7 +259,11 @@ Use `decision_version: "v1"` for immediate single-action decisions:
   "rationale": "2-3 sentence summary",
   "decision_version": "v1",
   "execution_intent": "act_now",
-  "override_reason": null
+  "override_reason": null,
+  "rationale_evidence_ids": ["E-MKT-001"],
+  "accepted_patches": ["P-SAFE-001"],
+  "rejected_patches": [],
+  "no_material_change_reason": null
 }}
 
 Use `decision_version: "v2"` for conditional scenario playbooks:
@@ -262,7 +308,11 @@ Use `decision_version: "v2"` for conditional scenario playbooks:
   "rationale": "Scenario-based plan for post-event execution.",
   "action": "HOLD",
   "execution_intent": "wait_for_trigger",
-  "override_reason": null
+  "override_reason": null,
+  "rationale_evidence_ids": ["E-MKT-001"],
+  "accepted_patches": [],
+  "rejected_patches": [{{"patch_id": "P-RISKY-001", "reason": "Insufficient admissible evidence."}}],
+  "no_material_change_reason": "All proposed patches failed evidence, materiality, or portfolio validation."
 }}
 
 Validation-critical constraints:
@@ -293,23 +343,6 @@ Validation-critical constraints:
             base_backoff_s=float(config.get("risk_manager_backoff_base_s", 1.0) or 1.0),
             max_backoff_s=float(config.get("risk_manager_backoff_max_s", 30.0) or 30.0),
         )
-        trader_plan_v1 = state.get("trader_plan_v1")
-        if not isinstance(trader_plan_v1, dict) or not trader_plan_v1:
-            trader_plan_v1 = build_trader_plan_v1(state)
-        evidence_ledger = state.get("evidence_ledger")
-        if not isinstance(evidence_ledger, list):
-            evidence_ledger = build_evidence_ledger(state)
-        risk_patches = extract_plan_patches_from_text(history)
-        risk_patch_validation = validate_plan_patches(
-            risk_patches,
-            trader_plan=trader_plan_v1,
-            evidence_ids=[
-                str(item.get("evidence_id"))
-                for item in evidence_ledger
-                if isinstance(item, dict) and item.get("evidence_id")
-            ],
-        )
-
         new_risk_debate_state = {
             "judge_decision": response.content,
             "history": risk_debate_state["history"],
@@ -326,7 +359,7 @@ Validation-critical constraints:
         return {
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": response.content,
-            "trader_plan_v1": trader_plan_v1,
+            "trader_plan_v1": enforced_trader_plan_v1,
             "risk_patches": risk_patches,
             "risk_patch_validation": risk_patch_validation,
             "decision_trace": build_decision_trace(

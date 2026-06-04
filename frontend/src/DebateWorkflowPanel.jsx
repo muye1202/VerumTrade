@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { buildDebateWorkflowViewModel } from './debateWorkflowViewModel';
@@ -22,6 +22,10 @@ const Metric = ({ label, value }) => (
     <strong>{value}</strong>
     <span>{label}</span>
   </div>
+);
+
+const FieldPill = ({ children }) => (
+  <span className="dwp-field-pill">{children}</span>
 );
 
 const RawMarkdown = ({ children }) => {
@@ -139,6 +143,127 @@ const ChangePanel = ({ changePanel, traderProposal, finalDecision }) => (
   </section>
 );
 
+const EvidenceImpactPanel = ({ evidenceImpact, issues }) => (
+  <section className="dwp-section dwp-section--impact">
+    <div className="dwp-section__header">
+      <div>
+        <h4>Evidence and issues</h4>
+        <p>Admissible evidence and the decision fields it put at risk.</p>
+      </div>
+    </div>
+    <div className="dwp-impact-grid">
+      <div className="dwp-impact-card">
+        <strong>{evidenceImpact.acceptedCount}/{evidenceImpact.ledger.length}</strong>
+        <span>Admissible evidence</span>
+        <div className="dwp-evidence-list">
+          {evidenceImpact.topEvidence.length > 0 ? evidenceImpact.topEvidence.map((item) => (
+            <div key={item.id} className="dwp-evidence-row">
+              <code>{item.id}</code>
+              <p>{item.claim || 'No claim text captured.'}</p>
+              <small>{item.source || item.polarity}</small>
+            </div>
+          )) : <p className="dwp-muted">No evidence ledger items captured.</p>}
+        </div>
+      </div>
+      <div className="dwp-impact-card">
+        <strong>{issues.length}</strong>
+        <span>Contested issues</span>
+        <div className="dwp-issue-list">
+          {issues.length > 0 ? issues.map((issue) => (
+            <div key={issue.id} className="dwp-issue-row">
+              <code>{issue.id}</code>
+              <p>{issue.question}</p>
+              <div className="dwp-field-row">
+                {issue.fields.map((field) => <FieldPill key={field}>{field}</FieldPill>)}
+              </div>
+            </div>
+          )) : <p className="dwp-muted">No contested issues framed.</p>}
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const ThesisTraderPanel = ({ thesisImpact, traderPlanImpact }) => {
+  const plan = traderPlanImpact.plan || {};
+  return (
+    <section className="dwp-section dwp-section--impact">
+      <div className="dwp-section__header">
+        <div>
+          <h4>Thesis to trader plan</h4>
+          <p>Research Manager claims converted into executable Trader fields.</p>
+        </div>
+      </div>
+      <div className="dwp-impact-grid">
+        <div className="dwp-impact-card">
+          <strong>{thesisImpact.acceptedClaims.length}</strong>
+          <span>Accepted claims</span>
+          <p>{thesisImpact.winningThesis || 'No winning thesis captured.'}</p>
+          <div className="dwp-field-row">
+            {Object.entries(thesisImpact.constraints).map(([key, value]) => (
+              <FieldPill key={key}>{key}: {String(value)}</FieldPill>
+            ))}
+          </div>
+        </div>
+        <div className="dwp-impact-card">
+          <strong>{plan.action || 'N/A'}</strong>
+          <span>Trader plan v1</span>
+          <div className="dwp-plan-grid">
+            <span>Mode</span><code>{plan.execution_mode || 'missing'}</code>
+            <span>Order</span><code>{plan.order_type || 'missing'}</code>
+            <span>Size</span><code>{plan.position_size_pct ?? 'N/A'}</code>
+            <span>Citations</span><code>{traderPlanImpact.rationaleLinkCount}</code>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const RiskPatchPanel = ({ riskPatchImpact, decisionDiffImpact }) => (
+  <section className="dwp-section dwp-section--impact">
+    <div className="dwp-section__header">
+      <div>
+        <h4>Risk patch enforcement</h4>
+        <p>Validated patch trail and final decision diff.</p>
+      </div>
+    </div>
+    <div className="dwp-impact-grid">
+      <div className="dwp-impact-card">
+        <strong>{riskPatchImpact.valid.length}/{riskPatchImpact.validation.length}</strong>
+        <span>Valid patches</span>
+        <div className="dwp-patch-list">
+          {riskPatchImpact.validation.length > 0 ? riskPatchImpact.validation.map((item) => (
+            <div key={item.patch_id || item.reason} className={`dwp-patch-row ${item.valid ? 'is-valid' : 'is-rejected'}`}>
+              <code>{item.patch_id || 'patch'}</code>
+              <span>{item.valid ? 'accepted' : item.reason || 'rejected'}</span>
+              {item.patch?.field && <FieldPill>{item.patch.field}: {String(item.patch.new_value ?? '')}</FieldPill>}
+            </div>
+          )) : <p className="dwp-muted">No risk patches captured.</p>}
+        </div>
+      </div>
+      <div className="dwp-impact-card">
+        <strong>{decisionDiffImpact.acceptedPatches.length}</strong>
+        <span>Accepted in final decision</span>
+        {decisionDiffImpact.diff ? (
+          <div className="dwp-plan-grid">
+            {Object.keys(decisionDiffImpact.diff.to_final_decision || {}).map((field) => (
+              <Fragment key={field}>
+                <span>{field}</span>
+                <code>
+                  {String(decisionDiffImpact.diff.from_trader_plan?.[field] ?? 'N/A')} to {String(decisionDiffImpact.diff.to_final_decision?.[field] ?? 'N/A')}
+                </code>
+              </Fragment>
+            ))}
+          </div>
+        ) : (
+          <p>{decisionDiffImpact.noMaterialChangeReason || 'No material decision diff captured.'}</p>
+        )}
+      </div>
+    </div>
+  </section>
+);
+
 const DebateWorkflowPanel = ({ reports }) => {
   const viewModel = useMemo(() => buildDebateWorkflowViewModel(reports), [reports]);
 
@@ -172,10 +297,22 @@ const DebateWorkflowPanel = ({ reports }) => {
         ))}
       </ol>
 
+      <EvidenceImpactPanel evidenceImpact={viewModel.evidenceImpact} issues={viewModel.issues} />
+
+      <ThesisTraderPanel
+        thesisImpact={viewModel.thesisImpact}
+        traderPlanImpact={viewModel.traderPlanImpact}
+      />
+
       <ChangePanel
         changePanel={viewModel.changePanel}
         traderProposal={viewModel.traderProposal}
         finalDecision={viewModel.finalDecision}
+      />
+
+      <RiskPatchPanel
+        riskPatchImpact={viewModel.riskPatchImpact}
+        decisionDiffImpact={viewModel.decisionDiffImpact}
       />
 
       <Arena arena={viewModel.researchArena} />

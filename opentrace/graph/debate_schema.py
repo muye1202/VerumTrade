@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, TypedDict
+
+from pydantic import ValidationError
+
+from opentrace.graph.structured_schemas import ResearchDebateTurn, ThesisLedger, TraderPlan
+
+
+logger = logging.getLogger(__name__)
 
 
 ALLOWED_DECISION_FIELDS = {
@@ -208,6 +216,8 @@ def validate_research_debate_turns(
         reason = _research_turn_rejection_reason(turn, valid_evidence, valid_issues)
         if reason:
             rejected.append({"turn": turn, "reason": reason})
+        elif schema_reason := _schema_validation_reason(ResearchDebateTurn, _research_turn_schema_payload(turn)):
+            rejected.append({"turn": turn, "reason": schema_reason})
         else:
             accepted.append(turn)
     return {"accepted_turns": accepted, "rejected_turns": rejected}
@@ -246,7 +256,26 @@ def validate_thesis_ledger(
     constraints = thesis_ledger.get("recommended_plan_constraints")
     if not isinstance(constraints, dict) or not constraints:
         violations.append("recommended_plan_constraints must be a non-empty object")
+    if not violations:
+        schema_reason = _schema_validation_reason(ThesisLedger, thesis_ledger)
+        if schema_reason and not _is_advisory_only_schema_failure(thesis_ledger):
+            violations.append(schema_reason)
     return {"valid": not violations, "violations": violations}
+
+
+# Advisory fields are narrative-only: they do not feed recommended_plan_constraints
+# or the trade decision, so a shape problem confined to them must not abort the run.
+_ADVISORY_THESIS_FIELDS = ("unresolved_uncertainties", "rejected_claims")
+
+
+def _is_advisory_only_schema_failure(thesis_ledger: dict[str, Any]) -> bool:
+    """True when the ledger validates once advisory-only fields are dropped."""
+    core = {
+        key: value
+        for key, value in thesis_ledger.items()
+        if key not in _ADVISORY_THESIS_FIELDS
+    }
+    return not _schema_validation_reason(ThesisLedger, core)
 
 
 def require_valid_thesis_ledger(
@@ -265,24 +294,67 @@ def require_valid_thesis_ledger(
     return validation
 
 
-def require_risk_response_contract(text: Any, *, stage: str) -> None:
+def require_risk_response_contract(text: Any, *, stage: str) -> str:
+    """Enforce the risk-response contract, recovering instead of hard-faulting.
+
+    Returns the (possibly marker-augmented) response content so callers can persist
+    a canonical marker into the debate history.
+
+    A risk debator's response is advisory: the binding patch application happens later
+    in the risk_manager, which extracts patch JSON from the whole history regardless of
+    markers. So a missing or unparseable marker safely degrades to NO_MATERIAL_CHANGE
+    (the conservative no-op) rather than aborting the entire run.
+    """
+    from opentrace.graph.plan_patch_schema import extract_plan_patches_from_text
+
     content = str(text or "")
     has_plan_patch = "PLAN_PATCH" in content
     has_reject_patch = "REJECT_PATCH" in content
-    has_no_change = "NO_MATERIAL_CHANGE" in content
-    if not (has_plan_patch or has_reject_patch or has_no_change):
-        raise DebateWorkflowHardFault(
-            stage,
-            "missing risk response contract marker PLAN_PATCH, REJECT_PATCH, or NO_MATERIAL_CHANGE",
-        )
-    if has_plan_patch:
-        from opentrace.graph.plan_patch_schema import extract_plan_patches_from_text
+    has_no_change = "NO_MATERIAL_CHANGE" in content or _has_no_change_phrase(content)
 
-        if not extract_plan_patches_from_text(content):
-            raise DebateWorkflowHardFault(
-                stage,
-                "PLAN_PATCH marker present but no parseable patch JSON found",
-            )
+    if has_plan_patch:
+        if extract_plan_patches_from_text(content):
+            return content
+        # Claimed a patch but emitted no parseable JSON; downstream extraction would
+        # find nothing, so treat it as a no-op rather than faulting the run.
+        logger.warning(
+            "%s: PLAN_PATCH marker present but no parseable patch JSON; "
+            "degrading to NO_MATERIAL_CHANGE.",
+            stage,
+        )
+        return content + "\n\nNO_MATERIAL_CHANGE"
+
+    if has_reject_patch or has_no_change:
+        return content
+
+    # No explicit marker. Recover an unlabeled patch if one was actually emitted...
+    if extract_plan_patches_from_text(content):
+        logger.warning(
+            "%s: parseable plan patch found without a PLAN_PATCH marker; "
+            "treating as PLAN_PATCH.",
+            stage,
+        )
+        return content + "\n\nPLAN_PATCH"
+
+    # ...otherwise default to the conservative no-op instead of hard-faulting.
+    logger.warning(
+        "%s: missing risk response contract marker; defaulting to NO_MATERIAL_CHANGE.",
+        stage,
+    )
+    return content + "\n\nNO_MATERIAL_CHANGE"
+
+
+_NO_CHANGE_PHRASES = (
+    "no material change",
+    "no change to the plan",
+    "no changes to the plan",
+    "leave the plan unchanged",
+)
+
+
+def _has_no_change_phrase(content: str) -> bool:
+    lowered = content.lower()
+    return any(phrase in lowered for phrase in _NO_CHANGE_PHRASES)
 
 
 def validate_trader_plan(
@@ -316,7 +388,41 @@ def validate_trader_plan(
         if invalid:
             violations.append(f"{field} has invalid rationale links: {', '.join(invalid)}")
 
+    if not violations:
+        schema_reason = _schema_validation_reason(TraderPlan, plan)
+        if schema_reason:
+            violations.append(schema_reason)
+
     return {"valid": not violations, "violations": violations}
+
+
+def _schema_validation_reason(model: Any, payload: dict[str, Any]) -> str:
+    try:
+        model.model_validate(payload)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        loc = ".".join(str(part) for part in first.get("loc", ()))
+        msg = str(first.get("msg") or "invalid contract schema")
+        return f"schema validation failed: {loc} {msg}".strip()
+    return ""
+
+
+def _research_turn_schema_payload(turn: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **turn,
+        "turn_id": str(turn.get("turn_id") or ""),
+        "speaker": str(turn.get("speaker") or ""),
+        "issue_id": str(turn.get("issue_id") or ""),
+        "position": str(turn.get("position") or ""),
+        "claim": str(turn.get("claim") or ""),
+        "evidence_ids": [str(item) for item in turn.get("evidence_ids") or []],
+        "rebuttal_to": (
+            str(turn.get("rebuttal_to"))
+            if turn.get("rebuttal_to") is not None
+            else None
+        ),
+        "falsification_condition": str(turn.get("falsification_condition") or ""),
+    }
 
 
 def _research_turn_rejection_reason(

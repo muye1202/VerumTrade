@@ -90,6 +90,7 @@ class Propagator:
             "thesis_ledger": {},
             "thesis_ledger_validation": {},
             "trader_plan_v1": {},
+            "trader_plan_validation": {},
             "risk_patches": [],
             "risk_patch_validation": [],
             "decision_diff": {},

@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any, TypedDict
 import json
 
+from pydantic import ValidationError
+
 from opentrace.graph.debate_schema import ALLOWED_DECISION_FIELDS
+from opentrace.graph.structured_schemas import PlanPatch
 
 
 class PatchValidationResult(TypedDict, total=False):
@@ -44,6 +47,28 @@ def validate_plan_patches(
     return results
 
 
+def apply_valid_plan_patches(
+    trader_plan: dict[str, Any] | None,
+    validation_results: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    patched = dict(trader_plan or {})
+    for result in validation_results or []:
+        if not isinstance(result, dict) or not result.get("valid"):
+            continue
+        patch = result.get("patch")
+        if not isinstance(patch, dict):
+            continue
+        field = str(patch.get("field") or "").strip()
+        if field not in ALLOWED_DECISION_FIELDS:
+            continue
+        patch_type = str(patch.get("patch_type") or "").strip()
+        if patch_type == "remove":
+            patched.pop(field, None)
+        else:
+            patched[field] = patch.get("new_value")
+    return patched
+
+
 def extract_plan_patches_from_text(text: Any) -> list[dict[str, Any]]:
     content = str(text or "")
     patches: list[dict[str, Any]] = []
@@ -79,6 +104,20 @@ def _patch_rejection_reason(
         return "old_value does not match target plan"
     if not str(patch.get("reason") or "").strip():
         return "missing reason"
+    schema_reason = _schema_validation_reason(patch)
+    if schema_reason:
+        return schema_reason
+    return ""
+
+
+def _schema_validation_reason(patch: dict[str, Any]) -> str:
+    try:
+        PlanPatch.model_validate(patch)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        loc = ".".join(str(part) for part in first.get("loc", ()))
+        msg = str(first.get("msg") or "invalid contract schema")
+        return f"schema validation failed: {loc} {msg}".strip()
     return ""
 
 

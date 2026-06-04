@@ -12,6 +12,7 @@ from opentrace.graph.evidence_ledger_schema import (
     validate_admissible_evidence,
 )
 from opentrace.graph.debate_schema import frame_contested_issues
+from opentrace.graph.debate_schema import DebateWorkflowHardFault
 
 
 EvidenceDomain = Literal["market", "sentiment", "news", "fundamentals", "catalyst"]
@@ -531,6 +532,7 @@ def create_capture_evidence_facts_node(domain: str):
         admissibility = validate_admissible_evidence(
             ledger,
             time_horizon=str(state.get("time_horizon") or ""),
+            as_of_date=str(state.get("trade_date") or "") or None,
         )
         return {
             "evidence_source_facts": merged,
@@ -554,6 +556,12 @@ def create_evidence_graph_node():
         admissibility = validate_admissible_evidence(
             ledger,
             time_horizon=str(state.get("time_horizon") or ""),
+            as_of_date=str(state.get("trade_date") or "") or None,
+        )
+        _require_admissible_analyst_evidence(
+            ledger,
+            admissibility,
+            stage="analyst_validator",
         )
         return {
             "evidence_graph": graph,
@@ -567,6 +575,26 @@ def create_evidence_graph_node():
         }
 
     return evidence_graph_node
+
+
+def _require_admissible_analyst_evidence(
+    ledger: list[dict[str, Any]],
+    admissibility: dict[str, Any],
+    *,
+    stage: str,
+) -> None:
+    if not ledger:
+        return
+    if admissibility.get("accepted_evidence_ids"):
+        return
+    raise DebateWorkflowHardFault(
+        stage,
+        "no admissible analyst evidence",
+        details={
+            "rejected_evidence": admissibility.get("rejected_evidence") or [],
+            "downgraded_evidence": admissibility.get("downgraded_evidence") or [],
+        },
+    )
 
 
 def _graph_from_state(state: Dict[str, Any] | None) -> EvidenceGraph:

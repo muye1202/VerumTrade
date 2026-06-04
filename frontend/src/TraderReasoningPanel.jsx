@@ -140,9 +140,42 @@ const ProgressHeader = ({ trace, availableCount, total, progressPct }) => (
   </div>
 );
 
+const TraderPlanContract = ({ reports }) => {
+  const plan = reports?.trader_plan_v1 || {};
+  const validation = reports?.trader_plan_validation || {};
+  if (!Object.keys(plan).length && !Object.keys(validation).length) return null;
+  const links = plan.rationale_links || {};
+  const citationCount = Object.values(links).reduce(
+    (count, refs) => count + (Array.isArray(refs) ? refs.length : 0),
+    0,
+  );
+  return (
+    <div className="trp-contract">
+      <div className="trp-contract__header">
+        <div>
+          <h4>Trader plan contract</h4>
+          <p>Executable proposal with field-level evidence links.</p>
+        </div>
+        <StatusBadge status={validation.valid === false ? 'missing' : 'available'} />
+      </div>
+      <div className="trp-contract__grid">
+        <div><span>Action</span><strong>{plan.action || 'N/A'}</strong></div>
+        <div><span>Mode</span><strong>{plan.execution_mode || 'N/A'}</strong></div>
+        <div><span>Order</span><strong>{plan.order_type || 'N/A'}</strong></div>
+        <div><span>Citations</span><strong>{citationCount}</strong></div>
+      </div>
+      {validation.violations?.length > 0 && (
+        <div className="trp-contract__violations">
+          {validation.violations.map((violation) => <span key={violation}>{violation}</span>)}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Main panel ───────────────────────────────────────── */
 
-const TraderReasoningPanel = ({ data }) => {
+const TraderReasoningPanel = ({ data, reports }) => {
   const trace = data || {};
   const stages = trace.stages || [];
 
@@ -167,6 +200,8 @@ const TraderReasoningPanel = ({ data }) => {
         total={stages.length}
         progressPct={progressPct}
       />
+
+      <TraderPlanContract reports={reports} />
 
       <div className="trp-stages">
         {stages.map((stage) => (

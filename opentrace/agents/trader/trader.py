@@ -13,6 +13,8 @@ from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_
 from opentrace.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from opentrace.dataflows.config import get_config
 from opentrace.execution.decision_guard import build_market_snapshot
+from opentrace.graph.debate_schema import DebateWorkflowHardFault, validate_trader_plan
+from opentrace.graph.evidence_ledger_schema import build_evidence_ledger
 from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
 
 
@@ -60,6 +62,28 @@ def create_trader(llm, memory):
                 "execution_plan_compiler": execution_plan_compiler,
             }
         )
+        evidence_ledger = state.get("evidence_ledger")
+        if not isinstance(evidence_ledger, list) or not evidence_ledger:
+            evidence_ledger = build_evidence_ledger(state)
+        trader_plan_validation = validate_trader_plan(
+            trader_plan_v1,
+            evidence_ids=[
+                str(item.get("evidence_id"))
+                for item in evidence_ledger or []
+                if isinstance(item, dict) and item.get("evidence_id")
+            ],
+            thesis_ids=[
+                str(item.get("claim_id"))
+                for item in (state.get("thesis_ledger") or {}).get("accepted_claims", [])
+                if isinstance(item, dict) and item.get("claim_id")
+            ],
+        )
+        if not trader_plan_validation["valid"]:
+            raise DebateWorkflowHardFault(
+                "trader",
+                "invalid trader_plan_v1",
+                details=trader_plan_validation["violations"],
+            )
 
         memory_query = json.dumps(
             {
@@ -228,6 +252,7 @@ FINAL TRANSACTION PROPOSAL:
             "execution_plan_compiler": execution_plan_compiler,
             "trader_self_audit": trader_self_audit,
             "trader_plan_v1": trader_plan_v1,
+            "trader_plan_validation": trader_plan_validation,
         }
 
         return {
@@ -240,6 +265,7 @@ FINAL TRANSACTION PROPOSAL:
             "execution_plan_compiler": execution_plan_compiler,
             "trader_self_audit": trader_self_audit,
             "trader_plan_v1": trader_plan_v1,
+            "trader_plan_validation": trader_plan_validation,
             "agent_reasoning_trace": build_agent_reasoning_trace(state_with_trader_outputs),
             "sender": name,
         }

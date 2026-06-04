@@ -11,6 +11,7 @@ const ROLE_META = {
 };
 
 const asObject = (value) => (value && typeof value === 'object' ? value : {});
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const compactText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
@@ -187,13 +188,99 @@ const buildChangePanel = (traderProposal, finalDecision) => {
 
 const buildWorkflowSteps = (reports, summary) => [
   { id: 'analysts', label: 'Analyst reports', status: reports.market_report || reports.news_report || reports.fundamentals_report ? 'available' : 'missing', takeaway: 'Evidence inputs assembled.' },
+  { id: 'evidence_ledger', label: 'Evidence ledger', status: summary.evidenceCount > 0 ? 'available' : 'missing', takeaway: `${summary.acceptedEvidenceCount}/${summary.evidenceCount} admissible evidence item${summary.evidenceCount === 1 ? '' : 's'}.` },
+  { id: 'contested_issues', label: 'Contested issues', status: summary.issueCount > 0 ? 'available' : 'missing', takeaway: `${summary.issueCount} issue${summary.issueCount === 1 ? '' : 's'} framed around decision fields.` },
   { id: 'research_debate', label: 'Bull/Bear debate', status: summary.researchTurns > 0 ? 'available' : 'missing', takeaway: `${summary.researchTurns} research turn${summary.researchTurns === 1 ? '' : 's'}.` },
-  { id: 'research_manager', label: 'Research manager', status: reports.investment_debate_state?.judge_decision ? 'available' : 'missing', takeaway: firstSentence(reports.investment_debate_state?.judge_decision) || 'No judge decision captured.' },
-  { id: 'trader', label: 'Trader proposal', status: reports.trader_investment_plan ? 'available' : 'missing', takeaway: 'Research translated into an executable proposal.' },
-  { id: 'risk_debate', label: 'Risk debate', status: summary.riskTurns > 0 ? 'available' : 'missing', takeaway: `${summary.riskTurns} risk turn${summary.riskTurns === 1 ? '' : 's'}.` },
+  { id: 'research_manager', label: 'Thesis ledger', status: reports.thesis_ledger?.winning_thesis || reports.investment_debate_state?.judge_decision ? 'available' : 'missing', takeaway: reports.thesis_ledger?.winning_thesis || firstSentence(reports.investment_debate_state?.judge_decision) || 'No thesis ledger captured.' },
+  { id: 'trader', label: 'Trader plan v1', status: reports.trader_plan_v1 || reports.trader_investment_plan ? 'available' : 'missing', takeaway: reports.trader_plan_v1?.execution_mode ? `Trader proposed ${reports.trader_plan_v1.execution_mode}.` : 'Research translated into an executable proposal.' },
+  { id: 'risk_debate', label: 'Risk patches', status: summary.riskPatchCount > 0 || summary.riskTurns > 0 ? 'available' : 'missing', takeaway: `${summary.validRiskPatchCount}/${summary.riskPatchCount} valid patch${summary.riskPatchCount === 1 ? '' : 'es'}.` },
   { id: 'risk_manager', label: 'Risk manager', status: reports.risk_debate_state?.judge_decision ? 'available' : 'missing', takeaway: firstSentence(reports.risk_debate_state?.judge_decision) || 'No risk judge decision captured.' },
-  { id: 'final', label: 'Final decision', status: reports.final_trade_decision ? 'available' : 'missing', takeaway: 'Canonical trade parameters finalized.' },
+  { id: 'final', label: 'Final decision', status: reports.final_trade_decision ? 'available' : 'missing', takeaway: reports.decision_diff?.decision_diff ? 'Final decision changed executable fields.' : 'Canonical trade parameters finalized.' },
 ];
+
+const buildEvidenceImpact = (reports) => {
+  const ledger = asArray(reports.evidence_ledger);
+  const admissibility = asObject(reports.admissibility_report);
+  const accepted = new Set(asArray(admissibility.accepted_evidence_ids).map(String));
+  return {
+    ledger,
+    admissibility,
+    acceptedCount: accepted.size,
+    criticalIds: asArray(reports.critical_evidence_ids).map(String),
+    topEvidence: ledger
+      .slice()
+      .sort((a, b) => Number(b?.criticality || 0) - Number(a?.criticality || 0))
+      .slice(0, 5)
+      .map((item) => ({
+        id: String(item?.evidence_id || ''),
+        claim: String(item?.claim || ''),
+        source: [item?.source_agent, item?.source_tool].filter(Boolean).join(' / '),
+        status: accepted.has(String(item?.evidence_id || '')) ? 'accepted' : 'review',
+        polarity: String(item?.polarity || 'neutral'),
+        materiality: item?.materiality,
+        confidence: item?.confidence,
+        criticality: item?.criticality,
+      })),
+  };
+};
+
+const buildIssueImpact = (reports) => asArray(reports.contested_issues).map((issue) => ({
+  id: String(issue?.issue_id || ''),
+  question: String(issue?.question || ''),
+  evidence: asArray(issue?.candidate_evidence).map(String),
+  fields: asArray(issue?.decision_fields_at_risk).map(String),
+}));
+
+const buildThesisImpact = (reports) => {
+  const thesis = asObject(reports.thesis_ledger);
+  return {
+    winningThesis: String(thesis.winning_thesis || ''),
+    acceptedClaims: asArray(thesis.accepted_claims),
+    rejectedClaims: asArray(thesis.rejected_claims),
+    unresolvedUncertainties: asArray(thesis.unresolved_uncertainties),
+    constraints: asObject(thesis.recommended_plan_constraints),
+    validation: asObject(reports.thesis_ledger_validation),
+  };
+};
+
+const buildTraderPlanImpact = (reports) => {
+  const plan = asObject(reports.trader_plan_v1);
+  return {
+    plan,
+    validation: asObject(reports.trader_plan_validation),
+    rationaleLinkCount: Object.values(asObject(plan.rationale_links)).reduce(
+      (count, refs) => count + asArray(refs).length,
+      0,
+    ),
+  };
+};
+
+const buildRiskPatchImpact = (reports) => {
+  const validation = asArray(reports.risk_patch_validation);
+  const patches = asArray(reports.risk_patches);
+  const valid = validation.filter((item) => item?.valid);
+  return {
+    patches,
+    validation,
+    valid,
+    rejected: validation.filter((item) => item && !item.valid),
+  };
+};
+
+const buildDecisionDiffImpact = (reports) => {
+  const diffTrace = asObject(reports.decision_diff);
+  const finalTrace = extractDecisionJson(reports.final_trade_decision_structured)
+    || extractDecisionJson(reports.final_trade_decision)
+    || asObject(reports.final_trade_decision_structured);
+  return {
+    trace: diffTrace,
+    diff: diffTrace.decision_diff || null,
+    acceptedPatches: asArray(diffTrace.accepted_patches?.length ? diffTrace.accepted_patches : finalTrace.accepted_patches).map(String),
+    rejectedPatches: asArray(diffTrace.rejected_patches?.length ? diffTrace.rejected_patches : finalTrace.rejected_patches),
+    noMaterialChangeReason: diffTrace.no_material_change_reason || finalTrace.no_material_change_reason || '',
+    rationaleEvidenceIds: asArray(finalTrace.rationale_evidence_ids).map(String),
+  };
+};
 
 export const buildDebateWorkflowViewModel = (reportsValue = {}) => {
   const reports = asObject(reportsValue);
@@ -207,12 +294,32 @@ export const buildDebateWorkflowViewModel = (reportsValue = {}) => {
     researchTurns: researchTurns.length || Number(investmentDebate.count || 0),
     riskTurns: riskTurns.length || Number(riskDebate.count || 0),
     totalTurns: (researchTurns.length || Number(investmentDebate.count || 0)) + (riskTurns.length || Number(riskDebate.count || 0)),
+    evidenceCount: asArray(reports.evidence_ledger).length,
+    acceptedEvidenceCount: asArray(reports.admissibility_report?.accepted_evidence_ids).length,
+    issueCount: asArray(reports.contested_issues).length,
+    researchDebateTurnCount: asArray(reports.research_debate_turns).length,
+    riskPatchCount: asArray(reports.risk_patches).length,
+    validRiskPatchCount: asArray(reports.risk_patch_validation).filter((item) => item?.valid).length,
   };
 
   return {
-    hasDebate: Boolean(investmentDebate.history || riskDebate.history || investmentDebate.judge_decision || riskDebate.judge_decision),
+    hasDebate: Boolean(
+      investmentDebate.history
+      || riskDebate.history
+      || investmentDebate.judge_decision
+      || riskDebate.judge_decision
+      || reports.evidence_ledger
+      || reports.trader_plan_v1
+      || reports.decision_diff
+    ),
     workflowSteps: buildWorkflowSteps(reports, summary),
     summary,
+    evidenceImpact: buildEvidenceImpact(reports),
+    issues: buildIssueImpact(reports),
+    thesisImpact: buildThesisImpact(reports),
+    traderPlanImpact: buildTraderPlanImpact(reports),
+    riskPatchImpact: buildRiskPatchImpact(reports),
+    decisionDiffImpact: buildDecisionDiffImpact(reports),
     researchArena: {
       title: 'Research debate',
       participants: [
