@@ -22,10 +22,12 @@ const reports = {
       claim: 'RSI is elevated and argues against full-size entry.',
       source_agent: 'market_analyst',
       source_tool: 'get_indicators',
+      observed_at: '2026-06-03T14:30:00Z',
       polarity: 'bearish',
       confidence: 0.82,
       materiality: 0.7,
       criticality: 0.57,
+      supports: ['prefer_wait_for_pullback'],
     },
   ],
   admissibility_report: {
@@ -45,8 +47,12 @@ const reports = {
   research_debate_turns: [
     {
       turn_id: 'BEAR-001',
+      speaker: 'Bear Analyst',
+      issue_id: 'I-001',
+      claim: 'Short-term risk argues for waiting.',
       evidence_ids: ['E-MKT-001'],
       plan_implication: { field: 'execution_mode', proposed_value: 'wait_for_trigger' },
+      confidence: 0.72,
     },
   ],
   thesis_ledger: {
@@ -99,10 +105,15 @@ const reports = {
     {
       patch_id: 'P-SAFE-001',
       author: 'safe_analyst',
+      target_plan_version: 'trader_plan_v1',
+      patch_type: 'modify',
       field: 'position_size_pct',
       old_value: 0.1,
       new_value: 0.04,
       evidence_ids: ['E-MKT-001'],
+      reason: 'Reduce starter size until confirmation.',
+      expected_effect: 'reduce_drawdown_risk',
+      materiality: 'high',
     },
   ],
   risk_patch_validation: [
@@ -135,10 +146,18 @@ assert.equal(viewModel.hasDebate, true);
 assert.equal(viewModel.workflowSteps.length, 9);
 assert.equal(viewModel.evidenceImpact.acceptedCount, 1);
 assert.equal(viewModel.evidenceImpact.topEvidence[0].id, 'E-MKT-001');
+assert.equal(viewModel.evidenceImpact.topEvidence[0].timestamp, '2026-06-03T14:30:00Z');
+assert.deepEqual(viewModel.evidenceImpact.topEvidence[0].supports, ['prefer_wait_for_pullback']);
 assert.equal(viewModel.issues[0].fields.includes('position_size_pct'), true);
+assert.equal(viewModel.issues[0].turns[0].implicationField, 'execution_mode');
+assert.deepEqual(viewModel.issues[0].usedEvidence, ['E-MKT-001']);
 assert.equal(viewModel.thesisImpact.acceptedClaims[0].claim_id, 'C-001');
 assert.equal(viewModel.traderPlanImpact.rationaleLinkCount, 3);
+assert.equal(viewModel.traderPlanImpact.fieldLinks.find((row) => row.field === 'position_size_pct').refs[0], 'E-MKT-001');
 assert.equal(viewModel.riskPatchImpact.valid[0].patch_id, 'P-SAFE-001');
+assert.equal(viewModel.riskPatchImpact.rows[0].field, 'position_size_pct');
+assert.equal(viewModel.riskPatchImpact.rows[0].oldValue, '0.1');
+assert.equal(viewModel.riskPatchImpact.rows[0].newValue, '0.04');
 assert.equal(viewModel.decisionDiffImpact.acceptedPatches[0], 'P-SAFE-001');
 assert.equal(viewModel.researchArena.participants.length, 2);
 assert.equal(viewModel.researchArena.judge.role, 'Research Manager');
@@ -185,3 +204,49 @@ assert.equal(noisyHoldModel.traderProposal.action, 'HOLD');
 assert.equal(noisyHoldModel.traderProposal.executionIntent, 'WAIT_FOR_TRIGGER');
 assert.equal(noisyHoldModel.changePanel.items.length, 0);
 assert.equal(noisyHoldModel.changePanel.unchanged, true);
+
+const realDbShapeReports = {
+  contested_issues: [
+    {
+      issue_id: 'I-001',
+      question: 'Does the admissible evidence support a long bias, or should action remain HOLD?',
+      candidate_evidence: ['E-SEN-005', 'E-MKT-002'],
+      decision_fields_at_risk: ['action', 'execution_mode'],
+    },
+  ],
+  research_debate_turns: [
+    {
+      turn_id: 8,
+      speaker: 'bull_analyst',
+      issue_id: 'I-001',
+      position: 'act_now_scale_in',
+      claim: 'Initiate a disciplined, staggered long entry.',
+      evidence_ids: ['E-SEN-005', 'E-MKT-002'],
+      rebuttal_to: 'bear_analyst',
+      plan_implication: { field: 'execution_mode', proposed_value: 'act_now_scale_in' },
+    },
+  ],
+  thesis_ledger: {
+    accepted_claims: [],
+    rejected_claims: [],
+    unresolved_uncertainties: [
+      'Primary 8-K / 10-Q / Form-4 filings remain unverified and materially relevant.',
+    ],
+  },
+  investment_debate_state: {
+    history: 'Bull Analyst: Real DB history still uses canonical labels.',
+  },
+};
+
+const realDbShapeModel = buildDebateWorkflowViewModel(realDbShapeReports);
+
+assert.equal(realDbShapeModel.issues[0].turns[0].speaker, 'Bull Analyst');
+assert.equal(realDbShapeModel.issues[0].turns[0].rebuttalTo, 'Bear Analyst');
+assert.equal(
+  realDbShapeModel.issues[0].unresolvedUncertainties[0].uncertainty,
+  'Primary 8-K / 10-Q / Form-4 filings remain unverified and materially relevant.',
+);
+assert.equal(
+  realDbShapeModel.thesisImpact.unresolvedUncertainties[0].uncertainty,
+  'Primary 8-K / 10-Q / Form-4 filings remain unverified and materially relevant.',
+);

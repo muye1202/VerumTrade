@@ -14,6 +14,12 @@ const asObject = (value) => (value && typeof value === 'object' ? value : {});
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const compactText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+const formatValue = (value) => {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
 
 const firstSentence = (value, limit = 180) => {
   const text = compactText(value);
@@ -34,8 +40,13 @@ const stripSpeaker = (text, fallbackSpeaker = '') => {
 };
 
 const normalizeSpeaker = (speaker) => {
-  const value = compactText(speaker).toLowerCase();
+  const value = compactText(speaker).toLowerCase().replace(/[_-]+/g, ' ');
   if (value === 'judge') return 'Risk Manager';
+  if (value === 'bull') return 'Bull Analyst';
+  if (value === 'bear') return 'Bear Analyst';
+  if (value === 'risky' || value === 'risky risk analyst') return 'Risky Analyst';
+  if (value === 'safe' || value === 'safe risk analyst' || value === 'conservative') return 'Safe Analyst';
+  if (value === 'neutral' || value === 'neutral risk analyst') return 'Neutral Analyst';
   return Object.keys(ROLE_META).find((role) => role.toLowerCase() === value) || speaker;
 };
 
@@ -168,6 +179,14 @@ const changeItem = (field, before, after, impact) => ({
   impact,
 });
 
+const normalizeUncertainty = (item) => {
+  if (item && typeof item === 'object') return item;
+  return {
+    uncertainty: String(item || ''),
+    decision_effect: '',
+  };
+};
+
 const buildChangePanel = (traderProposal, finalDecision) => {
   const candidates = [
     changeItem('Action', traderProposal.action, finalDecision.action, 'Final trade direction changed after risk review.'),
@@ -202,34 +221,76 @@ const buildEvidenceImpact = (reports) => {
   const ledger = asArray(reports.evidence_ledger);
   const admissibility = asObject(reports.admissibility_report);
   const accepted = new Set(asArray(admissibility.accepted_evidence_ids).map(String));
-  return {
-    ledger,
-    admissibility,
-    acceptedCount: accepted.size,
-    criticalIds: asArray(reports.critical_evidence_ids).map(String),
-    topEvidence: ledger
-      .slice()
-      .sort((a, b) => Number(b?.criticality || 0) - Number(a?.criticality || 0))
-      .slice(0, 5)
-      .map((item) => ({
-        id: String(item?.evidence_id || ''),
+  const rejected = new Map(asArray(admissibility.rejected_evidence).map((item) => [String(item?.evidence_id || ''), item?.reason || 'Rejected']));
+  const downgraded = new Map(asArray(admissibility.downgraded_evidence).map((item) => [String(item?.evidence_id || ''), item?.reason || 'Downgraded']));
+  const rows = ledger
+    .slice()
+    .sort((a, b) => Number(b?.criticality || 0) - Number(a?.criticality || 0))
+    .map((item) => {
+      const id = String(item?.evidence_id || '');
+      return {
+        id,
         claim: String(item?.claim || ''),
-        source: [item?.source_agent, item?.source_tool].filter(Boolean).join(' / '),
-        status: accepted.has(String(item?.evidence_id || '')) ? 'accepted' : 'review',
+        source: [item?.source_agent, item?.source_tool || item?.source_ref].filter(Boolean).join(' / '),
+        timestamp: String(item?.observed_at || ''),
+        factType: String(item?.fact_type || ''),
         polarity: String(item?.polarity || 'neutral'),
+        horizon: String(item?.time_horizon || ''),
         materiality: item?.materiality,
         confidence: item?.confidence,
         criticality: item?.criticality,
-      })),
+        supports: asArray(item?.supports).map(String),
+        contradicts: asArray(item?.contradicts).map(String),
+        status: accepted.has(id) ? 'accepted' : rejected.has(id) ? 'rejected' : downgraded.has(id) ? 'downgraded' : 'review',
+        statusReason: rejected.get(id) || downgraded.get(id) || '',
+      };
+    });
+  return {
+    ledger,
+    rows,
+    admissibility,
+    acceptedCount: accepted.size,
+    criticalIds: asArray(reports.critical_evidence_ids).map(String),
+    topEvidence: rows.slice(0, 5),
   };
 };
 
-const buildIssueImpact = (reports) => asArray(reports.contested_issues).map((issue) => ({
-  id: String(issue?.issue_id || ''),
-  question: String(issue?.question || ''),
-  evidence: asArray(issue?.candidate_evidence).map(String),
-  fields: asArray(issue?.decision_fields_at_risk).map(String),
-}));
+const buildIssueImpact = (reports) => {
+  const turns = asArray(reports.research_debate_turns);
+  const thesis = asObject(reports.thesis_ledger);
+  return asArray(reports.contested_issues).map((issue) => {
+    const id = String(issue?.issue_id || '');
+    const issueTurns = turns.filter((turn) => String(turn?.issue_id || '') === id);
+    const turnEvidence = new Set();
+    issueTurns.forEach((turn) => asArray(turn?.evidence_ids).forEach((evidenceId) => turnEvidence.add(String(evidenceId))));
+    return {
+      id,
+      question: String(issue?.question || ''),
+      evidence: asArray(issue?.candidate_evidence).map(String),
+      usedEvidence: Array.from(turnEvidence),
+      fields: asArray(issue?.decision_fields_at_risk).map(String),
+      turns: issueTurns.map((turn) => ({
+        id: String(turn?.turn_id || ''),
+        speaker: normalizeSpeaker(turn?.speaker || ''),
+        position: String(turn?.position || ''),
+        claim: String(turn?.claim || ''),
+        evidenceIds: asArray(turn?.evidence_ids).map(String),
+        rebuttalTo: normalizeSpeaker(turn?.rebuttal_to || ''),
+        implicationField: String(turn?.plan_implication?.field || ''),
+        implicationValue: formatValue(turn?.plan_implication?.proposed_value),
+        falsificationCondition: String(turn?.falsification_condition || ''),
+        confidence: turn?.confidence,
+      })),
+      acceptedClaims: asArray(thesis.accepted_claims).filter((claim) => (
+        asArray(claim?.evidence_ids).some((evidenceId) => asArray(issue?.candidate_evidence).map(String).includes(String(evidenceId)))
+      )),
+      rejectedClaims: asArray(thesis.rejected_claims).filter((claim) => (
+        asArray(claim?.evidence_ids).some((evidenceId) => asArray(issue?.candidate_evidence).map(String).includes(String(evidenceId)))
+      )),
+      unresolvedUncertainties: asArray(thesis.unresolved_uncertainties).map(normalizeUncertainty),
+    };
+  });
+};
 
 const buildThesisImpact = (reports) => {
   const thesis = asObject(reports.thesis_ledger);
@@ -237,7 +298,7 @@ const buildThesisImpact = (reports) => {
     winningThesis: String(thesis.winning_thesis || ''),
     acceptedClaims: asArray(thesis.accepted_claims),
     rejectedClaims: asArray(thesis.rejected_claims),
-    unresolvedUncertainties: asArray(thesis.unresolved_uncertainties),
+    unresolvedUncertainties: asArray(thesis.unresolved_uncertainties).map(normalizeUncertainty),
     constraints: asObject(thesis.recommended_plan_constraints),
     validation: asObject(reports.thesis_ledger_validation),
   };
@@ -245,10 +306,32 @@ const buildThesisImpact = (reports) => {
 
 const buildTraderPlanImpact = (reports) => {
   const plan = asObject(reports.trader_plan_v1);
+  const links = asObject(plan.rationale_links);
+  const executableFields = [
+    'action',
+    'execution_mode',
+    'order_type',
+    'entry_price',
+    'entry_condition',
+    'stop_loss',
+    'take_profit',
+    'position_size_pct',
+    'max_loss_pct',
+    'trigger_condition',
+    'time_horizon',
+    'invalidation_condition',
+  ];
   return {
     plan,
     validation: asObject(reports.trader_plan_validation),
-    rationaleLinkCount: Object.values(asObject(plan.rationale_links)).reduce(
+    fieldLinks: executableFields
+      .filter((field) => plan[field] !== undefined || links[field] !== undefined)
+      .map((field) => ({
+        field,
+        value: formatValue(plan[field]),
+        refs: asArray(links[field]).map(String),
+      })),
+    rationaleLinkCount: Object.values(links).reduce(
       (count, refs) => count + asArray(refs).length,
       0,
     ),
@@ -258,9 +341,35 @@ const buildTraderPlanImpact = (reports) => {
 const buildRiskPatchImpact = (reports) => {
   const validation = asArray(reports.risk_patch_validation);
   const patches = asArray(reports.risk_patches);
+  const patchesById = new Map(patches.map((patch) => [String(patch?.patch_id || ''), patch]));
+  const validationById = new Map(validation.map((item) => [String(item?.patch_id || item?.patch?.patch_id || ''), item]));
+  const rowIds = Array.from(new Set([
+    ...patches.map((patch) => String(patch?.patch_id || '')).filter(Boolean),
+    ...validation.map((item) => String(item?.patch_id || item?.patch?.patch_id || '')).filter(Boolean),
+  ]));
+  const rows = rowIds.map((id) => {
+    const validated = validationById.get(id) || {};
+    const patch = patchesById.get(id) || asObject(validated.patch);
+    return {
+      id,
+      author: String(patch?.author || ''),
+      targetPlanVersion: String(patch?.target_plan_version || ''),
+      patchType: String(patch?.patch_type || ''),
+      field: String(patch?.field || ''),
+      oldValue: formatValue(patch?.old_value),
+      newValue: formatValue(patch?.new_value),
+      evidenceIds: asArray(patch?.evidence_ids).map(String),
+      reason: String(patch?.reason || validated.reason || ''),
+      expectedEffect: String(patch?.expected_effect || ''),
+      materiality: String(patch?.materiality || ''),
+      valid: validated.valid !== false,
+      validationReason: String(validated.reason || ''),
+    };
+  });
   const valid = validation.filter((item) => item?.valid);
   return {
     patches,
+    rows,
     validation,
     valid,
     rejected: validation.filter((item) => item && !item.valid),
