@@ -295,16 +295,7 @@ def require_valid_thesis_ledger(
 
 
 def require_risk_response_contract(text: Any, *, stage: str) -> str:
-    """Enforce the risk-response contract, recovering instead of hard-faulting.
-
-    Returns the (possibly marker-augmented) response content so callers can persist
-    a canonical marker into the debate history.
-
-    A risk debator's response is advisory: the binding patch application happens later
-    in the risk_manager, which extracts patch JSON from the whole history regardless of
-    markers. So a missing or unparseable marker safely degrades to NO_MATERIAL_CHANGE
-    (the conservative no-op) rather than aborting the entire run.
-    """
+    """Enforce the risk-response contract before persisting debate history."""
     from opentrace.graph.plan_patch_schema import extract_plan_patches_from_text
 
     content = str(text or "")
@@ -315,14 +306,10 @@ def require_risk_response_contract(text: Any, *, stage: str) -> str:
     if has_plan_patch:
         if extract_plan_patches_from_text(content):
             return content
-        # Claimed a patch but emitted no parseable JSON; downstream extraction would
-        # find nothing, so treat it as a no-op rather than faulting the run.
-        logger.warning(
-            "%s: PLAN_PATCH marker present but no parseable patch JSON; "
-            "degrading to NO_MATERIAL_CHANGE.",
+        raise DebateWorkflowHardFault(
             stage,
+            "PLAN_PATCH marker present but no parseable patch JSON",
         )
-        return content + "\n\nNO_MATERIAL_CHANGE"
 
     if has_reject_patch or has_no_change:
         return content
@@ -336,12 +323,10 @@ def require_risk_response_contract(text: Any, *, stage: str) -> str:
         )
         return content + "\n\nPLAN_PATCH"
 
-    # ...otherwise default to the conservative no-op instead of hard-faulting.
-    logger.warning(
-        "%s: missing risk response contract marker; defaulting to NO_MATERIAL_CHANGE.",
+    raise DebateWorkflowHardFault(
         stage,
+        "missing risk response contract marker: expected PLAN_PATCH, REJECT_PATCH, or NO_MATERIAL_CHANGE",
     )
-    return content + "\n\nNO_MATERIAL_CHANGE"
 
 
 _NO_CHANGE_PHRASES = (
