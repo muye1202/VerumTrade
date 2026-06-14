@@ -242,6 +242,11 @@ class StockDiscoveryGraph:
                     "data_quality_summary": result.get("data_quality_summary", {}),
                     "filter_relaxations_applied": result.get("filter_relaxations_applied", []),
                     "theme_candidates": _theme_cands,
+                    "business_inflection": result.get("business_inflection", {}),
+                    "attention_gap": result.get("attention_gap", {}),
+                    "evidence_packs": result.get("evidence_packs", {}),
+                    "two_layer_scoring": result.get("two_layer_scoring", {}),
+                    "thesis_cards": result.get("thesis_cards", {}),
                 },
             )
 

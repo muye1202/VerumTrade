@@ -21,6 +21,8 @@ from opentrace.agents.discovery.intelligence import (
     MomentumScanHit,
     Stage1EnrichmentScorecard,
     Stage2ScoredCandidate,
+    ThesisCard,
+    TwoLayerScoredCandidate,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,6 +99,11 @@ class IntelligenceDrivenRecommender:
             rankings = self._rankings_from_track_b(
                 intelligence.momentum_scan_hits, excluded_set,
             )
+        elif intelligence.two_layer_candidates:
+            rankings = self._rankings_from_two_layer(
+                intelligence.two_layer_candidates,
+                excluded_set,
+            )
         elif track == "dual_track":
             rankings = self._rankings_from_dual_track(
                 intelligence.stage2_candidates,
@@ -144,6 +151,21 @@ class IntelligenceDrivenRecommender:
             "vendor_calls_by_stage": dict(intelligence.vendor_calls_by_stage or {}),
             "data_quality_summary": dict(intelligence.data_quality_summary or {}),
             "filter_relaxations_applied": list(intelligence.filter_relaxations_applied or []),
+            "business_inflection": self._build_business_inflection_payload(
+                intelligence.business_inflection_signals
+            ),
+            "attention_gap": self._build_attention_gap_payload(
+                intelligence.attention_gap_signals
+            ),
+            "evidence_packs": self._build_evidence_pack_payload(
+                intelligence.evidence_packs
+            ),
+            "two_layer_scoring": self._build_two_layer_payload(
+                intelligence.two_layer_candidates
+            ),
+            "thesis_cards": self._build_thesis_card_payload(
+                intelligence.thesis_cards
+            ),
             "excluded_tickers": sorted(excluded_set),
             "discovery_track": track,
         }
@@ -209,6 +231,27 @@ class IntelligenceDrivenRecommender:
             for stage, metrics in sorted((intelligence.vendor_calls_by_stage or {}).items()):
                 report_parts.append(f"- {stage}: {metrics}")
             report_parts.append("")
+
+        report_parts.extend(
+            self._build_business_inflection_report_section(
+                intelligence.business_inflection_signals
+            )
+        )
+        report_parts.extend(
+            self._build_attention_gap_report_section(
+                intelligence.attention_gap_signals
+            )
+        )
+        report_parts.extend(
+            self._build_two_layer_report_section(
+                intelligence.two_layer_candidates
+            )
+        )
+        report_parts.extend(
+            self._build_thesis_card_report_section(
+                intelligence.thesis_cards
+            )
+        )
 
         if track == "anomaly_scan":
             report_parts.extend(
@@ -395,6 +438,133 @@ class IntelligenceDrivenRecommender:
         return lines
 
     @staticmethod
+    def _build_business_inflection_payload(signals) -> Dict[str, Any]:
+        rows = [s.to_dict() for s in (signals or [])]
+        return {
+            "count": len(rows),
+            "signals": rows,
+        }
+
+    @staticmethod
+    def _build_attention_gap_payload(signals) -> Dict[str, Any]:
+        rows = [s.to_dict() for s in (signals or [])]
+        return {
+            "count": len(rows),
+            "signals": rows,
+        }
+
+    @staticmethod
+    def _build_evidence_pack_payload(packs) -> Dict[str, Any]:
+        rows = [p.to_dict() for p in (packs or [])]
+        return {
+            "count": len(rows),
+            "packs": rows,
+        }
+
+    @staticmethod
+    def _build_two_layer_payload(candidates) -> Dict[str, Any]:
+        rows = [c.to_dict() for c in (candidates or [])]
+        return {
+            "count": len(rows),
+            "candidates": rows,
+        }
+
+    @staticmethod
+    def _build_thesis_card_payload(cards) -> Dict[str, Any]:
+        rows = [c.to_dict() for c in (cards or [])]
+        return {
+            "count": len(rows),
+            "cards": rows,
+        }
+
+    @staticmethod
+    def _build_business_inflection_report_section(signals) -> List[str]:
+        if not signals:
+            return ["## Business Inflection Signals\nNo business inflection signals generated.\n"]
+        top = sorted(signals, key=lambda s: s.inflection_score, reverse=True)[:8]
+        lines = ["## Business Inflection Signals"]
+        lines.append(
+            "- Top inflections: "
+            + ", ".join(f"{s.ticker}({float(s.inflection_score):.1f})" for s in top)
+        )
+        lines.append("| Ticker | Score | Types | Evidence |")
+        lines.append("|---|---:|---|---|")
+        for signal in top:
+            types = ", ".join(signal.inflection_types or []) or "-"
+            evidence = "; ".join((signal.evidence or [])[:2]) or "-"
+            lines.append(
+                f"| {signal.ticker} | {float(signal.inflection_score):.1f} | {types} | {evidence} |"
+            )
+        lines.append("")
+        return lines
+
+    @staticmethod
+    def _build_attention_gap_report_section(signals) -> List[str]:
+        if not signals:
+            return ["## Attention Gap Signals\nNo attention gap signals generated.\n"]
+        top = sorted(signals, key=lambda s: s.attention_gap_score, reverse=True)[:8]
+        lines = ["## Attention Gap Signals"]
+        lines.append(
+            "- Top attention gaps: "
+            + ", ".join(f"{s.ticker}({float(s.attention_gap_score):.1f})" for s in top)
+        )
+        lines.append("| Ticker | Score | Inflection | Theme | Consensus | Reasons |")
+        lines.append("|---|---:|---:|---:|---:|---|")
+        for signal in top:
+            reasons = "; ".join((signal.reasons or [])[:3]) or "-"
+            lines.append(
+                f"| {signal.ticker} | {float(signal.attention_gap_score):.1f} | "
+                f"{float(signal.business_inflection_strength):.1f} | "
+                f"{float(signal.theme_exposure_strength):.1f} | "
+                f"{float(signal.consensus_penetration):.1f} | {reasons} |"
+            )
+        lines.append("")
+        return lines
+
+    @staticmethod
+    def _build_two_layer_report_section(candidates) -> List[str]:
+        if not candidates:
+            return ["## Two-Layer Discovery Scores\nNo two-layer discovery scores generated.\n"]
+        top = sorted(candidates, key=lambda c: c.discovery_score, reverse=True)[:10]
+        lines = ["## Two-Layer Discovery Scores"]
+        lines.append("| Ticker | Discovery | Evidence | Thesis | Momentum | Attention Gap | Tier | Reasons |")
+        lines.append("|---|---:|---:|---:|---:|---:|---|---|")
+        for candidate in top:
+            reasons = "; ".join((candidate.tier_reasons or [])[:3]) or "-"
+            lines.append(
+                f"| {candidate.ticker} | {float(candidate.discovery_score):.1f} | "
+                f"{float(candidate.evidence_score):.1f} | "
+                f"{float(candidate.thesis_score):.1f} | "
+                f"{float(candidate.momentum_confirmation_score):.1f} | "
+                f"{float(candidate.attention_gap_score):.1f} | "
+                f"tier {candidate.tier} | {reasons} |"
+            )
+            lines.append(
+                f"- {candidate.ticker}: discovery {float(candidate.discovery_score):.1f}, "
+                f"tier {candidate.tier}"
+            )
+        lines.append("")
+        return lines
+
+    @staticmethod
+    def _build_thesis_card_report_section(cards) -> List[str]:
+        if not cards:
+            return ["## Thesis Cards\nNo thesis cards generated.\n"]
+        lines = ["## Thesis Cards"]
+        for card in cards[:10]:
+            lines.append(f"### {card.ticker} - {card.status}")
+            if card.bull_thesis:
+                lines.append(f"- Bull thesis: {card.bull_thesis}")
+            if card.evidence:
+                lines.append(f"- Evidence: {'; '.join(card.evidence[:3])}")
+            if card.kill_conditions:
+                lines.append(f"- Kill conditions: {'; '.join(card.kill_conditions[:3])}")
+            if card.risks:
+                lines.append(f"- Risks: {'; '.join(card.risks[:3])}")
+            lines.append("")
+        return lines
+
+    @staticmethod
     def _build_stage1_payload(scorecards: List[Stage1EnrichmentScorecard]) -> Dict[str, Any]:
         payload_rows = [
             {
@@ -481,6 +651,38 @@ class IntelligenceDrivenRecommender:
                         f"squeeze {c.short_squeeze_score:.0f}"
                     ),
                     "signal_alignment": "stage2_5factor",
+                }
+            )
+        return rankings
+
+    @staticmethod
+    def _rankings_from_two_layer(
+        candidates: List[TwoLayerScoredCandidate],
+        excluded_set: Set[str],
+    ) -> List[Dict[str, Any]]:
+        rankings: List[Dict[str, Any]] = []
+        for c in candidates:
+            ticker = str(c.ticker).strip().upper()
+            if not ticker or ticker in excluded_set:
+                continue
+            pack = c.evidence_pack
+            theme = getattr(pack, "primary_theme", "") if pack else ""
+            rankings.append(
+                {
+                    "ticker": ticker,
+                    "composite": round(float(c.discovery_score), 2),
+                    "thesis": (
+                        f"Two-layer discovery {c.discovery_score:.2f}; "
+                        f"evidence {c.evidence_score:.0f}; "
+                        f"thesis {c.thesis_score:.0f}; "
+                        f"momentum {c.momentum_confirmation_score:.0f}; "
+                        f"attention gap {c.attention_gap_score:.0f}; "
+                        f"tier {c.tier}"
+                    ),
+                    "signal_alignment": "two_layer_discovery",
+                    "source": "thesis" if theme else "two_layer",
+                    "tier": c.tier,
+                    "action": c.action,
                 }
             )
         return rankings

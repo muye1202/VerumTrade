@@ -24,7 +24,14 @@ import DecisionTracePanel from './DecisionTracePanel';
 import DebateWorkflowPanel from './DebateWorkflowPanel';
 import TraderReasoningPanel from './TraderReasoningPanel';
 import ThemeCandidatesPanel from './ThemeCandidatesPanel';
+import DiscoverySignalsPanel from './DiscoverySignalsPanel';
+import DiscoveryDecisionPanel from './DiscoveryDecisionPanel';
 import CatalystDiagnosticsPanel from './CatalystDiagnosticsPanel';
+import {
+  DISCOVERY_SIGNAL_STAGES,
+  hasDiscoveryDecisionData,
+  hasDiscoverySignalData,
+} from './discoverySignalsViewModel';
 import {
   AZURE_FOUNDRY_REASONING_EFFORTS,
   PROVIDER_DEFAULTS,
@@ -569,7 +576,8 @@ function App() {
   const [discoveryTrack, setDiscoveryTrack] = useState(DISCOVERY_TRACKS[0].value);
   const [catalystMode, setCatalystMode] = useState(CATALYST_MODES[0].value);
   const [scanMode, setScanMode] = useState(SCAN_MODES[0].value);
-  const [discoveryStage, setDiscoveryStage] = useState(null); // -1 | 0 | 1 | null
+  const [businessInflectionEnabled, setBusinessInflectionEnabled] = useState(false);
+  const [discoveryStage, setDiscoveryStage] = useState(null); // -1 | 0 | 1 | 2 | 3 | null
   const [activeSessionType, setActiveSessionType] = useState('single');
 
   const [apiKeys, setApiKeys] = useState(() => {
@@ -936,6 +944,7 @@ function App() {
       discovery_catalyst_mode: overrides.catalystMode ?? catalystMode,
       scan_mode: overrides.scanMode ?? scanMode,
       policy_mode: 'off',
+      business_inflection_enabled: overrides.businessInflectionEnabled ?? businessInflectionEnabled,
       analysts: [],
       research_depth: 1,
       llm_provider: deepProvider,
@@ -964,6 +973,7 @@ function App() {
     setDiscoveryTrack(payload.discovery_track);
     setCatalystMode(payload.discovery_catalyst_mode);
     setScanMode(payload.scan_mode ?? SCAN_MODES[0].value);
+    setBusinessInflectionEnabled(Boolean(payload.business_inflection_enabled));
     setDiscoveryStage(null);
     setActiveSessionId(null);
     setActiveMode('analysis');
@@ -1021,12 +1031,37 @@ function App() {
         const stageNum = data.stage < 0 ? '-1' : String(data.stage);
         setLogs((prev) => [...prev, makeLog('system', `${arrow} Stage ${stageNum}: ${data.label}`)]);
         if (data.status === 'started') setDiscoveryStage(data.stage);
-        if (data.status === 'completed' && data.stage === 1) setDiscoveryStage(null);
+        if (data.status === 'completed' && data.stage >= 3) setDiscoveryStage(null);
         return;
       }
 
       if (data.event === 'theme_candidates') {
         setReports((prev) => ({ ...prev, theme_candidates_json: data.candidates }));
+        return;
+      }
+
+      if (data.event === 'business_inflection') {
+        setReports((prev) => ({ ...prev, business_inflection_json: data.payload || { signals: [] } }));
+        return;
+      }
+
+      if (data.event === 'attention_gap') {
+        setReports((prev) => ({ ...prev, attention_gap_json: data.payload || { signals: [] } }));
+        return;
+      }
+
+      if (data.event === 'evidence_packs') {
+        setReports((prev) => ({ ...prev, evidence_packs_json: data.payload || { packs: [] } }));
+        return;
+      }
+
+      if (data.event === 'two_layer_scoring') {
+        setReports((prev) => ({ ...prev, two_layer_scoring_json: data.payload || { candidates: [] } }));
+        return;
+      }
+
+      if (data.event === 'thesis_cards') {
+        setReports((prev) => ({ ...prev, thesis_cards_json: data.payload || { cards: [] } }));
         return;
       }
 
@@ -1252,6 +1287,23 @@ function App() {
               />
             </div>
           </div>
+
+          <label className="config-card discovery-toggle-card">
+            <div className="config-card-icon signal">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 19h16v2H4v-2zm1-4h3v2H5v-2zm5-4h3v6h-3v-6zm5-5h3v11h-3V6zm4-3h2v14h-2V3zM3 3h2v14H3V3z" /></svg>
+            </div>
+            <div className="config-card-body">
+              <span className="config-label">Inflection Scan</span>
+              <span className="toggle-card-value">{businessInflectionEnabled ? 'Enabled' : 'Off'}</span>
+              <input
+                type="checkbox"
+                checked={businessInflectionEnabled}
+                onChange={(event) => setBusinessInflectionEnabled(event.target.checked)}
+                disabled={isRunning}
+              />
+              <span className="toggle-card-switch" aria-hidden="true"></span>
+            </div>
+          </label>
 
           <div className="config-card">
             <div className="config-card-icon date">
@@ -1911,11 +1963,7 @@ function App() {
 
                     {/* Pipeline stage progress bar */}
                     <div style={{ padding: '0 16px 16px' }}>
-                      {[
-                        { stage: -1, label: 'Theme Engine' },
-                        { stage: 0, label: 'Universe Screen' },
-                        { stage: 1, label: 'Enrich & Score' },
-                      ].map(({ stage, label }) => {
+                      {DISCOVERY_SIGNAL_STAGES.map(({ stage, label }) => {
                         const isDone = discoveryStage !== null && stage < discoveryStage;
                         const isActive = discoveryStage === stage;
                         return (
@@ -1963,9 +2011,39 @@ function App() {
                       </div>
                     )}
 
+                    {hasDiscoverySignalData(reports) && (
+                      <div style={{ padding: '0 16px 16px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          Discovery Signals
+                        </div>
+                        <DiscoverySignalsPanel
+                          businessInflection={reports.business_inflection_json}
+                          attentionGap={reports.attention_gap_json}
+                          isStreaming={isRunning}
+                          compact
+                        />
+                      </div>
+                    )}
+
+                    {hasDiscoveryDecisionData(reports) && (
+                      <div style={{ padding: '0 16px 16px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          Candidate Tiers
+                        </div>
+                        <DiscoveryDecisionPanel
+                          twoLayerScoring={reports.two_layer_scoring_json}
+                          evidencePacks={reports.evidence_packs_json}
+                          thesisCards={reports.thesis_cards_json}
+                          isStreaming={isRunning}
+                          compact
+                        />
+                      </div>
+                    )}
+
                     <div className="metric-stack" style={{ marginTop: '8px' }}>
                       <div><span>Track</span><strong>{DISCOVERY_TRACKS.find(t => t.value === discoveryTrack)?.label}</strong></div>
                       <div><span>Scan Mode</span><strong>{SCAN_MODES.find(s => s.value === scanMode)?.label}</strong></div>
+                      <div><span>Inflection</span><strong>{businessInflectionEnabled ? 'Enabled' : 'Off'}</strong></div>
                       <div><span>Date</span><strong>{analysisDate}</strong></div>
                     </div>
                   </>
@@ -2013,7 +2091,40 @@ function App() {
                       </div>
                     )}
 
-                    {availableReports.length === 0 && !reports.theme_candidates_json ? (
+                    {activeSessionType === 'discovery' && hasDiscoverySignalData(reports) && (
+                      <div className="report-group" style={{ marginBottom: '8px' }}>
+                        <h3 className="report-group-title">
+                          <span className="report-group-icon">SIG</span>
+                          Discovery Signals
+                        </h3>
+                        <div className="report-group-content" style={{ padding: '12px 16px' }}>
+                          <DiscoverySignalsPanel
+                            businessInflection={reports.business_inflection_json}
+                            attentionGap={reports.attention_gap_json}
+                            isStreaming={false}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSessionType === 'discovery' && hasDiscoveryDecisionData(reports) && (
+                      <div className="report-group" style={{ marginBottom: '8px' }}>
+                        <h3 className="report-group-title">
+                          <span className="report-group-icon">RANK</span>
+                          Candidate Decisions
+                        </h3>
+                        <div className="report-group-content" style={{ padding: '12px 16px' }}>
+                          <DiscoveryDecisionPanel
+                            twoLayerScoring={reports.two_layer_scoring_json}
+                            evidencePacks={reports.evidence_packs_json}
+                            thesisCards={reports.thesis_cards_json}
+                            isStreaming={false}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {availableReports.length === 0 && !reports.theme_candidates_json && !hasDiscoverySignalData(reports) && !hasDiscoveryDecisionData(reports) ? (
                       <div className="empty-state compact">
                         <h3>Reports pending</h3>
                         <p>Reports appear here as agents complete their work.</p>

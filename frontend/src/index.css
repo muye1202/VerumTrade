@@ -928,6 +928,12 @@ h1 {
   color: var(--muted);
 }
 
+.config-card-icon.signal {
+  background: color-mix(in srgb, var(--gain) 12%, transparent);
+  border-color: color-mix(in srgb, var(--gain) 20%, transparent);
+  color: var(--gain);
+}
+
 .config-card-body {
   display: grid;
   align-content: center;
@@ -1001,6 +1007,58 @@ h1 {
 
 .config-card .select-icon {
   display: none;
+}
+
+.discovery-toggle-card {
+  cursor: pointer;
+}
+
+.discovery-toggle-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle-card-value {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.toggle-card-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.toggle-card-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.discovery-toggle-card input:checked + .toggle-card-switch {
+  border-color: color-mix(in srgb, var(--gain) 45%, var(--border));
+  background: color-mix(in srgb, var(--gain) 14%, transparent);
+}
+
+.discovery-toggle-card input:checked + .toggle-card-switch::after {
+  transform: translateX(16px);
+  background: var(--gain);
+}
+
+.discovery-toggle-card input:disabled ~ .toggle-card-switch,
+.discovery-toggle-card input:disabled ~ .toggle-card-value {
+  opacity: 0.56;
 }
 
 .icon-btn, .text-btn {
@@ -2011,6 +2069,353 @@ h1 {
   color: var(--muted);
 }
 
+.discovery-signals-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.signal-summary-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.signal-summary-bar strong {
+  color: var(--text);
+}
+
+.signal-streaming {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.discovery-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.discovery-signals-panel.compact .discovery-signal-grid {
+  grid-template-columns: 1fr;
+}
+
+.discovery-signal-card,
+.signal-row-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.discovery-signal-card {
+  min-width: 0;
+  padding: 12px;
+}
+
+.signal-card-header,
+.signal-row-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.signal-card-header {
+  margin-bottom: 10px;
+}
+
+.signal-card-header h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.signal-card-header span {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.signal-row-list {
+  display: grid;
+  gap: 8px;
+}
+
+.signal-row-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface-strong) 62%, transparent);
+}
+
+.signal-ticker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 5px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  font-size: 12px;
+  font-weight: 780;
+  letter-spacing: 0;
+}
+
+.signal-chip-row,
+.signal-factor-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.signal-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--gain) 24%, var(--border));
+  border-radius: 5px;
+  color: var(--gain);
+  background: color-mix(in srgb, var(--gain) 10%, transparent);
+  font-size: 11px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.signal-chip.subtle {
+  color: var(--muted);
+  border-color: var(--border);
+  background: transparent;
+}
+
+.signal-score {
+  display: grid;
+  gap: 1px;
+  min-width: 54px;
+  text-align: right;
+}
+
+.signal-score strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.signal-score span {
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.signal-factor-grid .signal-score {
+  min-width: 70px;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+}
+
+.signal-evidence-list {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.signal-empty-state {
+  padding: 14px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.discovery-decision-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.decision-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.decision-summary-bar strong {
+  color: var(--text);
+}
+
+.decision-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.discovery-decision-panel.compact .decision-card-grid {
+  grid-template-columns: 1fr;
+}
+
+.decision-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.decision-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.decision-tier {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.decision-tier.actionable {
+  color: var(--gain);
+  border-color: color-mix(in srgb, var(--gain) 35%, var(--border));
+  background: color-mix(in srgb, var(--gain) 10%, transparent);
+}
+
+.decision-tier.watchlist {
+  color: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent-soft) 36%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 10%, transparent);
+}
+
+.decision-tier.theme_candidate {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.decision-tier.rejected {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.decision-score {
+  display: grid;
+  min-width: 64px;
+  text-align: right;
+}
+
+.decision-score strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 820;
+}
+
+.decision-score span,
+.decision-metric span,
+.thesis-details span {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.decision-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.decision-metric {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
+}
+
+.decision-metric strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.decision-theme-line {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.decision-theme-line small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.decision-evidence,
+.thesis-details ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.thesis-details {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.thesis-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.thesis-details p {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.thesis-details div {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 .report-accordion-container {
   flex: 1;
   min-height: 0;
@@ -3010,6 +3415,22 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 760px) {
+  .discovery-signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .signal-score {
+    min-width: 48px;
+  }
+
   .app-shell {
     padding: 0;
   }

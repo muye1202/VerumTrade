@@ -72,12 +72,28 @@ def _build_config(req: DiscoveryRequest) -> dict:
 
     config.setdefault("discovery", {})
     config["discovery"]["policy_mode"] = req.policy_mode
+    config["discovery"].setdefault("business_inflection", {})
+    config["discovery"]["business_inflection"]["enabled"] = req.business_inflection_enabled
 
     config.setdefault("numeric_filter", {})
     config["numeric_filter"].setdefault("catalyst_prefilter", {})
     config["numeric_filter"]["catalyst_prefilter"]["mode"] = req.discovery_catalyst_mode
 
     return config
+
+
+def _discovery_failure_events(result) -> list[dict]:
+    error = str(getattr(result, "error", "") or "Unknown discovery pipeline error.")
+    return [
+        {
+            "event": "system",
+            "content": f"Pipeline error: {error}",
+        },
+        {
+            "event": "error",
+            "content": f"Discovery aborted: {error}",
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -93,9 +109,14 @@ async def discovery_ws(websocket: WebSocket):
     connection; the server streams a sequence of typed events:
 
         {"event": "system",           "content": "..."}
-        {"event": "stage",            "stage": -1|0|1|2,
+        {"event": "stage",            "stage": -1|0|1|2|3,
                                       "label": "...", "status": "started|completed"}
         {"event": "theme_candidates", "candidates": [...], "count": N}
+        {"event": "business_inflection", "payload": {...}, "count": N}
+        {"event": "attention_gap",    "payload": {...}, "count": N}
+        {"event": "evidence_packs",   "payload": {...}, "count": N}
+        {"event": "two_layer_scoring","payload": {...}, "count": N}
+        {"event": "thesis_cards",     "payload": {...}, "count": N}
         {"event": "report",           "key": "discovery_report", "content": "..."}
         {"event": "completed",        "tickers": [...],
                                       "candidate_count": N, "success": bool}
@@ -135,6 +156,86 @@ async def discovery_ws(websocket: WebSocket):
             await asyncio.sleep(0.4)
             await websocket.send_json({"event": "stage", "stage": 0, "label": "Universe Screening", "status": "completed"})
             await websocket.send_json({"event": "stage", "stage": 1, "label": "Enrichment & Scoring", "status": "completed"})
+            await websocket.send_json({"event": "stage", "stage": 2, "label": "Business Inflection", "status": "started"})
+            await asyncio.sleep(0.2)
+            mock_inflection = {
+                "enabled": req.business_inflection_enabled,
+                "signals": [
+                    {
+                        "ticker": "NVDA",
+                        "inflection_type": "margin_expansion",
+                        "confidence": 0.82,
+                        "metrics": ["gross_margin", "revenue_growth"],
+                        "evidence": ["Mock margin expansion and revenue acceleration signal."],
+                    }
+                ] if req.business_inflection_enabled else [],
+            }
+            await websocket.send_json({"event": "business_inflection", "payload": mock_inflection, "count": len(mock_inflection["signals"])})
+            await websocket.send_json({"event": "stage", "stage": 2, "label": "Business Inflection", "status": "completed"})
+            await websocket.send_json({"event": "stage", "stage": 3, "label": "Attention Gap", "status": "started"})
+            await asyncio.sleep(0.2)
+            mock_attention = {
+                "signals": [
+                    {
+                        "ticker": "NVDA",
+                        "theme": "AI Infrastructure",
+                        "attention_gap_score": 0.77,
+                        "inflection_score": 0.82,
+                        "theme_score": 0.74,
+                        "accumulation_score": 0.61,
+                        "under_attention_score": 0.72,
+                    }
+                ] if req.business_inflection_enabled else [],
+            }
+            await websocket.send_json({"event": "attention_gap", "payload": mock_attention, "count": len(mock_attention["signals"])})
+            await websocket.send_json({"event": "stage", "stage": 3, "label": "Attention Gap", "status": "completed"})
+            mock_packs = {
+                "packs": [
+                    {
+                        "ticker": "NVDA",
+                        "evidence_score": 64.0,
+                        "theme_score": 78.0,
+                        "business_inflection_score": 82.0,
+                        "attention_gap_score": 77.0,
+                        "momentum_confirmation_score": 68.0,
+                        "risk_penalty": 7.0,
+                        "primary_theme": "AI Infrastructure",
+                        "primary_bottleneck": "accelerated compute",
+                        "evidence_bullets": ["Mock theme and inflection evidence."],
+                    }
+                ] if req.business_inflection_enabled else [],
+            }
+            mock_two_layer = {
+                "candidates": [
+                    {
+                        "ticker": "NVDA",
+                        "discovery_score": 73.0,
+                        "evidence_score": 64.0,
+                        "thesis_score": 80.0,
+                        "momentum_confirmation_score": 68.0,
+                        "attention_gap_score": 77.0,
+                        "tier": "actionable",
+                        "action": "actionable",
+                        "tier_reasons": ["Strong thesis quality", "Momentum confirmation present"],
+                    }
+                ] if req.business_inflection_enabled else [],
+            }
+            mock_cards = {
+                "cards": [
+                    {
+                        "ticker": "NVDA",
+                        "status": "actionable",
+                        "bull_thesis": "NVDA has direct exposure to AI infrastructure demand.",
+                        "evidence": ["Mock theme and inflection evidence."],
+                        "risks": ["Valuation and crowding risk."],
+                        "kill_conditions": ["Revenue or margin inflection reverses."],
+                        "confidence": 0.73,
+                    }
+                ] if req.business_inflection_enabled else [],
+            }
+            await websocket.send_json({"event": "evidence_packs", "payload": mock_packs, "count": len(mock_packs["packs"])})
+            await websocket.send_json({"event": "two_layer_scoring", "payload": mock_two_layer, "count": len(mock_two_layer["candidates"])})
+            await websocket.send_json({"event": "thesis_cards", "payload": mock_cards, "count": len(mock_cards["cards"])})
             await websocket.send_json({"event": "report", "key": "discovery_report", "content": "# Mock Discovery\nThis is a mock run."})
             await websocket.send_json({"event": "completed", "tickers": ["AAPL", "NVDA"], "candidate_count": 0, "success": True})
             return
@@ -169,7 +270,7 @@ async def discovery_ws(websocket: WebSocket):
                 "label": "Theme Engine", "status": "completed",
             })
 
-        # ── Stage 0–2: Full discovery pipeline ─────────────────────────────
+        # ── Stage 0–3: Full discovery pipeline ─────────────────────────────
         await websocket.send_json({
             "event": "stage", "stage": 0,
             "label": "Universe Screening", "status": "started",
@@ -188,6 +289,11 @@ async def discovery_ws(websocket: WebSocket):
                 discovery_track=req.discovery_track,
             ),
         )
+
+        if not result.success:
+            for event in _discovery_failure_events(result):
+                await websocket.send_json(event)
+            return
 
         await websocket.send_json({
             "event": "stage", "stage": 0,
@@ -211,6 +317,55 @@ async def discovery_ws(websocket: WebSocket):
         else:
             final_count = len(candidates_json)
 
+        metadata = result.metadata or {}
+        inflection_payload = metadata.get("business_inflection") or {"enabled": req.business_inflection_enabled, "signals": []}
+        attention_payload = metadata.get("attention_gap") or {"signals": []}
+        evidence_payload = metadata.get("evidence_packs") or {"packs": []}
+        two_layer_payload = metadata.get("two_layer_scoring") or {"candidates": []}
+        thesis_payload = metadata.get("thesis_cards") or {"cards": []}
+
+        await websocket.send_json({
+            "event": "stage", "stage": 2,
+            "label": "Business Inflection", "status": "started",
+        })
+        await websocket.send_json({
+            "event": "business_inflection",
+            "payload": inflection_payload,
+            "count": len(inflection_payload.get("signals", [])),
+        })
+        await websocket.send_json({
+            "event": "stage", "stage": 2,
+            "label": "Business Inflection", "status": "completed",
+        })
+        await websocket.send_json({
+            "event": "stage", "stage": 3,
+            "label": "Attention Gap", "status": "started",
+        })
+        await websocket.send_json({
+            "event": "attention_gap",
+            "payload": attention_payload,
+            "count": len(attention_payload.get("signals", [])),
+        })
+        await websocket.send_json({
+            "event": "stage", "stage": 3,
+            "label": "Attention Gap", "status": "completed",
+        })
+        await websocket.send_json({
+            "event": "evidence_packs",
+            "payload": evidence_payload,
+            "count": len(evidence_payload.get("packs", [])),
+        })
+        await websocket.send_json({
+            "event": "two_layer_scoring",
+            "payload": two_layer_payload,
+            "count": len(two_layer_payload.get("candidates", [])),
+        })
+        await websocket.send_json({
+            "event": "thesis_cards",
+            "payload": thesis_payload,
+            "count": len(thesis_payload.get("cards", [])),
+        })
+
         if result.report:
             await websocket.send_json({
                 "event": "report",
@@ -224,12 +379,6 @@ async def discovery_ws(websocket: WebSocket):
             "candidate_count": final_count,
             "success": result.success,
         })
-
-        if not result.success and result.error:
-            await websocket.send_json({
-                "event": "system",
-                "content": f"Pipeline warning: {result.error}",
-            })
 
     except WebSocketDisconnect:
         logger.info("Discovery WebSocket client disconnected")

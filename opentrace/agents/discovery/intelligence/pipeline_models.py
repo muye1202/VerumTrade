@@ -7,6 +7,10 @@ Data structures and types representing the discovery pipeline intelligence model
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from opentrace.agents.discovery.intelligence.attention_gap import AttentionGapSignal
+from opentrace.agents.discovery.intelligence.business_inflection import (
+    BusinessInflectionSignal,
+)
 from opentrace.agents.discovery.theme_engine.models import ThemeExposureCandidate
 
 
@@ -145,6 +149,111 @@ class Stage2ScoredCandidate:
 
 
 @dataclass
+class DiscoveryEvidencePack:
+    """Normalized evidence bundle for thesis-aware discovery scoring."""
+    ticker: str
+    evidence_score: float = 0.0
+    theme_score: float = 0.0
+    bottleneck_score: float = 0.0
+    business_inflection_score: float = 0.0
+    attention_gap_score: float = 0.0
+    momentum_confirmation_score: float = 0.0
+    catalyst_proximity_score: float = 0.0
+    risk_penalty: float = 0.0
+    primary_theme: str = ""
+    primary_bottleneck: str = ""
+    exposure_type: str = ""
+    evidence_bullets: List[str] = field(default_factory=list)
+    attention_reasons: List[str] = field(default_factory=list)
+    scorecard: Optional[Stage1EnrichmentScorecard] = None
+    stage2_candidate: Optional[Stage2ScoredCandidate] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "evidence_score": round(float(self.evidence_score), 2),
+            "theme_score": round(float(self.theme_score), 2),
+            "bottleneck_score": round(float(self.bottleneck_score), 2),
+            "business_inflection_score": round(float(self.business_inflection_score), 2),
+            "attention_gap_score": round(float(self.attention_gap_score), 2),
+            "momentum_confirmation_score": round(float(self.momentum_confirmation_score), 2),
+            "catalyst_proximity_score": round(float(self.catalyst_proximity_score), 2),
+            "risk_penalty": round(float(self.risk_penalty), 2),
+            "primary_theme": self.primary_theme,
+            "primary_bottleneck": self.primary_bottleneck,
+            "exposure_type": self.exposure_type,
+            "evidence_bullets": list(self.evidence_bullets or []),
+            "attention_reasons": list(self.attention_reasons or []),
+        }
+
+
+@dataclass
+class TwoLayerScoredCandidate:
+    """Final thesis-aware discovery score and tier for one ticker."""
+    ticker: str
+    discovery_score: float = 0.0
+    evidence_score: float = 0.0
+    thesis_score: float = 0.0
+    momentum_confirmation_score: float = 0.0
+    attention_gap_score: float = 0.0
+    catalyst_proximity_score: float = 0.0
+    risk_penalty: float = 0.0
+    tier: str = "rejected"
+    action: str = "reject"
+    tier_reasons: List[str] = field(default_factory=list)
+    evidence_pack: Optional[DiscoveryEvidencePack] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "discovery_score": round(float(self.discovery_score), 2),
+            "evidence_score": round(float(self.evidence_score), 2),
+            "thesis_score": round(float(self.thesis_score), 2),
+            "momentum_confirmation_score": round(float(self.momentum_confirmation_score), 2),
+            "attention_gap_score": round(float(self.attention_gap_score), 2),
+            "catalyst_proximity_score": round(float(self.catalyst_proximity_score), 2),
+            "risk_penalty": round(float(self.risk_penalty), 2),
+            "tier": self.tier,
+            "action": self.action,
+            "tier_reasons": list(self.tier_reasons or []),
+            "evidence_pack": self.evidence_pack.to_dict() if self.evidence_pack else {},
+        }
+
+
+@dataclass
+class ThesisCard:
+    """Evidence-backed thesis card for a final discovery candidate."""
+    ticker: str
+    status: str = "reject"
+    bull_thesis: str = ""
+    theme_exposure: str = ""
+    business_inflection: str = ""
+    momentum_confirmation: str = ""
+    attention_gap: str = ""
+    catalysts: List[str] = field(default_factory=list)
+    evidence: List[str] = field(default_factory=list)
+    risks: List[str] = field(default_factory=list)
+    kill_conditions: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "status": self.status,
+            "bull_thesis": self.bull_thesis,
+            "theme_exposure": self.theme_exposure,
+            "business_inflection": self.business_inflection,
+            "momentum_confirmation": self.momentum_confirmation,
+            "attention_gap": self.attention_gap,
+            "catalysts": list(self.catalysts or []),
+            "evidence": list(self.evidence or []),
+            "risks": list(self.risks or []),
+            "kill_conditions": list(self.kill_conditions or []),
+            "confidence": round(float(self.confidence), 4),
+        }
+
+
+@dataclass
 class MomentumScanHit:
     """One triggered momentum anomaly signal from Track B scans."""
     ticker: str
@@ -215,6 +324,11 @@ class IntelligenceResult:
     data_quality_summary: Dict[str, Any] = field(default_factory=dict)
     filter_relaxations_applied: List[str] = field(default_factory=list)
     theme_candidates: List[ThemeExposureCandidate] = field(default_factory=list)
+    business_inflection_signals: List[BusinessInflectionSignal] = field(default_factory=list)
+    attention_gap_signals: List[AttentionGapSignal] = field(default_factory=list)
+    evidence_packs: List[DiscoveryEvidencePack] = field(default_factory=list)
+    two_layer_candidates: List[TwoLayerScoredCandidate] = field(default_factory=list)
+    thesis_cards: List[ThesisCard] = field(default_factory=list)
     discovery_track: str = "enricher"  # "enricher" | "anomaly_scan" | "dual_track"
     errors: List[str] = field(default_factory=list)
     scan_date: str = ""

@@ -128,6 +128,10 @@ DEFAULT_CONFIG = {
         "feature_matrix": {
             "cache_ttl_hours": int(os.getenv("OPENTRACE_DISCOVERY_FEATURE_CACHE_TTL_HOURS", "24")),
         },
+        "business_inflection": {
+            "enabled": _env_flag("OPENTRACE_DISCOVERY_BUSINESS_INFLECTION_ENABLED", False),
+            "max_tickers": int(os.getenv("OPENTRACE_DISCOVERY_BUSINESS_INFLECTION_MAX_TICKERS", "25")),
+        },
     },
 
     "stage2_scoring": {

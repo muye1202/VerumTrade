@@ -1,8 +1,13 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import analysis, history, discovery
 from api.database import engine, Base, run_schema_migrations
 import api.models
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # Create DB tables (new installs) then apply incremental column migrations (upgrades)
 Base.metadata.create_all(bind=engine)

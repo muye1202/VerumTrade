@@ -47,6 +47,7 @@ class DiscoveryRequest(BaseModel):
     discovery_catalyst_mode: str = Field(default="daily_calendar", description="daily_calendar | per_ticker_calendar")
     scan_mode: str = Field(default="seed_only", description="seed_only | with_evidence")
     policy_mode: str = Field(default="off", description="off | adaptive (LLM re-scoring)")
+    business_inflection_enabled: bool = Field(default=False, description="Enable fundamentals-based business inflection extraction")
     llm_provider: str = Field(default="openai", description="LLM provider")
     backend_url: Optional[str] = Field(default=None, description="Backend URL for local/custom LLMs")
     provider_settings: Optional[Dict[str, ProviderSettings]] = Field(

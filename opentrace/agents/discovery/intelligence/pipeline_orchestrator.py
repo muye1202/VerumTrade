@@ -16,6 +16,11 @@ from .market_policy_llm import build_llm_bias_profile
 from .track_a_enrichment import Stage1BatchEnricher
 from .candidate_scoring import Stage2Scorer
 from .technical_momentum_metrics import TechnicalMomentumScanner
+from .attention_gap import AttentionGapDetector
+from .business_inflection import BusinessInflectionExtractor
+from .discovery_evidence_pack import DiscoveryEvidencePackBuilder
+from .thesis_card_validator import ThesisCardValidator
+from .two_layer_discovery_scoring import TwoLayerDiscoveryScorer
 from opentrace.agents.discovery.theme_engine.theme_scanner import ThemeScanner
 from opentrace.agents.discovery.theme_engine.exposure_scorer import ExposureScorer
 
@@ -40,6 +45,11 @@ class IntelligenceScanner:
         self.pre_stage0_builder = PreStage0IntelligenceBuilder(config=config)
         self.theme_scanner = ThemeScanner(llm=llm, config=config)
         self.exposure_scorer = ExposureScorer(llm=llm, config=config)
+        self.business_inflection_extractor = BusinessInflectionExtractor(config=config)
+        self.attention_gap_detector = AttentionGapDetector(config=config)
+        self.evidence_pack_builder = DiscoveryEvidencePackBuilder()
+        self.two_layer_scorer = TwoLayerDiscoveryScorer(config=config)
+        self.thesis_card_validator = ThesisCardValidator()
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _pre_stage0_cache_cfg(self, ttl_hours: int) -> Dict[str, Any]:
@@ -440,6 +450,51 @@ class IntelligenceScanner:
         if breadth_context:
             data_quality_summary["breadth_context"] = breadth_context
 
+        try:
+            business_inflection_signals = (
+                self.business_inflection_extractor.extract_for_scorecards(
+                    stage1_scorecards,
+                    trade_date=trade_date,
+                )
+            )
+        except Exception as e:
+            self.logger.warning("Business inflection extraction failed (non-fatal): %s", e)
+            business_inflection_signals = []
+
+        try:
+            attention_gap_signals = self.attention_gap_detector.score(
+                scorecards=stage1_scorecards,
+                theme_candidates=theme_candidates or [],
+                inflection_signals=business_inflection_signals,
+            )
+        except Exception as e:
+            self.logger.warning("Attention gap scoring failed (non-fatal): %s", e)
+            attention_gap_signals = []
+
+        try:
+            evidence_packs = self.evidence_pack_builder.build(
+                stage1_scorecards=stage1_scorecards,
+                stage2_candidates=stage2_candidates,
+                theme_candidates=theme_candidates or [],
+                business_inflection_signals=business_inflection_signals,
+                attention_gap_signals=attention_gap_signals,
+            )
+        except Exception as e:
+            self.logger.warning("Evidence pack build failed (non-fatal): %s", e)
+            evidence_packs = []
+
+        try:
+            two_layer_candidates = self.two_layer_scorer.score(evidence_packs)
+        except Exception as e:
+            self.logger.warning("Two-layer discovery scoring failed (non-fatal): %s", e)
+            two_layer_candidates = []
+
+        try:
+            thesis_cards = self.thesis_card_validator.validate(two_layer_candidates)
+        except Exception as e:
+            self.logger.warning("Thesis card validation failed (non-fatal): %s", e)
+            thesis_cards = []
+
         result = IntelligenceResult(
             sector_signals=[],
             catalyst_signals=[],
@@ -457,6 +512,11 @@ class IntelligenceScanner:
             data_quality_summary=data_quality_summary,
             filter_relaxations_applied=list(stage2_meta.get("filter_relaxations_applied") or []),
             theme_candidates=list(theme_candidates or []),
+            business_inflection_signals=list(business_inflection_signals or []),
+            attention_gap_signals=list(attention_gap_signals or []),
+            evidence_packs=list(evidence_packs or []),
+            two_layer_candidates=list(two_layer_candidates or []),
+            thesis_cards=list(thesis_cards or []),
             discovery_track="enricher",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -529,6 +589,11 @@ class IntelligenceScanner:
                 "track_b_prefetch": dict(track_b_metrics or {}),
             },
             theme_candidates=list(theme_candidates or []),
+            business_inflection_signals=[],
+            attention_gap_signals=[],
+            evidence_packs=[],
+            two_layer_candidates=[],
+            thesis_cards=[],
             discovery_track="anomaly_scan",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
@@ -634,6 +699,11 @@ class IntelligenceScanner:
             data_quality_summary=dict(result_a.data_quality_summary or {}),
             filter_relaxations_applied=list(result_a.filter_relaxations_applied or []),
             theme_candidates=list(theme_candidates or []),
+            business_inflection_signals=list(result_a.business_inflection_signals or []),
+            attention_gap_signals=list(result_a.attention_gap_signals or []),
+            evidence_packs=list(result_a.evidence_packs or []),
+            two_layer_candidates=list(result_a.two_layer_candidates or []),
+            thesis_cards=list(result_a.thesis_cards or []),
             discovery_track="dual_track",
             scan_date=trade_date,
             scan_duration_secs=round(time.time() - start_time, 1),
