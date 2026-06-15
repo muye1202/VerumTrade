@@ -1409,8 +1409,14 @@ class OpenTraceGraph:
         # Build the cross-asset/regime/positioning context bus once per run, off-thread so the
         # snapshot's vendor calls do not block the event loop. Degrades to {} when unavailable.
         from opentrace.agents.utils.market_data.macro_regime import build_macro_regime_context
+        from opentrace.agents.utils.market_data.pullback_vulnerability import (
+            build_pullback_vulnerability,
+        )
 
         macro_regime = await asyncio.to_thread(build_macro_regime_context, str(trade_date))
+        pullback_vulnerability = await asyncio.to_thread(
+            build_pullback_vulnerability, company_name, str(trade_date), macro_regime
+        )
 
         init_agent_state = self.propagator.create_initial_state(
             company_name,
@@ -1418,6 +1424,7 @@ class OpenTraceGraph:
             portfolio_context=portfolio_context,
             time_horizon=time_horizon,
             macro_regime=macro_regime,
+            pullback_vulnerability=pullback_vulnerability,
         )
 
         args = self.propagator.get_graph_args()

@@ -150,3 +150,6 @@ class AgentState(_MessagesState):
     # Cross-asset / regime / positioning context bus (computed once at graph init; reused by the
     # news, catalyst, and risk nodes to surface sector/macro pullback risk).
     macro_regime: Annotated[dict, "Compact cross-asset/regime/positioning snapshot for the run"]
+    # Per-ticker Pullback Vulnerability Score (extension + crowding + tape fragility + valuation
+    # richness) consumed by the risk judge as a pullback-risk override input.
+    pullback_vulnerability: Annotated[dict, "Per-ticker pullback vulnerability score and drivers"]
