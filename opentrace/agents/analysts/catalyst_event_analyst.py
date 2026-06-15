@@ -455,7 +455,8 @@ def create_catalyst_event_analyst(llm):
 Your job is not to summarize all news. Identify discrete events that can change trade thesis, timing, or risk budget for {ticker}.
 
 Input contract:
-- You receive a CatalystEventBundle with recent events, upcoming catalysts, filings, macro placeholders, market context, optional position context, optional prior thesis, source quality, and freshness.
+- You receive a CatalystEventBundle with recent events, upcoming catalysts, filings, market context, optional position context, optional prior thesis, source quality, and freshness.
+- The bundle's `macro_events` carry cross-asset / regime / positioning context (risk-off tape, rising-rate impulse, oil shock, elevated volatility, crowded momentum factor, sector distribution, OPEX/quarter-end). These are pullback-risk signals: a crowded/extended sector can unwind on a soft or second-order catalyst (a peer's guidance tone, a policy trial balloon, a foreign-market shock) with no company-specific bad news. Weigh material `macro_events` in `event_risk_rating`, `thesis_break_score`, and `risk_controls`, and surface them in the evidence_table when relevant.
 
 Output contract:
 - Produce one JSON object between BEGIN_CATALYST_EVENT_REPORT_JSON and END_CATALYST_EVENT_REPORT_JSON.

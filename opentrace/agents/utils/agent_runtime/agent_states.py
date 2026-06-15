@@ -146,3 +146,7 @@ class AgentState(_MessagesState):
     # Market-session context (computed at graph init; baseline ET windows only)
     market_session: Annotated[dict, "Current US market session metadata"]
     market_session_context: Annotated[str, "Human-readable market-session context injected into prompts"]
+
+    # Cross-asset / regime / positioning context bus (computed once at graph init; reused by the
+    # news, catalyst, and risk nodes to surface sector/macro pullback risk).
+    macro_regime: Annotated[dict, "Compact cross-asset/regime/positioning snapshot for the run"]

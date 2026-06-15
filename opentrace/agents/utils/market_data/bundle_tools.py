@@ -39,6 +39,7 @@ from opentrace.agents.utils.market_data.vwap_tools import (
     get_multi_day_vwap_context,
 )
 from opentrace.agents.utils.market_data.fundamentals_parser import build_fundamentals_packet
+from opentrace.agents.utils.market_data.macro_regime import build_macro_regime_context
 from opentrace.dataflows.vendors.finnhub.finnhub_vendor import get_earnings_calendar_finnhub
 
 _COMMON_FALSE_TICKERS = {
@@ -1147,6 +1148,10 @@ async def get_catalyst_event_bundle(
         ),
     }
     results = {key: await task for key, task in tasks.items()}
+    # Cross-asset / regime / positioning events (risk-off tape, rate impulse, oil shock, crowded
+    # momentum, sector distribution, OPEX/quarter-end). Built off-thread; cached per trade date.
+    macro_regime = await asyncio.to_thread(build_macro_regime_context, curr_date)
+    macro_events = macro_regime.get("macro_events") or []
     identity = resolve_company_aliases(
         ticker,
         curr_date,
@@ -1215,7 +1220,7 @@ async def get_catalyst_event_bundle(
         "dropped_event_count": quality["bundle_quality"].get("dropped_event_count", 0),
         "upcoming_events": upcoming_events,
         "recent_filings": filings[:10],
-        "macro_events": [],
+        "macro_events": macro_events,
         "market_context": {
             "last_close": None,
             "one_day_return_pct": None,
