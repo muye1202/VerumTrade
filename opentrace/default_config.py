@@ -81,6 +81,14 @@ DEFAULT_CONFIG = {
     "max_tool_calls_total": int(os.getenv("OPENTRACE_MAX_TOOL_CALLS_TOTAL", "50")),
     # When true, expose bundled one-shot tools per analyst to reduce extra LLM turns.
     "enable_bundle_tools": _env_flag("OPENTRACE_ENABLE_BUNDLE_TOOLS", True),
+    # When true, build the cross-asset/regime/positioning "macro_regime" context bus once per
+    # run and inject it into the news / catalyst / risk nodes (Tier-0 pullback-risk upgrade).
+    # Reuses the discovery-lane snapshot builder; degrades to no-op when data is unavailable.
+    "enable_macro_regime_context": _env_flag("OPENTRACE_ENABLE_MACRO_REGIME_CONTEXT", True),
+    # When true, compute the per-ticker Pullback Vulnerability Score (extension + crowding + tape
+    # fragility + valuation richness) and give the risk judge a dedicated override path on a
+    # HIGH/CRITICAL rating (Tier-1 pullback-risk upgrade). Degrades to no-op when data is sparse.
+    "enable_pullback_vulnerability": _env_flag("OPENTRACE_ENABLE_PULLBACK_VULNERABILITY", True),
     # Decision integrity: market snapshot used to provide reference price context to LLM
     "decision_snapshot_source": os.getenv("OPENTRACE_DECISION_SNAPSHOT_SOURCE", "executor_quote_first"),
     "executor_quote_max_rel_spread": float(os.getenv("OPENTRACE_EXECUTOR_QUOTE_MAX_REL_SPREAD", "0.01")),

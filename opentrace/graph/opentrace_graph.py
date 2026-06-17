@@ -1406,11 +1406,34 @@ class OpenTraceGraph:
             # It's likely fast or blocking. Let's assume it's fine or wrap it.
             portfolio_context = await asyncio.to_thread(fetch_portfolio_context, company_name)
 
+        # Build the cross-asset/regime/positioning context bus once per run, off-thread so the
+        # snapshot's vendor calls do not block the event loop. Degrades to {} when unavailable.
+        from opentrace.agents.utils.market_data.macro_regime import build_macro_regime_context
+        from opentrace.agents.utils.market_data.pullback_vulnerability import (
+            build_pullback_vulnerability,
+        )
+        from opentrace.agents.utils.market_data.peer_read_through import (
+            build_sector_read_through,
+        )
+
+        macro_regime = await asyncio.to_thread(build_macro_regime_context, str(trade_date))
+        pullback_vulnerability = await asyncio.to_thread(
+            build_pullback_vulnerability, company_name, str(trade_date), macro_regime
+        )
+        # Bounded peer-news read-through (Tier-2 Phase 2b). Gated off by default; returns {} unless
+        # peer_read_through.fetch_peer_news is enabled. Off-thread — it issues a few vendor calls.
+        sector_read_through = await asyncio.to_thread(
+            build_sector_read_through, company_name, str(trade_date)
+        )
+
         init_agent_state = self.propagator.create_initial_state(
             company_name,
             trade_date,
             portfolio_context=portfolio_context,
             time_horizon=time_horizon,
+            macro_regime=macro_regime,
+            pullback_vulnerability=pullback_vulnerability,
+            sector_read_through=sector_read_through,
         )
 
         args = self.propagator.get_graph_args()

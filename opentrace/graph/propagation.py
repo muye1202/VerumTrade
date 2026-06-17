@@ -25,12 +25,39 @@ class Propagator:
         trade_date: str,
         portfolio_context: str = "",
         time_horizon: Optional[str] = None,
+        macro_regime: Optional[Dict[str, Any]] = None,
+        pullback_vulnerability: Optional[Dict[str, Any]] = None,
+        sector_read_through: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Create the initial state for the agent graph."""
+        """Create the initial state for the agent graph.
+
+        ``macro_regime``, ``pullback_vulnerability`` and ``sector_read_through`` may be precomputed
+        by the caller (preferred in async entry points, where they are built off-thread to avoid
+        blocking the event loop). When omitted, they are built lazily here — safe for sync callers,
+        and an empty dict when the underlying data is unavailable or disabled.
+        """
         market_session = describe_us_market_session()
         horizon = get_time_horizon_spec(time_horizon).key
         empty_graph = build_evidence_graph({})
         empty_admissibility = validate_admissible_evidence([], time_horizon=horizon)
+        if macro_regime is None:
+            from opentrace.agents.utils.market_data.macro_regime import build_macro_regime_context
+
+            macro_regime = build_macro_regime_context(str(trade_date))
+        if pullback_vulnerability is None:
+            from opentrace.agents.utils.market_data.pullback_vulnerability import (
+                build_pullback_vulnerability,
+            )
+
+            pullback_vulnerability = build_pullback_vulnerability(
+                company_name, str(trade_date), macro_regime
+            )
+        if sector_read_through is None:
+            from opentrace.agents.utils.market_data.peer_read_through import (
+                build_sector_read_through,
+            )
+
+            sector_read_through = build_sector_read_through(company_name, str(trade_date))
         return {
             "messages": [("human", company_name)],
             "portfolio_context": portfolio_context,
@@ -39,6 +66,9 @@ class Propagator:
             "time_horizon": horizon,
             "market_session": market_session,
             "market_session_context": format_market_session_context(market_session),
+            "macro_regime": macro_regime or {},
+            "pullback_vulnerability": pullback_vulnerability or {},
+            "sector_read_through": sector_read_through or {},
             "force_no_tools_for": "",
             "tool_round_counts": {},
             "tool_call_counts": {},

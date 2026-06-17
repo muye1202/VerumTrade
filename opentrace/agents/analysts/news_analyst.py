@@ -8,6 +8,8 @@ from opentrace.agents.utils.market_data.bundle_tools import (
     get_news_data_bundle,
     select_bundle_first_tools,
 )
+from opentrace.agents.utils.market_data.macro_regime import format_macro_regime_markdown
+from opentrace.agents.utils.market_data.peer_read_through import format_sector_read_through_markdown
 from opentrace.dataflows.config import get_config
 from opentrace.agents.utils.llm.tool_binding import bind_tools_parallel_safe
 from opentrace.agents.analysts.tooling import build_tooling_state_update
@@ -37,6 +39,7 @@ def create_news_analyst(llm):
         portfolio_context = state.get("portfolio_context", "")
         catalyst_context = state.get("catalyst_report", "")
         catalyst_structured = state.get("catalyst_event_report_structured", {})
+        macro_regime = state.get("macro_regime", {}) or {}
         spec = get_time_horizon_spec(state.get("time_horizon"))
         holding_text = spec.label
         window_text = f"the next {spec.weeks_range[0]}–{spec.weeks_range[1]} weeks"
@@ -117,6 +120,32 @@ def create_news_analyst(llm):
                 + "\n"
                 + str(catalyst_context)
                 + "\nUse recent_material_events, thesis_supporting_events, thesis_breaking_events, and evidence_table to avoid over-weighting routine headlines. Focus news analysis on narrative deltas not already explained by the catalyst report.\n---"
+            )
+
+        macro_regime_block = format_macro_regime_markdown(macro_regime)
+        if macro_regime_block:
+            system_message += (
+                "\n\n---\nMARKET REGIME CONTEXT (cross-asset / positioning snapshot for this run):\n"
+                + macro_regime_block
+                + "\n\nUse this to ground the macro/regime section and the event-driven risk list. "
+                "Explicitly flag pullback vulnerability when the ticker's sector is extended/crowded "
+                "(stretched momentum factor, parabolic sector run) or when the tape is turning risk-off "
+                "(rates rising, oil spiking, VIX up). A soft/second-order catalyst (a peer's guidance "
+                "tone, a policy trial balloon, a foreign-market shock) can unwind a crowded sector even "
+                "with no company-specific bad news — call this out as a watch item.\n---"
+            )
+
+        sector_read_through_block = format_sector_read_through_markdown(
+            state.get("sector_read_through", {}) or {}
+        )
+        if sector_read_through_block:
+            system_message += (
+                "\n\n---\n"
+                + sector_read_through_block
+                + "\n\nThese are the ticker's basket peers. Weigh a peer's recent guidance/news tone as "
+                "a read-through to the target: soft peer guidance or a peer miss can re-rate the whole "
+                "crowded basket even with no news on the target itself. Surface it as a near-term risk "
+                "with the peer's report date when one is given.\n---"
             )
 
         prompt = ChatPromptTemplate.from_messages(

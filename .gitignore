@@ -23,6 +23,7 @@ journal/
 eval_results/
 eval_data/
 *.db
+.superpowers
 
 # ─── Temp / scratch files ──────────────────────────────────
 .pytest_cache

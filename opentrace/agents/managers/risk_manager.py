@@ -17,6 +17,10 @@ from opentrace.agents.utils.agent_runtime.evidence_graph import (
 )
 from opentrace.agents.trader.decision_brief import build_trader_plan_v1
 from opentrace.execution.decision_guard import build_market_snapshot
+from opentrace.agents.utils.market_data.macro_regime import format_macro_regime_markdown
+from opentrace.agents.utils.market_data.pullback_vulnerability import (
+    format_pullback_vulnerability_markdown,
+)
 from opentrace.graph.evidence_ledger_schema import build_evidence_ledger
 from opentrace.graph.plan_patch_schema import (
     apply_valid_plan_patches,
@@ -158,6 +162,38 @@ CANONICAL MARKET SNAPSHOT (anchor all prices to this):
 {market_snapshot}
 ---
 """
+        macro_regime_block = ""
+        macro_regime_md = format_macro_regime_markdown(state.get("macro_regime", {}) or {})
+        if macro_regime_md:
+            macro_regime_block = f"""
+---
+MARKET REGIME / POSITIONING CONTEXT (cross-asset snapshot for this run):
+{macro_regime_md}
+
+Treat this as a pullback-risk overlay. If the tape is risk-off, rates are rising, oil is spiking,
+or the ticker sits in a crowded/extended momentum sector, lean conservative on sizing and timing
+(prefer reduced size, tighter invalidation, or wait-for-trigger) unless admissible evidence
+directly offsets the regime risk. A crowded sector can unwind on a soft/second-order catalyst with
+no company-specific bad news — do not assume single-name strength immunizes against it.
+---
+"""
+        pullback_vuln = state.get("pullback_vulnerability", {}) or {}
+        pullback_vuln_block = ""
+        pullback_vuln_md = format_pullback_vulnerability_markdown(pullback_vuln)
+        if pullback_vuln_md:
+            pullback_vuln_block = f"""
+---
+PULLBACK VULNERABILITY (per-ticker, 0-100; higher = more vulnerable to a sharp pullback):
+{pullback_vuln_md}
+
+OVERRIDE RULE: If the rating is HIGH or CRITICAL, treat it as a conservative override on any
+BUY/add: prefer reduced position size, a tighter stop / invalidation, or a wait-for-trigger (v2)
+entry, unless admissible evidence directly offsets the vulnerability (e.g., a confirmed positive
+catalyst with durable follow-through). A high score does NOT by itself force SELL/HOLD — it tempers
+sizing and entry aggressiveness for new exposure and tightens risk controls on existing exposure.
+Explicitly state in your narrative whether you follow or override this signal and why.
+---
+"""
 
         prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts-Risky, Neutral, and Safe/Conservative-and determine the best course of action for the trader.
 Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
@@ -172,6 +208,8 @@ CURRENT MARKET SESSION CONTEXT:
 {sections["current_response"]}
 {portfolio_block}
 {snapshot_block}
+{macro_regime_block}
+{pullback_vuln_block}
 
 Guidelines for Decision-Making:
 1. **Summarize Key Arguments**: Extract the strongest points from each analyst, focusing on relevance to the context.

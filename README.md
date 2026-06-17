@@ -21,45 +21,58 @@
 OpenTrace turns a single ticker (or your whole portfolio) into a **transparent, auditable trade
 recommendation** produced by a team of specialised LLM agents. Instead of a black-box "buy/sell"
 signal, every conclusion is backed by a **trace** you can read: which evidence each analyst found,
-how the bull and bear sides argued, what the risk team flagged, and why the final decision was
-made.
+how the bull and bear sides argued, what the risk team flagged, and why the final decision was made.
 
-It is built for two audiences:
-
-- **Researchers** studying multi-agent LLM systems, interpretability, and agentic decision-making.
-- **Practitioners** who want a serious, inspectable second opinion before they trade (paper or live).
-
-### ✨ Highlights
-
-- 🧩 **Structured agent pipeline** — specialised analysts → bull/bear research debate → trader plan
-  → risk-management review → execution, wired as a [LangGraph](https://github.com/langchain-ai/langgraph) workflow.
-- 🔎 **Visible reasoning & decision traces** — the namesake feature: every step from raw evidence to
-  the final proposal is captured and rendered in the web UI.
-- 🔗 **Evidence graph** — analyst findings are distilled into a structured fact graph that grounds
-  every downstream agent, reducing hand-wavy reasoning.
-- 🗞️ **Catalyst & event-risk awareness** — a dedicated analyst surfaces earnings, FDA, and macro
-  catalysts that move prices.
-- 🧠 **Closed-loop learning** — a journal subsystem tracks each thesis to its real outcome and feeds
-  the lessons back into agent memory.
-- 🛰️ **AI stock discovery** — a multi-stage screener finds promising tickers, then runs the full
-  pipeline on the best candidates.
-- 🔌 **Bring your own model & data** — 9 LLM providers (incl. local Ollama) and 6+ market-data
-  vendors with automatic fallback. Start free with Yahoo Finance and one LLM key.
-- 💸 **Paper or live execution** — optional Alpaca integration with position-size and concentration
-  guardrails.
+```text
+Analysts  →  Evidence Graph  →  Bull/Bear debate  →  Trader plan  →  Risk review  →  Decision (+ optional trade)
+   every arrow above is captured as a readable reasoning & decision trace
+```
 
 ---
 
-## 🆕 What's new vs. the original TradingAgents
+## 🧭 Choose your path
+
+Jump straight to what you came for:
+
+| If you are… | Start here |
+|:--|:--|
+| ⚡ **Just want to run it** | [Quick Start — Web App](#-quick-start--web-app) → open the browser UI in minutes |
+| 💻 **Terminal-first** | [Quick Start — CLI](#-quick-start--cli) → guided, no config files to edit |
+| 🐍 **Building on top of it** | [Python API](#-python-api-programmatic) → embed OpenTrace in your own scripts |
+| 🔬 **Researching multi-agent LLMs** | [Reasoning & Decision Traces](#-reasoning--decision-traces) · [Architecture](#%EF%B8%8F-architecture) · [Risk awareness](#%EF%B8%8F-crowding--macro-pullback-awareness) |
+| 💼 **Trading (paper or live)** | [CLI](#-quick-start--cli) · [Trade execution config](#%EF%B8%8F-configuration) · [Troubleshooting](#-troubleshooting--faq) |
+| 🛠️ **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+
+---
+
+## ✨ What you get
 
 OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricresearch/tradingagents)
-(see [Credits](#-credits--acknowledgments)) and extends it substantially:
+(see [Credits](#-credits--acknowledgments)) and extends it into a transparent, risk-aware system.
+
+| Capability | What it gives you |
+|:--|:--|
+| 🔎 **Visible reasoning & decision traces** | The namesake feature — every step from raw evidence to the final proposal is captured and rendered in the web UI. [Details ↓](#-reasoning--decision-traces) |
+| 🔗 **Evidence graph** | Analyst findings are distilled into a structured fact graph that grounds every downstream agent, reducing hand-wavy reasoning. |
+| 🧩 **Structured agent pipeline** | Specialised analysts → bull/bear debate → trader plan → risk review → execution, wired as a [LangGraph](https://github.com/langchain-ai/langgraph) workflow. |
+| 🗞️ **Catalyst & event-risk awareness** | A dedicated analyst surfaces earnings, FDA, and macro catalysts that move prices. |
+| 🛡️ **Crowding & macro-pullback awareness** | **(new)** A regime context bus + per-ticker **Pullback Vulnerability Score** + peer/sector read-through warn when a crowded, extended name is fragile. [Details ↓](#%EF%B8%8F-crowding--macro-pullback-awareness) |
+| 🧠 **Closed-loop learning** | A journal subsystem tracks each thesis to its real outcome and feeds the lessons back into agent memory. |
+| 🛰️ **AI stock discovery** | A multi-stage screener finds promising tickers, then runs the full pipeline on the best candidates. |
+| 🔌 **Bring your own model & data** | 9 LLM providers (incl. local Ollama) and 6+ market-data vendors with automatic fallback. Start free with Yahoo Finance and one LLM key. |
+| 💸 **Paper or live execution** | Optional Alpaca integration with position-size and concentration guardrails and 5 order types. |
+
+<details>
+<summary><b>📊 Full comparison — what OpenTrace adds over the original TradingAgents</b></summary>
+
+<br>
 
 | Area | Addition in OpenTrace |
 |:--|:--|
 | **Transparency** | Reasoning & decision **traces** plus a React UI to inspect them ([details](#-reasoning--decision-traces)) |
 | **Grounding** | **Evidence Graph** synthesis layer between analysts and researchers |
 | **New analyst** | **Catalyst / Event-Risk Analyst** (earnings, FDA, macro catalysts) |
+| **Risk awareness** | **Macro-regime context bus**, per-ticker **Pullback Vulnerability Score**, and **peer/sector read-through** with a dedicated risk-judge override ([details](#%EF%B8%8F-crowding--macro-pullback-awareness)) |
 | **Learning** | **Journal** subsystem: thesis state machine, outcome monitoring, reflection → lesson memory |
 | **Discovery** | Multi-stage **stock-discovery** pipeline + a macro **Theme Engine** |
 | **Decision rigor** | Structured **Decision Schema** + pre-execution **Decision Guard** validation |
@@ -67,17 +80,7 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | **Reach** | 9 LLM providers (OpenAI, Azure Foundry, Anthropic, Google, DeepSeek, Qwen, GLM, OpenRouter, Ollama) and a multi-vendor data layer with fallback |
 | **Engineering** | A **context-budget** manager for token control, plus full FastAPI + React + Typer/Rich apps |
 
----
-
-| | |
-|:--|:--|
-| [🚀 Quick Start — Web App](#-quick-start--web-app) | Launch the browser-based UI in minutes |
-| [💻 Quick Start — CLI](#-quick-start--cli) | Run analyses from the terminal |
-| [🐍 Python API](#-python-api-programmatic) | Use OpenTrace in your own scripts |
-| [🔬 Reasoning & Decision Traces](#-reasoning--decision-traces) | What makes OpenTrace transparent |
-| [🏗️ Architecture](#%EF%B8%8F-architecture) | How the autonomous agent teams collaborate |
-| [⚙️ Configuration](#%EF%B8%8F-configuration) | LLM providers, data vendors, and tuning knobs |
-| [🧰 Troubleshooting](#-troubleshooting--faq) | Fixes for common first-run issues |
+</details>
 
 ---
 
@@ -85,7 +88,7 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 
 The web interface is the easiest way to get started. It launches a **React + Vite** frontend and a **FastAPI** backend.
 
-### Prerequisites
+**Prerequisites**
 
 | Tool | Version | Check |
 |:--|:--|:--|
@@ -93,63 +96,56 @@ The web interface is the easiest way to get started. It launches a **React + Vit
 | Node.js | ≥ 18 | `node --version` |
 | npm | ≥ 9 | `npm --version` |
 
-### Step 1 — Clone & install
+**1 — Clone & install**
 
 ```bash
 git clone https://github.com/muye1202/OpenTrace.git
 cd OpenTrace
 
-# Option A — pip (editable install)
-pip install -e .
-
-# Option B — uv (faster, if you have uv installed)
-uv sync
+pip install -e .       # or, if you have uv:  uv sync
 ```
 
-### Step 2 — Configure API keys
+**2 — Configure API keys**
 
 ```bash
-# Copy the template
-cp .env.example .env        # Linux / macOS
+cp .env.example .env         # Linux / macOS
 copy .env.example .env       # Windows
 ```
 
-Open `.env` and paste in at least one LLM provider key (OpenAI, Azure Foundry, Anthropic, Google, DeepSeek, etc.). That's all you need — market data from Yahoo Finance works with no key at all.
+Open `.env` and paste in at least one LLM provider key (OpenAI, Azure Foundry, Anthropic, Google,
+DeepSeek, …). That's all you need — market data from Yahoo Finance works with no key at all.
 
 > [!TIP]
 > See [`.env.example`](.env.example) for every supported key and what it does.
 
-### Step 3 — Install frontend dependencies
+**3 — Install frontend dependencies**
 
 ```bash
-cd frontend
-npm install
-cd ..
+cd frontend && npm install && cd ..
 ```
 
-### Step 4 — Launch
+**4 — Launch** — open **two terminals** from the project root:
 
-Open **two terminals** from the project root:
-
-**Terminal 1 — Backend (FastAPI)**
 ```bash
+# Terminal 1 — Backend (FastAPI)
 uvicorn api.main:app --reload
+
+# Terminal 2 — Frontend (Vite)
+cd frontend && npm run dev
 ```
 
-**Terminal 2 — Frontend (Vite)**
-```bash
-cd frontend
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) in your browser. The frontend talks to the
-backend on `http://localhost:8000`, and completed analyses are persisted so you can revisit them
-from the **History** view.
+Open [http://localhost:5173](http://localhost:5173). The frontend talks to the backend on
+`http://localhost:8000`, and completed analyses are persisted so you can revisit them from the
+**History** view.
 
 > [!NOTE]
-> Alternatively, you can use `python run.py` which starts both the backend and frontend in a single terminal. However, separate terminals give you better visibility into logs.
+> `python run.py` starts both the backend and frontend in a single terminal. Separate terminals
+> just give you better visibility into logs.
 
-### 💡 What to expect (cost & time)
+<details>
+<summary><b>💡 What to expect — cost & time</b></summary>
+
+<br>
 
 OpenTrace runs many LLM calls per analysis, so each run takes time and incurs API cost:
 
@@ -164,26 +160,17 @@ OpenTrace runs many LLM calls per analysis, so each run takes time and incurs AP
 **First run?** Start with **Shallow** depth and small quick/deep models to confirm everything works
 before spending on deeper analyses.
 
+</details>
+
 ---
 
 ## 💻 Quick Start — CLI
 
-The interactive CLI walks you through every setting step by step — no config files to edit.
-
-### Prerequisites
-
-Same as above ([Python ≥ 3.10](#prerequisites)), plus the editable install:
+The interactive CLI walks you through every setting step by step — no config files to edit. It needs
+the same prerequisites as above plus the editable install (`pip install -e .`).
 
 ```bash
-pip install -e .
-```
-
-### Single-stock analysis
-
-```bash
-python -m cli.main analyze
-# or, after editable install:
-opentrace analyze
+python -m cli.main analyze       # or, after editable install:  opentrace analyze
 ```
 
 `analyze` first asks whether you want **single-ticker analysis**, **portfolio analysis**, or
@@ -200,33 +187,28 @@ opentrace analyze
 | **Models** | Quick-thinking model (analysts) and deep-thinking model (judges) |
 | **Execution** | Analysis only, or also place a paper trade via Alpaca |
 
-A live terminal dashboard streams agent progress, tool calls, and the growing report in real time. Results are saved to `results/stocks/{date}/{ticker}/`.
+A live terminal dashboard streams agent progress, tool calls, and the growing report in real time.
+Results are saved to `results/stocks/{date}/{ticker}/`.
 
-### Portfolio analysis
+<details>
+<summary><b>Portfolio analysis, Stock discovery & Journal commands</b></summary>
 
-```bash
-python -m cli.main analyze-portfolio
-# or
-opentrace analyze-portfolio
-```
+<br>
 
-Pulls your Alpaca positions, runs a **triage step** to identify which stocks most need attention, then performs full multi-agent analysis on those. Remaining stocks get a lightweight "HOLD" entry.
+**Portfolio analysis** — `opentrace analyze-portfolio`
+Pulls your Alpaca positions, runs a **triage step** to identify which stocks most need attention,
+then performs full multi-agent analysis on those. Remaining stocks get a lightweight "HOLD" entry.
 
-### Stock discovery
+**Stock discovery** — runs from the main `analyze` command; choose **"Stock Discovery (AI finds
+promising stocks)"** at the first prompt. The system screens for promising tickers using multi-factor
+scoring, then runs deep multi-agent analysis on the top candidates. You can launch a fresh discovery
+run or resume from a previously saved candidate list. See
+[Stock Discovery mode](#%EF%B8%8F-architecture) under Architecture.
 
-Stock discovery runs from the main `analyze` command — choose **"Stock Discovery (AI finds
-promising stocks)"** at the first prompt. The system screens for promising tickers using
-multi-factor scoring, then runs deep multi-agent analysis on the top candidates. You can launch a
-fresh discovery run or resume deep analysis from a previously saved candidate list. See
-[Stock Discovery mode](#-stock-discovery-mode) for the pipeline details.
+**Journal** — `opentrace journal`
+Track trade outcomes and build agent memory. See [`journal_cli/README.md`](journal_cli/README.md).
 
-### Journal
-
-```bash
-opentrace journal
-```
-
-Track trade outcomes and build agent memory. See [`journal_cli/README.md`](journal_cli/README.md) for details.
+</details>
 
 > [!TIP]
 > Run `opentrace --help` (or `python -m cli.main --help`) to see every command and option.
@@ -287,9 +269,9 @@ Final decision        →  { action: BUY, order_type: LIMIT, qty: ..., rationale
 
 <sub>Illustrative — the exact fields come from the decision schema and evidence-graph code above.</sub>
 
-The web UI renders these via dedicated React panels
-(`DecisionTracePanel`, `TraderReasoningPanel`, `EvidenceGraphPanel` under `frontend/src/`), so you
-can expand any agent's contribution instead of trusting a single opaque verdict.
+The web UI renders these via dedicated React panels (`DecisionTracePanel`, `TraderReasoningPanel`,
+`EvidenceGraphPanel` under `frontend/src/`), so you can expand any agent's contribution instead of
+trusting a single opaque verdict.
 
 ---
 
@@ -301,14 +283,13 @@ OpenTrace is built on **LangGraph** — each agent is a node in a directed workf
 
 ### 🧠 Two tiers of LLM
 
-Every agent in the system uses one of two model slots:
+Every agent uses one of two model slots — you set both in one place (`deep_think_llm`,
+`quick_think_llm`) and the system routes them automatically:
 
 | Tier | Used by | Why |
 |:--|:--|:--|
 | **Quick-thinking** | Catalyst / Market / Social / News / Fundamentals Analysts, Bull & Bear Researchers, Trader, Risk Debaters | Speed and cost — these agents run many times and don't need heavy reasoning |
-| **Deep-thinking** | Research Manager, Risk Judge, Portfolio Triage Agent | These are the key decision points where accuracy matters most; a stronger model pays off here |
-
-You set both in one place (`deep_think_llm` and `quick_think_llm`) and the system routes them automatically.
+| **Deep-thinking** | Research Manager, Risk Judge, Portfolio Triage Agent | The key decision points where accuracy matters most; a stronger model pays off here |
 
 ### 🔗 Evidence graph
 
@@ -318,9 +299,14 @@ After the analysts finish, OpenTrace doesn't just concatenate their reports. It 
 references. This keeps the bull/bear debate and the trader anchored to concrete evidence instead of
 free-floating prose, and it's what powers the Evidence Graph panel in the UI.
 
-### 🗄️ Data layer
+<details>
+<summary><b>🗄️ Data layer — routing, fallback & per-analyst tools</b></summary>
 
-All market-data tool calls go through a single routing layer ([`dataflows/interface.py`](opentrace/dataflows/interface.py)). You pick a preferred vendor per category in your config; if that vendor is unavailable the system silently tries the next one.
+<br>
+
+All market-data tool calls go through a single routing layer
+([`dataflows/interface.py`](opentrace/dataflows/interface.py)). You pick a preferred vendor per
+category in your config; if that vendor is unavailable the system silently tries the next one.
 
 Each analyst has access to a curated set of data tools:
 
@@ -333,13 +319,19 @@ Each analyst has access to a curated set of data tools:
 | **Fundamentals** | Fundamentals, balance sheet, cash flow, income statement, insider sentiment & transactions |
 
 > [!TIP]
-> When `enable_bundle_tools` is on (default), each analyst also gets a one-shot "bundle" tool that fetches all key data in a single call, reducing LLM turns and latency.
+> When `enable_bundle_tools` is on (default), each analyst also gets a one-shot "bundle" tool that
+> fetches all key data in a single call, reducing LLM turns and latency.
 
-### 💾 Memory & closed-loop learning
+</details>
+
+<details>
+<summary><b>💾 Memory & closed-loop learning (Journal)</b></summary>
+
+<br>
 
 Each agent team has its own **vector-store memory** (backed by ChromaDB). On top of that, the
-**Journal** subsystem ([`opentrace/agents/journal/`](opentrace/agents/journal/)) closes the
-loop between a decision and its real-world outcome:
+**Journal** subsystem ([`opentrace/agents/journal/`](opentrace/agents/journal/)) closes the loop
+between a decision and its real-world outcome:
 
 - **Thesis extraction & state machine** — each trade's thesis is captured and tracked through its
   lifecycle (open → playing out → invalidated/realized).
@@ -351,41 +343,75 @@ loop between a decision and its real-world outcome:
 See [`opentrace/agents/journal/USAGE.md`](opentrace/agents/journal/USAGE.md) and
 [`journal_cli/README.md`](journal_cli/README.md).
 
-### 📁 Portfolio mode extras
+</details>
 
-When you run portfolio analysis, an additional **Triage Agent** runs first. It scans all your positions and picks the ones that need the most attention right now — based on breaking news, unusual price moves, concentration risk, and more. Only those stocks go through the full multi-agent pipeline; everything else gets a quick "HOLD" recommendation.
+<details>
+<summary><b>📁 Portfolio mode & 🔎 Stock Discovery mode</b></summary>
 
-### 🔎 Stock Discovery mode
+<br>
 
-The discovery pipeline runs independently of the main analysis graph:
+**Portfolio mode** — an additional **Triage Agent** runs first. It scans all your positions and picks
+the ones that need the most attention right now — based on breaking news, unusual price moves,
+concentration risk, and more. Only those stocks go through the full multi-agent pipeline; everything
+else gets a quick "HOLD" recommendation.
 
-1. **Stage 0 — Catalyst prefilter**: Screens for upcoming earnings, FDA events, and macro catalysts
-2. **Stage 1 — Multi-factor enrichment**: Technical momentum metrics, relative strength, volume analysis across the screening universe
-3. **Stage 2 — Candidate scoring**: Composite ranking with configurable relaxation rules
-4. **Deep analysis**: Top candidates are fed into the full OpenTraceGraph for multi-agent analysis
+**Stock Discovery mode** — the discovery pipeline runs independently of the main analysis graph:
 
-Supports three tracks: **Enricher** (swing trade), **Anomaly Scan** (intraday/next-day), and **Dual-Track** (merged).
+1. **Stage 0 — Catalyst prefilter**: screens for upcoming earnings, FDA events, and macro catalysts
+2. **Stage 1 — Multi-factor enrichment**: technical momentum, relative strength, volume analysis across the universe
+3. **Stage 2 — Candidate scoring**: composite ranking with configurable relaxation rules
+4. **Deep analysis**: top candidates are fed into the full OpenTraceGraph for multi-agent analysis
 
-A complementary **Theme Engine** ([`agents/discovery/theme_engine/`](opentrace/agents/discovery/theme_engine/))
-scans for active macro themes and scores how exposed each candidate is to them, so discovery can be
-steered by what's actually driving the market.
+Supports three tracks: **Enricher** (swing trade), **Anomaly Scan** (intraday/next-day), and
+**Dual-Track** (merged). A complementary **Theme Engine**
+([`agents/discovery/theme_engine/`](opentrace/agents/discovery/theme_engine/)) scans for active macro
+themes and scores how exposed each candidate is to them, so discovery can be steered by what's
+actually driving the market.
+
+</details>
+
+---
+
+## 🛡️ Crowding & macro-pullback awareness
+
+Single-ticker pipelines tend to be blind to a whole *class* of risk: a **crowded, extended,
+sector-correlated** name getting hit by a **soft / second-order catalyst** (a peer's guidance tone, a
+policy headline) in a **deteriorating macro tape** (rising rates, spiking oil, risk-off). None of
+those triggers is a discrete, dated, company-specific event — exactly the quadrant a news/catalyst
+analyst is built to ignore.
+
+OpenTrace now computes that fragility from data it already fetches and feeds it into every decision:
+
+| Layer | What it does | Default | Config flag |
+|:--|:--|:--|:--|
+| **Macro / regime context bus** (`macro_regime`) | A once-per-run cross-asset & positioning snapshot — risk-off flag, rate impulse, oil/VIX, sector heatmap, momentum-vs-SPY — injected into the news, catalyst, and risk nodes. | on | `enable_macro_regime_context` |
+| **Pullback Vulnerability Score** | A per-ticker, explainable **0–100** rating (LOW / MEDIUM / HIGH / CRITICAL) fusing price **extension** (distance above 50/200-DMA, YTD run), **crowding**, **tape fragility**, and **valuation richness**. | on | `enable_pullback_vulnerability` |
+| **Peer & sector read-through** | Pulls peers' earnings dates into the ticker's calendar as `peer_catalyst` events and checks whether the ticker's sector basket is parabolic (basket beta) — so a sector bellwether reporting *tomorrow* becomes a visible, dated risk. | on (earnings + basket beta); peer-**news** fetch off | `enable_peer_read_through` |
+| **Risk-judge override** | On a HIGH/CRITICAL rating the Risk Judge is steered toward reduced size, tighter invalidation, or wait-for-trigger on new exposure — a second override path mirroring the catalyst-risk gate. | on | — |
+
+> [!NOTE]
+> This capability is grounded in a post-mortem of two real 2026 sector pullbacks (the May memory-complex
+> shock and the June AI-infra unwind). Design notes and backtests:
+> [`docs/macro_pullback_capability_upgrade.md`](docs/macro_pullback_capability_upgrade.md).
 
 ---
 
 ## ⚙️ Configuration
 
-All defaults live in [`opentrace/default_config.py`](opentrace/default_config.py). Here are the knobs you'll use most:
+All defaults live in [`opentrace/default_config.py`](opentrace/default_config.py). The knobs you'll
+reach for most:
 
-### LLM settings
-
-| Key | What it controls | Example values |
+| Key | What it controls | Example / default |
 |:--|:--|:--|
 | `llm_provider` | Which LLM backend to use | `openai` · `azure-foundry` · `anthropic` · `google` · `deepseek` · `openrouter` · `qwen3-cn` · `glm` · `ollama` |
 | `deep_think_llm` | Model for judges & managers | `"o4-mini"` · `"gemini-2.5-flash"` · `"claude-sonnet-4-20250514"` |
 | `quick_think_llm` | Model for analysts & researchers | `"gpt-4o-mini"` · `"gemini-2.0-flash"` |
 | `max_debate_rounds` | Bull ↔ Bear debate rounds | `1` (default), capped at `3` |
 
-### Data vendor options
+<details>
+<summary><b>Data vendors & automatic fallback</b></summary>
+
+<br>
 
 Configured per category in the `data_vendors` dict:
 
@@ -397,9 +423,16 @@ Configured per category in the `data_vendors` dict:
 | `news_data` | `alpha_vantage` · `openai` · `google` · `local` | `alpha_vantage` |
 
 > [!TIP]
-> If a vendor is unavailable at runtime the system automatically falls back to the next option — nothing crashes. (Finnhub and SEC EDGAR back specific tools such as insider/filing data rather than the four switchable categories above.)
+> If a vendor is unavailable at runtime the system automatically falls back to the next option —
+> nothing crashes. (Finnhub and SEC EDGAR back specific tools such as insider/filing data rather than
+> the four switchable categories above.)
 
-### Trade execution
+</details>
+
+<details>
+<summary><b>Trade execution & order types (Alpaca)</b></summary>
+
+<br>
 
 | Key | What it controls | Default |
 |:--|:--|:--|
@@ -407,8 +440,6 @@ Configured per category in the `data_vendors` dict:
 | `alpaca_execution.paper_trading` | Paper vs. live | `true` |
 | `alpaca_execution.position_size_pct` | Default position size | `0.10` (10%) |
 | `alpaca_execution.max_concentration_pct` | Max single-stock concentration | `0.20` (20%) |
-
-### Supported order types
 
 | Order type | Description |
 |:--|:--|
@@ -418,7 +449,29 @@ Configured per category in the `data_vendors` dict:
 | `STOP_LIMIT` | Triggers a limit order once the stock hits a stop price |
 | `TRAILING_STOP` | Stop that moves with the stock price, locking in gains |
 
-### Context budget mode
+</details>
+
+<details>
+<summary><b>Risk-awareness toggles (macro-pullback capability)</b></summary>
+
+<br>
+
+All on by default; set the env var to `false` to disable. See
+[Crowding & macro-pullback awareness](#%EF%B8%8F-crowding--macro-pullback-awareness).
+
+| Env var | What it controls |
+|:--|:--|
+| `OPENTRACE_ENABLE_MACRO_REGIME_CONTEXT` | Build & inject the cross-asset/regime `macro_regime` context bus |
+| `OPENTRACE_ENABLE_PULLBACK_VULNERABILITY` | Compute the per-ticker Pullback Vulnerability Score + risk-judge override |
+| `enable_peer_read_through` / `enable_sector_parabola` | Peer earnings → `peer_catalyst` events + sector-parabola / basket-beta crowding signal |
+| `peer_read_through.fetch_peer_news` | Opt-in bounded peer-news fetch (off by default — costs extra vendor calls) |
+
+</details>
+
+<details>
+<summary><b>Context budget mode (avoiding HTTP 400s on small context windows)</b></summary>
+
+<br>
 
 Controls how prompts are compressed to fit within model context windows:
 
@@ -433,6 +486,8 @@ Set via `.env`:
 OPENTRACE_CONTEXT_BUDGET_MODE=adaptive
 ```
 
+</details>
+
 ---
 
 ## 🧰 Troubleshooting & FAQ
@@ -445,7 +500,7 @@ OPENTRACE_CONTEXT_BUDGET_MODE=adaptive
 | Frontend loads but calls fail | The backend isn't running or is on a different port. Start `uvicorn api.main:app --reload` (default `http://localhost:8000`). |
 | `npm run dev` fails | Check Node ≥ 18 and run `npm install` inside `frontend/`. |
 | ChromaDB / native build errors on install | Ensure you're on Python ≥ 3.10 in a clean virtualenv; upgrade `pip` before `pip install -e .`. |
-| Analysis is slow / expensive | Use **Shallow** depth and small quick/deep models (see [What to expect](#-what-to-expect-cost--time)), or run local models with Ollama. |
+| Analysis is slow / expensive | Use **Shallow** depth and small quick/deep models (see [cost & time](#-quick-start--web-app)), or run local models with Ollama. |
 
 Run `opentrace --help` to discover every command and flag.
 
@@ -483,13 +538,17 @@ If you use OpenTrace in academic work, please cite this repository (see
 
 ## 🤝 Credits & Acknowledgments
 
-This project is built upon the open-source [TradingAgents](https://github.com/tauricresearch/tradingagents) framework developed by Tauric Research. We are grateful to the original authors for their pioneering work on multi-agent LLM systems for financial analysis and trading.
+This project is built upon the open-source [TradingAgents](https://github.com/tauricresearch/tradingagents)
+framework developed by Tauric Research. We are grateful to the original authors for their pioneering
+work on multi-agent LLM systems for financial analysis and trading.
 
 ---
 
 ## ⚠️ Disclaimer
 
-OpenTrace is a **research and educational tool**. It is not financial advice. Always paper-trade first and understand the risks before using real money. The authors are not responsible for any financial losses incurred through the use of this software.
+OpenTrace is a **research and educational tool**. It is not financial advice. Always paper-trade first
+and understand the risks before using real money. The authors are not responsible for any financial
+losses incurred through the use of this software.
 
 ---
 
