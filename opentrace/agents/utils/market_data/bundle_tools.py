@@ -40,6 +40,7 @@ from opentrace.agents.utils.market_data.vwap_tools import (
 )
 from opentrace.agents.utils.market_data.fundamentals_parser import build_fundamentals_packet
 from opentrace.agents.utils.market_data.macro_regime import build_macro_regime_context
+from opentrace.agents.utils.market_data.peer_sets import resolve_peers
 from opentrace.dataflows.vendors.finnhub.finnhub_vendor import get_earnings_calendar_finnhub
 
 _COMMON_FALSE_TICKERS = {
@@ -773,6 +774,78 @@ def _earnings_events_from_calendar(
     return out[:5]
 
 
+def _peer_earnings_events_from_calendar(
+    raw: Any,
+    *,
+    peers: list[str],
+    target: str,
+    as_of: str,
+) -> list[dict[str, Any]]:
+    """Peer earnings dates as ``peer_catalyst`` rows (Tier-2 peer read-through).
+
+    The full-market earnings calendar is already fetched for the target bundle; this keeps the
+    *peers'* rows (which ``_earnings_events_from_calendar`` discards) so a peer's print — e.g.
+    AVGO reporting the day before NVDA/AMD/MRVL fell — becomes a visible, dated risk for the whole
+    basket. Lower materiality/relevance than the target's own earnings; foreign peers with no US
+    calendar row simply never match.
+    """
+    peer_set = {str(p).upper() for p in (peers or []) if str(p).strip()}
+    target = str(target or "").upper()
+    peer_set.discard(target)
+    if not peer_set:
+        return []
+    parsed = _first_json_object(raw)
+    if isinstance(parsed, dict):
+        items = parsed.get("earningsCalendar") or parsed.get("earnings_calendar") or parsed.get("items") or []
+    elif isinstance(parsed, list):
+        items = parsed
+    else:
+        items = raw if isinstance(raw, list) else []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in [x for x in items if isinstance(x, dict)]:
+        symbol = str(item.get("symbol") or item.get("ticker") or "").upper()
+        if symbol not in peer_set:
+            continue
+        event_date = str(item.get("date") or item.get("earningsDate") or item.get("reportDate") or "").strip()
+        if not event_date or (symbol, event_date) in seen:
+            continue
+        seen.add((symbol, event_date))
+        hour = str(item.get("hour") or item.get("time") or "").strip().lower()
+        timing = {"amc": "after market close", "bmo": "before market open"}.get(hour, hour)
+        summary = (
+            f"Peer {symbol} reports on {event_date}"
+            + (f" ({timing})" if timing else "")
+            + f". Sector read-through / basket-unwind risk for {target}: a peer's guidance or print "
+            "can re-rate the whole crowded basket even with no company-specific news."
+        )
+        out.append(
+            {
+                "event_id": f"peer_earnings_{len(out) + 1:03d}",
+                "source_event_id": f"{symbol}_{event_date}_earnings",
+                "ticker": target,
+                "event_type": "peer_catalyst",
+                "event_time": event_date,
+                "detected_at": as_of,
+                "source": "peer_earnings_calendar",
+                "title": f"Peer earnings: {symbol}",
+                "summary": summary,
+                "url": None,
+                "materiality_score": 0.5,
+                "novelty_score": 0.4,
+                "sentiment_score": None,
+                "confidence": 0.5,
+                "relevance_score": 0.55,
+                "matched_aliases": [target],
+                "mentioned_tickers": [symbol],
+                "contamination_flags": [],
+                "quarantine_reason": None,
+            }
+        )
+    out.sort(key=lambda e: e["event_time"])
+    return out[:5]
+
+
 def _to_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -1197,6 +1270,15 @@ async def get_catalyst_event_bundle(
         as_of=curr_date,
         aliases=aliases,
     )
+    # Tier-2 peer read-through: keep peers' earnings rows (same already-fetched calendar) so a
+    # peer's print becomes a visible, dated basket risk. resolve_peers() returns [] when disabled.
+    peer_events = _peer_earnings_events_from_calendar(
+        results.get("earnings_calendar"),
+        peers=resolve_peers(ticker),
+        target=ticker,
+        as_of=curr_date,
+    )
+    upcoming_events = upcoming_events + peer_events
     event_diagnostics["earnings_calendar"] = {
         "accepted_events": upcoming_events,
         "quarantined_events": [],

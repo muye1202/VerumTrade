@@ -153,3 +153,6 @@ class AgentState(_MessagesState):
     # Per-ticker Pullback Vulnerability Score (extension + crowding + tape fragility + valuation
     # richness) consumed by the risk judge as a pullback-risk override input.
     pullback_vulnerability: Annotated[dict, "Per-ticker pullback vulnerability score and drivers"]
+    # Bounded peer-news "sector read-through" block (Tier-2 Phase 2b; gated off by default) — recent
+    # guidance/news for the nearest-reporting peers, injected into the news + catalyst prompts.
+    sector_read_through: Annotated[dict, "Recent news/guidance for the ticker's nearest-reporting peers"]

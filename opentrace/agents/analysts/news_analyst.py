@@ -9,6 +9,7 @@ from opentrace.agents.utils.market_data.bundle_tools import (
     select_bundle_first_tools,
 )
 from opentrace.agents.utils.market_data.macro_regime import format_macro_regime_markdown
+from opentrace.agents.utils.market_data.peer_read_through import format_sector_read_through_markdown
 from opentrace.dataflows.config import get_config
 from opentrace.agents.utils.llm.tool_binding import bind_tools_parallel_safe
 from opentrace.agents.analysts.tooling import build_tooling_state_update
@@ -132,6 +133,19 @@ def create_news_analyst(llm):
                 "(rates rising, oil spiking, VIX up). A soft/second-order catalyst (a peer's guidance "
                 "tone, a policy trial balloon, a foreign-market shock) can unwind a crowded sector even "
                 "with no company-specific bad news — call this out as a watch item.\n---"
+            )
+
+        sector_read_through_block = format_sector_read_through_markdown(
+            state.get("sector_read_through", {}) or {}
+        )
+        if sector_read_through_block:
+            system_message += (
+                "\n\n---\n"
+                + sector_read_through_block
+                + "\n\nThese are the ticker's basket peers. Weigh a peer's recent guidance/news tone as "
+                "a read-through to the target: soft peer guidance or a peer miss can re-rate the whole "
+                "crowded basket even with no news on the target itself. Surface it as a near-term risk "
+                "with the peer's report date when one is given.\n---"
             )
 
         prompt = ChatPromptTemplate.from_messages(

@@ -18,6 +18,7 @@ from opentrace.agents.analysts.workbench import (
 from opentrace.agents.utils.agent_runtime.context_budget import build_report_evidence_summary
 from opentrace.agents.utils.llm.tool_binding import bind_tools_parallel_safe
 from opentrace.agents.utils.market_data.bundle_tools import get_catalyst_event_bundle
+from opentrace.agents.utils.market_data.peer_read_through import format_sector_read_through_markdown
 from opentrace.dataflows.config import get_config
 from opentrace.schemas.catalyst_events import CatalystEventBundle, CatalystEventReport
 
@@ -457,6 +458,7 @@ Your job is not to summarize all news. Identify discrete events that can change 
 Input contract:
 - You receive a CatalystEventBundle with recent events, upcoming catalysts, filings, market context, optional position context, optional prior thesis, source quality, and freshness.
 - The bundle's `macro_events` carry cross-asset / regime / positioning context (risk-off tape, rising-rate impulse, oil shock, elevated volatility, crowded momentum factor, sector distribution, OPEX/quarter-end). These are pullback-risk signals: a crowded/extended sector can unwind on a soft or second-order catalyst (a peer's guidance tone, a policy trial balloon, a foreign-market shock) with no company-specific bad news. Weigh material `macro_events` in `event_risk_rating`, `thesis_break_score`, and `risk_controls`, and surface them in the evidence_table when relevant.
+- `upcoming_events` may include `peer_catalyst` rows: a *peer's* scheduled earnings/print (same basket as {ticker}). A peer's guidance or report can re-rate the whole crowded basket even with no news on {ticker} itself (e.g. a memory or AI-semis peer reporting just ahead). Treat a near-term `peer_catalyst` as dated timing risk — factor it into `near_term_catalysts`, `event_risk_rating`, and `risk_controls` (e.g. wait for the peer print before adding, tighten invalidation).
 
 Output contract:
 - Produce one JSON object between BEGIN_CATALYST_EVENT_REPORT_JSON and END_CATALYST_EVENT_REPORT_JSON.
@@ -470,6 +472,19 @@ Current bundle:
 
 Use HIGH/CRITICAL only for discrete material events, near-term timing risk, likely thesis breaks, or severe position-aware risk. Prefer LOW/MEDIUM when evidence is sparse.
 """
+        sector_read_through_block = format_sector_read_through_markdown(
+            state.get("sector_read_through", {}) or {}
+        )
+        if sector_read_through_block:
+            system_message += (
+                "\n\n---\n"
+                + sector_read_through_block
+                + "\n\nThese are basket peers of {ticker}. Treat a peer's soft guidance or miss as a "
+                "read-through risk for {ticker}: it can re-rate the crowded basket with no news on "
+                "{ticker} itself. Reflect it in near_term_catalysts, event_risk_rating, and "
+                "risk_controls when material.\n---"
+            ).replace("{ticker}", ticker)
+
         system_message += "\n\n---\nANALYST WORKBENCH DISCOVERY LANE:\n"
         system_message += build_workbench_prompt_block("catalyst", selected_question)
 
