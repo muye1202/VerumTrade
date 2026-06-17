@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import pandas as pd
 import json
@@ -6,6 +7,13 @@ from datetime import datetime
 from io import StringIO
 
 API_BASE_URL = "https://www.alphavantage.co/query"
+
+# The free Alpha Vantage tier enforces a per-second burst limit; the pipeline fires several
+# fundamentals/news calls in quick succession, tripping it transiently. Back off and retry a few
+# times so a burst limit degrades to a short wait instead of a hard failure. A genuine daily-cap
+# or invalid-key error shares the same message, so retries simply exhaust quickly in those cases.
+_RATE_LIMIT_MAX_RETRIES = 4
+_RATE_LIMIT_BASE_SLEEP_S = 1.5
 
 def get_api_key() -> str:
     """Retrieve the API key for Alpha Vantage from environment variables."""
@@ -66,24 +74,29 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
         # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
     
-    response = requests.get(API_BASE_URL, params=api_params)
-    response.raise_for_status()
+    for attempt in range(_RATE_LIMIT_MAX_RETRIES):
+        response = requests.get(API_BASE_URL, params=api_params)
+        response.raise_for_status()
 
-    response_text = response.text
-    
-    # Check if response is JSON (error responses are typically JSON)
-    try:
-        response_json = json.loads(response_text)
-        # Check for rate limit error
-        if "Information" in response_json:
-            info_message = response_json["Information"]
-            if "rate limit" in info_message.lower() or "api key" in info_message.lower():
-                raise AlphaVantageRateLimitError(f"Alpha Vantage rate limit exceeded: {info_message}")
-    except json.JSONDecodeError:
-        # Response is not JSON (likely CSV data), which is normal
-        pass
+        response_text = response.text
 
-    return response_text
+        # Check if response is JSON (error responses are typically JSON)
+        try:
+            response_json = json.loads(response_text)
+            # Check for rate limit error
+            if "Information" in response_json:
+                info_message = response_json["Information"]
+                if "rate limit" in info_message.lower() or "api key" in info_message.lower():
+                    # Retry only the transient per-second burst limit; back off so spacing clears it.
+                    if "rate limit" in info_message.lower() and attempt < _RATE_LIMIT_MAX_RETRIES - 1:
+                        time.sleep(_RATE_LIMIT_BASE_SLEEP_S * (attempt + 1))
+                        continue
+                    raise AlphaVantageRateLimitError(f"Alpha Vantage rate limit exceeded: {info_message}")
+        except json.JSONDecodeError:
+            # Response is not JSON (likely CSV data), which is normal
+            pass
+
+        return response_text
 
 
 
