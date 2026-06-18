@@ -18,15 +18,19 @@
 
 ## 🔭 What is OpenTrace?
 
-OpenTrace turns a single ticker (or your whole portfolio) into a **transparent, auditable trade
-recommendation** produced by a team of specialised LLM agents. Instead of a black-box "buy/sell"
-signal, every conclusion is backed by a **trace** you can read: which evidence each analyst found,
-how the bull and bear sides argued, what the risk team flagged, and why the final decision was made.
+OpenTrace is an open-source, multi-agent trading research framework for two jobs: analyzing a
+ticker you already care about and discovering new candidates worth deeper work. It turns market
+data, fundamentals, news, sentiment, catalysts, and risk context into a transparent trade thesis
+instead of a black-box "buy/sell" signal.
 
-```text
-Analysts  →  Evidence Graph  →  Bull/Bear debate  →  Trader plan  →  Risk review  →  Decision (+ optional trade)
-   every arrow above is captured as a readable reasoning & decision trace
-```
+Every run follows an auditable path:
+
+1. **Analysts** gather market, news, social, fundamental, and catalyst evidence.
+2. **Evidence Graph** distills those findings into structured facts.
+3. **Bull/Bear debate** tests the thesis from both sides.
+4. **Trader plan** turns the debate into an actionable proposal.
+5. **Risk review** checks sizing, timing, concentration, and downside.
+6. **Decision** records the final rationale, traces, and optional trade instructions.
 
 ---
 
@@ -38,8 +42,10 @@ Jump straight to what you came for:
 |:--|:--|
 | ⚡ **Just want to run it** | [Quick Start — Web App](#-quick-start--web-app) → open the browser UI in minutes |
 | 💻 **Terminal-first** | [Quick Start — CLI](#-quick-start--cli) → guided, no config files to edit |
+| 🎯 **Evaluating one ticker** | [Single ticker analysis](#single-ticker-analysis) → inspect one name through the full agent pipeline |
+| 🔎 **Looking for candidates** | [Stock discovery mode](#stock-discovery-mode) → screen the market, then analyze the strongest ideas |
 | 🐍 **Building on top of it** | [Python API](#-python-api-programmatic) → embed OpenTrace in your own scripts |
-| 🔬 **Researching multi-agent LLMs** | [Reasoning & Decision Traces](#-reasoning--decision-traces) · [Architecture](#%EF%B8%8F-architecture) · [Risk awareness](#%EF%B8%8F-crowding--macro-pullback-awareness) |
+| 🔬 **Researching multi-agent LLMs** | [Core workflows](#-core-workflows) · [Reasoning & Decision Traces](#-reasoning--decision-traces) · [Architecture](#%EF%B8%8F-architecture) |
 | 💼 **Trading (paper or live)** | [CLI](#-quick-start--cli) · [Trade execution config](#%EF%B8%8F-configuration) · [Troubleshooting](#-troubleshooting--faq) |
 | 🛠️ **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
@@ -81,6 +87,41 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | **Engineering** | A **context-budget** manager for token control, plus full FastAPI + React + Typer/Rich apps |
 
 </details>
+
+---
+
+## 🧭 Core workflows
+
+OpenTrace has two main entry points: analyze a ticker you already care about, or discover candidates
+first and send the strongest ideas into the same multi-agent review process.
+
+### Single ticker analysis
+
+Use this when you already have a stock in mind and want an auditable investment or trading thesis.
+OpenTrace runs the selected analyst team against one ticker, builds a structured evidence graph,
+stages the bull/bear research debate, asks the trader for a plan, and routes the result through risk
+review before producing a final decision.
+
+You get a completed report with reasoning traces, decision traces, analyst evidence, risk notes, and
+an optional paper/live Alpaca order if execution is enabled. Start from the web app by entering a
+ticker in the main analysis form, or use the CLI with `python -m cli.main analyze` and choose
+single-ticker analysis at the first prompt.
+
+<!-- TODO: Embed single ticker analysis demo video here. -->
+
+### Stock discovery mode
+
+Use this when you want OpenTrace to help find names worth researching instead of starting from a
+known ticker. Discovery screens a market universe through catalyst, theme, enrichment, inflection,
+attention-gap, and scoring stages, then promotes the most promising candidates into deeper
+OpenTrace analysis.
+
+You get ranked candidates, evidence packs, two-layer discovery scores, thesis cards, and completed
+reports for the selected names. Start from the web app by switching to Discovery mode, or use the
+CLI with `python -m cli.main analyze` and choose **Stock Discovery (AI finds promising stocks)** at
+the first prompt.
+
+<!-- TODO: Embed stock discovery mode demo video here. -->
 
 ---
 
@@ -203,7 +244,7 @@ then performs full multi-agent analysis on those. Remaining stocks get a lightwe
 promising stocks)"** at the first prompt. The system screens for promising tickers using multi-factor
 scoring, then runs deep multi-agent analysis on the top candidates. You can launch a fresh discovery
 run or resume from a previously saved candidate list. See
-[Stock Discovery mode](#%EF%B8%8F-architecture) under Architecture.
+[Stock discovery mode](#stock-discovery-mode) for the workflow overview.
 
 **Journal** — `opentrace journal`
 Track trade outcomes and build agent memory. See [`journal_cli/README.md`](journal_cli/README.md).
