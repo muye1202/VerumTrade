@@ -12,7 +12,10 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from opentrace.execution.decision_guard import build_market_snapshot
-from opentrace.graph.debate_schema import require_valid_thesis_ledger
+from opentrace.graph.debate_schema import (
+    debate_validation_context_from_state,
+    require_valid_thesis_ledger,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -76,7 +79,7 @@ Your Recommendation: A decisive stance supported by the most convincing argument
 Rationale: An explanation of why these arguments lead to your conclusion.
 Strategic Actions: Concrete steps for implementing the recommendation.
 Sizing Guidance: Recommend an appropriate position size. The system will NOT ask the user for a sizing percentage; the trader may either specify an explicit share QUANTITY or omit QUANTITY and instead provide POSITION_SIZE_PCT (interpreted as % of available capital/effective buying power).
-Thesis Ledger: Include a compact machine-readable JSON object named THESIS_LEDGER_JSON with winning_thesis, accepted_claims, rejected_claims, unresolved_uncertainties, and recommended_plan_constraints. Every accepted claim must cite evidence IDs or inference IDs from the evidence graph projection.
+Thesis Ledger: Include a compact machine-readable JSON object named THESIS_LEDGER_JSON with winning_thesis, accepted_claims, rejected_claims, unresolved_uncertainties, and recommended_plan_constraints. Every accepted claim must cite canonical E-* evidence IDs from the ADMISSIBLE EVIDENCE LEDGER or inference IDs from the evidence graph projection. Do not use source_ref values when an E-* evidence ID is available.
 THESIS_LEDGER_JSON schema:
 {{
   "winning_thesis": "string",
@@ -143,18 +146,16 @@ Accepted structured debate turns:
             "count": investment_debate_state["count"],
         }
 
+        debate_context = debate_validation_context_from_state(state)
         thesis_ledger = _normalize_thesis_ledger(
             _extract_thesis_ledger(response.content),
             state.get("research_debate_turns") or [],
+            evidence_aliases=debate_context["evidence_aliases"],
         )
         thesis_validation = require_valid_thesis_ledger(
             thesis_ledger,
             stage="research_manager",
-            evidence_ids=[
-                str(item.get("evidence_id"))
-                for item in state.get("evidence_ledger", []) or []
-                if isinstance(item, dict) and item.get("evidence_id")
-            ],
+            evidence_ids=debate_context["evidence_ids"],
         )
 
         return {
@@ -171,10 +172,13 @@ Accepted structured debate turns:
 def _normalize_thesis_ledger(
     thesis_ledger: dict,
     research_turns: list[dict],
+    *,
+    evidence_aliases: dict[str, list[str]] | None = None,
 ) -> dict:
     if not isinstance(thesis_ledger, dict) or not thesis_ledger:
         return {}
     normalized = dict(thesis_ledger)
+    aliases = evidence_aliases or {}
     accepted_claims = normalized.get("accepted_claims")
     if isinstance(accepted_claims, list):
         normalized_claims = []
@@ -185,6 +189,10 @@ def _normalize_thesis_ledger(
             claim = dict(raw_claim)
             if not str(claim.get("claim_id") or "").strip():
                 claim["claim_id"] = f"C-{idx:03d}"
+            claim["evidence_ids"] = _normalize_evidence_refs(
+                claim.get("evidence_ids") or [],
+                aliases,
+            )
             if not str(claim.get("effect") or "").strip():
                 effect = _effect_for_claim(claim, research_turns)
                 if effect:
@@ -206,6 +214,10 @@ def _normalize_thesis_ledger(
         for idx, raw_claim in enumerate(rejected_claims, 1):
             claim = _coerce_rejected_claim(raw_claim, idx)
             if claim is not None:
+                claim["evidence_ids"] = _normalize_evidence_refs(
+                    claim.get("evidence_ids") or [],
+                    aliases,
+                )
                 normalized_rejected.append(claim)
         normalized["rejected_claims"] = normalized_rejected
 
@@ -217,6 +229,19 @@ def _normalize_thesis_ledger(
         if derived:
             normalized["recommended_plan_constraints"] = derived
     return normalized
+
+
+def _normalize_evidence_refs(
+    refs: list,
+    evidence_aliases: dict[str, list[str]],
+) -> list[str]:
+    normalized: list[str] = []
+    for raw_ref in refs:
+        ref = str(raw_ref or "").strip()
+        if not ref:
+            continue
+        normalized.extend(evidence_aliases.get(ref, [ref]))
+    return list(dict.fromkeys(normalized))
 
 
 def _coerce_uncertainty(raw) -> dict | None:
