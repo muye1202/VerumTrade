@@ -156,6 +156,7 @@ Accepted structured debate turns:
             thesis_ledger,
             stage="research_manager",
             evidence_ids=debate_context["evidence_ids"],
+            evidence_aliases=debate_context["evidence_aliases"],
         )
 
         return {

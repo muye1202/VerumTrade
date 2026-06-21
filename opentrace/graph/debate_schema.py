@@ -227,10 +227,12 @@ def validate_thesis_ledger(
     thesis_ledger: dict[str, Any] | None,
     *,
     evidence_ids: list[str] | set[str],
+    evidence_aliases: dict[str, list[str]] | None = None,
 ) -> ThesisLedgerValidation:
     if not isinstance(thesis_ledger, dict) or not thesis_ledger:
         return {"valid": False, "violations": ["thesis_ledger must be a non-empty object"]}
     valid_evidence = {str(item) for item in evidence_ids}
+    aliases = evidence_aliases or {}
     violations: list[str] = []
     if not str(thesis_ledger.get("winning_thesis") or "").strip():
         violations.append("winning_thesis is required")
@@ -248,7 +250,11 @@ def validate_thesis_ledger(
             refs = [str(item) for item in claim.get("evidence_ids") or [] if str(item)]
             if not refs:
                 violations.append(f"accepted_claims[{idx}] missing evidence_ids")
-            missing = [ref for ref in refs if ref not in valid_evidence and not ref.startswith(("inf_", "C-", "I-"))]
+            missing = [
+                ref
+                for ref in refs
+                if not _is_valid_thesis_evidence_ref(ref, valid_evidence, aliases)
+            ]
             if missing:
                 violations.append(f"accepted_claims[{idx}] has unknown evidence_ids: {', '.join(missing)}")
             if not str(claim.get("effect") or "").strip():
@@ -283,8 +289,13 @@ def require_valid_thesis_ledger(
     *,
     stage: str,
     evidence_ids: list[str] | set[str],
+    evidence_aliases: dict[str, list[str]] | None = None,
 ) -> ThesisLedgerValidation:
-    validation = validate_thesis_ledger(thesis_ledger, evidence_ids=evidence_ids)
+    validation = validate_thesis_ledger(
+        thesis_ledger,
+        evidence_ids=evidence_ids,
+        evidence_aliases=evidence_aliases,
+    )
     if not validation["valid"]:
         raise DebateWorkflowHardFault(
             stage,
@@ -294,34 +305,47 @@ def require_valid_thesis_ledger(
     return validation
 
 
+def _is_valid_thesis_evidence_ref(
+    ref: str,
+    valid_evidence: set[str],
+    evidence_aliases: dict[str, list[str]],
+) -> bool:
+    if ref in valid_evidence or ref.startswith(("inf_", "C-", "I-")):
+        return True
+    mapped = evidence_aliases.get(ref) or []
+    return any(str(item) in valid_evidence for item in mapped)
+
+
 def require_risk_response_contract(text: Any, *, stage: str) -> str:
     """Enforce the risk-response contract before persisting debate history."""
     from opentrace.graph.plan_patch_schema import extract_plan_patches_from_text
 
     content = str(text or "")
-    has_plan_patch = "PLAN_PATCH" in content
-    has_reject_patch = "REJECT_PATCH" in content
-    has_no_change = "NO_MATERIAL_CHANGE" in content or _has_no_change_phrase(content)
+    terminal_marker = _terminal_risk_contract_marker(content)
+    patches = extract_plan_patches_from_text(content)
 
-    if has_plan_patch:
-        if extract_plan_patches_from_text(content):
+    if terminal_marker == "PLAN_PATCH":
+        if patches:
             return content
         raise DebateWorkflowHardFault(
             stage,
             "PLAN_PATCH marker present but no parseable patch JSON",
         )
 
-    if has_reject_patch or has_no_change:
+    if terminal_marker in {"REJECT_PATCH", "NO_MATERIAL_CHANGE"}:
         return content
 
     # No explicit marker. Recover an unlabeled patch if one was actually emitted...
-    if extract_plan_patches_from_text(content):
+    if patches:
         logger.warning(
             "%s: parseable plan patch found without a PLAN_PATCH marker; "
             "treating as PLAN_PATCH.",
             stage,
         )
         return content + "\n\nPLAN_PATCH"
+
+    if "REJECT_PATCH" in content or "NO_MATERIAL_CHANGE" in content or _has_no_change_phrase(content):
+        return content
 
     raise DebateWorkflowHardFault(
         stage,
@@ -335,6 +359,14 @@ _NO_CHANGE_PHRASES = (
     "no changes to the plan",
     "leave the plan unchanged",
 )
+
+
+def _terminal_risk_contract_marker(content: str) -> str:
+    for line in reversed(str(content or "").splitlines()):
+        marker = line.strip()
+        if marker:
+            return marker if marker in {"PLAN_PATCH", "REJECT_PATCH", "NO_MATERIAL_CHANGE"} else ""
+    return ""
 
 
 def _has_no_change_phrase(content: str) -> bool:
