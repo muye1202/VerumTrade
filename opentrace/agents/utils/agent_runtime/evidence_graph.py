@@ -11,8 +11,12 @@ from opentrace.graph.evidence_ledger_schema import (
     rank_critical_evidence,
     validate_admissible_evidence,
 )
-from opentrace.graph.debate_schema import frame_contested_issues
-from opentrace.graph.debate_schema import DebateWorkflowHardFault
+from opentrace.dataflows.config import get_config
+from opentrace.graph.debate_schema import (
+    degrade_or_raise,
+    frame_contested_issues,
+    intermediate_gates_hard,
+)
 
 
 EvidenceDomain = Literal["market", "sentiment", "news", "fundamentals", "catalyst"]
@@ -587,13 +591,16 @@ def _require_admissible_analyst_evidence(
         return
     if admissibility.get("accepted_evidence_ids"):
         return
-    raise DebateWorkflowHardFault(
+    # Intermediate gate: under the soft policy, degrade and continue (downstream debate
+    # gates also soften) rather than aborting the whole run; the final order gate stays hard.
+    degrade_or_raise(
         stage,
         "no admissible analyst evidence",
-        details={
+        {
             "rejected_evidence": admissibility.get("rejected_evidence") or [],
             "downgraded_evidence": admissibility.get("downgraded_evidence") or [],
         },
+        hard=intermediate_gates_hard(get_config()),
     )
 
 

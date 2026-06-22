@@ -105,6 +105,21 @@ DEFAULT_CONFIG = {
     "risk_manager_backoff_base_s": float(os.getenv("OPENTRACE_RISK_MANAGER_BACKOFF_BASE_S", "1.0")),
     "risk_manager_backoff_max_s": float(os.getenv("OPENTRACE_RISK_MANAGER_BACKOFF_MAX_S", "30.0")),
 
+    # Structured-output resilience for debate hard gates (researchers, risk debators,
+    # research/risk managers). When an LLM emits a malformed/incomplete contract block,
+    # the node re-prompts with the exact validation error this many times before the
+    # gate fires. 0 disables repair (legacy single-shot behavior).
+    "debate_contract_repair_attempts": int(os.getenv("OPENTRACE_DEBATE_CONTRACT_REPAIR_ATTEMPTS", "2")),
+
+    # Gate policy for INTERMEDIATE debate contracts (researchers, risk debators,
+    # research-manager thesis ledger, trader plan, analyst evidence admissibility).
+    # When True (default) a contract that is still violated after the repair loop is
+    # logged as a degradation and the run CONTINUES with best-effort artifacts, instead
+    # of aborting the whole pipeline. The FINAL canonical decision/order gate is always
+    # hard regardless of this flag — a malformed executable order is never accepted.
+    # Set False to restore legacy hard-fault behavior on the intermediate gates.
+    "debate_soft_intermediate_gates": os.getenv("OPENTRACE_DEBATE_SOFT_INTERMEDIATE_GATES", "1") not in ("0", "false", "False"),
+
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {

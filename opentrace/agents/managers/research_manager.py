@@ -14,7 +14,10 @@ from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_
 from opentrace.execution.decision_guard import build_market_snapshot
 from opentrace.graph.debate_schema import (
     debate_validation_context_from_state,
-    require_valid_thesis_ledger,
+    degrade_or_raise,
+    intermediate_gates_hard,
+    invoke_with_contract_repair,
+    validate_thesis_ledger,
 )
 
 
@@ -127,14 +130,40 @@ Debate History:
 Accepted structured debate turns:
 {sections["research_turns"]}"""
 
-        response = invoke_with_backoff(
-            llm,
+        debate_context = debate_validation_context_from_state(state)
+
+        def _invoke(repair_prompt: str):
+            return invoke_with_backoff(
+                llm,
+                repair_prompt,
+                key="research_manager",
+                min_interval_s=float(config.get("research_manager_min_delay_s", 0.0) or 0.0),
+                max_retries=int(config.get("research_manager_max_retries", 6) or 6),
+                base_backoff_s=float(config.get("research_manager_backoff_base_s", 1.0) or 1.0),
+                max_backoff_s=float(config.get("research_manager_backoff_max_s", 30.0) or 30.0),
+            )
+
+        def _check(content: str):
+            ledger = _normalize_thesis_ledger(
+                _extract_thesis_ledger(content),
+                state.get("research_debate_turns") or [],
+                evidence_aliases=debate_context["evidence_aliases"],
+            )
+            result = validate_thesis_ledger(
+                ledger,
+                evidence_ids=debate_context["evidence_ids"],
+                evidence_aliases=debate_context["evidence_aliases"],
+            )
+            return None if result["valid"] else result["violations"]
+
+        response = invoke_with_contract_repair(
             prompt,
-            key="research_manager",
-            min_interval_s=float(config.get("research_manager_min_delay_s", 0.0) or 0.0),
-            max_retries=int(config.get("research_manager_max_retries", 6) or 6),
-            base_backoff_s=float(config.get("research_manager_backoff_base_s", 1.0) or 1.0),
-            max_backoff_s=float(config.get("research_manager_backoff_max_s", 30.0) or 30.0),
+            stage="research_manager",
+            invoke=_invoke,
+            check=_check,
+            max_repair_attempts=int(
+                config.get("debate_contract_repair_attempts", 2) or 0
+            ),
         )
 
         new_investment_debate_state = {
@@ -146,18 +175,25 @@ Accepted structured debate turns:
             "count": investment_debate_state["count"],
         }
 
-        debate_context = debate_validation_context_from_state(state)
         thesis_ledger = _normalize_thesis_ledger(
             _extract_thesis_ledger(response.content),
             state.get("research_debate_turns") or [],
             evidence_aliases=debate_context["evidence_aliases"],
         )
-        thesis_validation = require_valid_thesis_ledger(
+        thesis_validation = validate_thesis_ledger(
             thesis_ledger,
-            stage="research_manager",
             evidence_ids=debate_context["evidence_ids"],
             evidence_aliases=debate_context["evidence_aliases"],
         )
+        if not thesis_validation["valid"]:
+            degraded = degrade_or_raise(
+                "research_manager",
+                "invalid THESIS_LEDGER_JSON",
+                thesis_validation["violations"],
+                hard=intermediate_gates_hard(config),
+            )
+            if degraded:
+                thesis_validation = {**thesis_validation, "gate_degradation": degraded}
 
         return {
             "investment_debate_state": new_investment_debate_state,

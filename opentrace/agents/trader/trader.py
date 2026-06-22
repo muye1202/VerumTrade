@@ -13,7 +13,11 @@ from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_
 from opentrace.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from opentrace.dataflows.config import get_config
 from opentrace.execution.decision_guard import build_market_snapshot
-from opentrace.graph.debate_schema import DebateWorkflowHardFault, validate_trader_plan
+from opentrace.graph.debate_schema import (
+    degrade_or_raise,
+    intermediate_gates_hard,
+    validate_trader_plan,
+)
 from opentrace.graph.evidence_ledger_schema import build_evidence_ledger
 from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
 
@@ -79,11 +83,14 @@ def create_trader(llm, memory):
             ],
         )
         if not trader_plan_validation["valid"]:
-            raise DebateWorkflowHardFault(
+            degraded = degrade_or_raise(
                 "trader",
                 "invalid trader_plan_v1",
-                details=trader_plan_validation["violations"],
+                trader_plan_validation["violations"],
+                hard=intermediate_gates_hard(get_config()),
             )
+            if degraded:
+                trader_plan_validation = {**trader_plan_validation, "gate_degradation": degraded}
 
         memory_query = json.dumps(
             {

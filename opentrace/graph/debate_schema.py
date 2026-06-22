@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict
 
 from pydantic import ValidationError
 
@@ -45,6 +45,143 @@ class DebateWorkflowHardFault(RuntimeError):
         self.details = details
         detail_text = f" Details: {details}" if details else ""
         super().__init__(f"{stage} debate workflow hard fault: {reason}.{detail_text}")
+
+
+def intermediate_gates_hard(config: Any) -> bool:
+    """Whether INTERMEDIATE debate gates should abort (hard) vs. degrade-and-continue (soft).
+
+    Driven by ``debate_soft_intermediate_gates`` (default soft). The final canonical
+    decision/order gate ignores this and is always hard.
+    """
+    try:
+        return not bool((config or {}).get("debate_soft_intermediate_gates", True))
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def format_contract_violation(violation: Optional[tuple[str, Any]]) -> Optional[str]:
+    """Render a ``(reason, detail)`` violation as a single human-readable string."""
+    if not violation:
+        return None
+    reason, detail = violation
+    return f"{reason}. Details: {detail}" if detail else reason
+
+
+def degrade_or_raise(
+    stage: str,
+    reason: str,
+    detail: Any,
+    *,
+    hard: bool,
+) -> dict[str, Any]:
+    """Resolve a contract violation per gate policy.
+
+    When ``hard`` is True, raise ``DebateWorkflowHardFault`` (legacy behavior). When
+    False, log the degradation and return a telemetry record so the run can continue
+    with best-effort artifacts. Returns ``{}`` when there is no violation.
+    """
+    if not reason:
+        return {}
+    if hard:
+        raise DebateWorkflowHardFault(stage, reason, details=detail)
+    logger.warning(
+        "%s: debate contract not satisfied; soft gate enabled, degrading and continuing. "
+        "Reason: %s. Detail: %s",
+        stage,
+        reason,
+        detail,
+    )
+    return {"degraded": True, "stage": stage, "reason": reason, "detail": detail}
+
+
+def _build_contract_repair_prompt(
+    original_prompt: str,
+    prior_response: str,
+    error: Any,
+    *,
+    max_prior_chars: int = 6000,
+) -> str:
+    """Append a focused repair appendix to the original prompt.
+
+    The original prompt already carries all the data/context the node needs, so we
+    re-send it and add (a) the exact validation error and (b) the rejected response,
+    asking the model to re-emit a corrected version.
+    """
+    prior = str(prior_response or "")
+    if len(prior) > max_prior_chars:
+        prior = prior[-max_prior_chars:]
+    return (
+        f"{original_prompt}\n\n"
+        "=== CONTRACT REPAIR REQUEST ===\n"
+        "Your previous response was REJECTED by the structured-output validator and "
+        "cannot be used. Fix ONLY what is needed to satisfy the contract.\n"
+        f"VALIDATION ERROR(S):\n{error}\n\n"
+        "Re-emit your COMPLETE response now:\n"
+        "- Keep your narrative, but make the required structured block (JSON / contract "
+        "marker) pass validation.\n"
+        "- Emit valid JSON only: no markdown code fences, no comments, no trailing commas, "
+        "and never use 'N/A'/'NA'/'-'/'NONE' placeholders (use null instead).\n"
+        "- Include EVERY required field with a concrete value. If a list field is required, "
+        "it must be non-empty.\n"
+        "- Do not describe or apologize for the error; just produce the corrected response.\n\n"
+        "Your previous (rejected) response, for reference:\n"
+        f"{prior}\n"
+        "=== END CONTRACT REPAIR REQUEST ==="
+    )
+
+
+def invoke_with_contract_repair(
+    prompt: str,
+    *,
+    stage: str,
+    invoke: Callable[[str], Any],
+    check: Callable[[str], Any],
+    max_repair_attempts: int = 2,
+) -> Any:
+    """Invoke an LLM with automatic re-prompting when the debate contract fails.
+
+    ``invoke`` runs the LLM on a prompt and returns a response object exposing
+    ``.content``. ``check`` inspects ``response.content`` and returns a truthy error
+    detail when the contract is violated, or a falsy value when it passes.
+
+    On violation, the helper re-prompts with the exact validation error (up to
+    ``max_repair_attempts`` extra calls), then returns the best response obtained.
+    The caller's hard gate runs afterward and still raises if even the repaired
+    output is invalid, so execution safety is unchanged — this only removes spurious
+    aborts caused by recoverable formatting slips.
+    """
+    response = invoke(prompt)
+    error = _safe_check(check, response)
+    attempt = 0
+    while error and attempt < max_repair_attempts:
+        attempt += 1
+        logger.warning(
+            "%s: debate contract violation on attempt %d/%d; re-prompting for repair. Detail: %s",
+            stage,
+            attempt,
+            max_repair_attempts + 1,
+            error,
+        )
+        repair_prompt = _build_contract_repair_prompt(prompt, getattr(response, "content", ""), error)
+        response = invoke(repair_prompt)
+        error = _safe_check(check, response)
+    if error:
+        logger.error(
+            "%s: debate contract still violated after %d repair attempt(s); "
+            "deferring to hard gate. Detail: %s",
+            stage,
+            max_repair_attempts,
+            error,
+        )
+    return response
+
+
+def _safe_check(check: Callable[[str], Any], response: Any) -> Any:
+    """Run a contract check without letting checker errors mask the repair loop."""
+    try:
+        return check(getattr(response, "content", ""))
+    except Exception as exc:  # pragma: no cover - defensive
+        return str(exc)
 
 
 class ResearchDebateValidation(TypedDict):
@@ -114,20 +251,25 @@ def extract_research_debate_turns_from_text(text: Any) -> list[dict[str, Any]]:
     return turns
 
 
-def require_valid_research_turns(
+def evaluate_research_turns(
     text: Any,
     *,
-    stage: str,
     evidence_ids: list[str] | set[str],
     active_issue_ids: list[str] | set[str],
     evidence_aliases: dict[str, list[str]] | None = None,
     active_issues: list[dict[str, Any]] | None = None,
-) -> ResearchDebateValidation:
+) -> tuple[ResearchDebateValidation, Optional[tuple[str, Any]]]:
+    """Non-raising research-turn validation.
+
+    Returns ``(validation, violation)`` where ``validation`` always carries
+    ``accepted_turns``/``rejected_turns`` (accepted may be empty) and ``violation`` is
+    ``(reason, detail)`` when the contract is not fully satisfied, else ``None``.
+    """
     turns = extract_research_debate_turns_from_text(text)
     if not turns:
-        raise DebateWorkflowHardFault(
-            stage,
-            "missing parseable RESEARCH_DEBATE_TURN_JSON block",
+        return (
+            {"accepted_turns": [], "rejected_turns": []},
+            ("missing parseable RESEARCH_DEBATE_TURN_JSON block", None),
         )
     turns = [
         _normalize_research_turn(
@@ -143,11 +285,29 @@ def require_valid_research_turns(
         active_issue_ids=active_issue_ids,
     )
     if validation["rejected_turns"]:
-        raise DebateWorkflowHardFault(
-            stage,
-            "invalid RESEARCH_DEBATE_TURN_JSON",
-            details=validation["rejected_turns"],
-        )
+        return validation, ("invalid RESEARCH_DEBATE_TURN_JSON", validation["rejected_turns"])
+    return validation, None
+
+
+def require_valid_research_turns(
+    text: Any,
+    *,
+    stage: str,
+    evidence_ids: list[str] | set[str],
+    active_issue_ids: list[str] | set[str],
+    evidence_aliases: dict[str, list[str]] | None = None,
+    active_issues: list[dict[str, Any]] | None = None,
+) -> ResearchDebateValidation:
+    validation, violation = evaluate_research_turns(
+        text,
+        evidence_ids=evidence_ids,
+        active_issue_ids=active_issue_ids,
+        evidence_aliases=evidence_aliases,
+        active_issues=active_issues,
+    )
+    if violation:
+        reason, detail = violation
+        raise DebateWorkflowHardFault(stage, reason, details=detail)
     return validation
 
 
@@ -316,8 +476,15 @@ def _is_valid_thesis_evidence_ref(
     return any(str(item) in valid_evidence for item in mapped)
 
 
-def require_risk_response_contract(text: Any, *, stage: str) -> str:
-    """Enforce the risk-response contract before persisting debate history."""
+def evaluate_risk_response_contract(
+    text: Any, *, stage: str
+) -> tuple[str, Optional[tuple[str, Any]]]:
+    """Non-raising risk-response contract check.
+
+    Returns ``(content, violation)`` where ``content`` is the possibly marker-normalized
+    text and ``violation`` is ``(reason, detail)`` when the contract is not satisfied,
+    else ``None``.
+    """
     from opentrace.graph.plan_patch_schema import extract_plan_patches_from_text
 
     content = str(text or "")
@@ -326,14 +493,11 @@ def require_risk_response_contract(text: Any, *, stage: str) -> str:
 
     if terminal_marker == "PLAN_PATCH":
         if patches:
-            return content
-        raise DebateWorkflowHardFault(
-            stage,
-            "PLAN_PATCH marker present but no parseable patch JSON",
-        )
+            return content, None
+        return content, ("PLAN_PATCH marker present but no parseable patch JSON", None)
 
     if terminal_marker in {"REJECT_PATCH", "NO_MATERIAL_CHANGE"}:
-        return content
+        return content, None
 
     # No explicit marker. Recover an unlabeled patch if one was actually emitted...
     if patches:
@@ -342,15 +506,24 @@ def require_risk_response_contract(text: Any, *, stage: str) -> str:
             "treating as PLAN_PATCH.",
             stage,
         )
-        return content + "\n\nPLAN_PATCH"
+        return content + "\n\nPLAN_PATCH", None
 
     if "REJECT_PATCH" in content or "NO_MATERIAL_CHANGE" in content or _has_no_change_phrase(content):
-        return content
+        return content, None
 
-    raise DebateWorkflowHardFault(
-        stage,
+    return content, (
         "missing risk response contract marker: expected PLAN_PATCH, REJECT_PATCH, or NO_MATERIAL_CHANGE",
+        None,
     )
+
+
+def require_risk_response_contract(text: Any, *, stage: str) -> str:
+    """Enforce the risk-response contract before persisting debate history."""
+    content, violation = evaluate_risk_response_contract(text, stage=stage)
+    if violation:
+        reason, detail = violation
+        raise DebateWorkflowHardFault(stage, reason, details=detail)
+    return content
 
 
 _NO_CHANGE_PHRASES = (

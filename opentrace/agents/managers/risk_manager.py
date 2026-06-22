@@ -27,6 +27,12 @@ from opentrace.graph.plan_patch_schema import (
     extract_plan_patches_from_text,
     validate_plan_patches,
 )
+from opentrace.graph.debate_schema import invoke_with_contract_repair
+from opentrace.graph.decision_schema import (
+    extract_decision_json_block,
+    validate_final_decision_contract,
+    validate_structured_decision,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -172,9 +178,10 @@ MARKET REGIME / POSITIONING CONTEXT (cross-asset snapshot for this run):
 
 Treat this as a pullback-risk overlay. If the tape is risk-off, rates are rising, oil is spiking,
 or the ticker sits in a crowded/extended momentum sector, lean conservative on sizing and timing
-(prefer reduced size, tighter invalidation, or wait-for-trigger) unless admissible evidence
-directly offsets the regime risk. A crowded sector can unwind on a soft/second-order catalyst with
-no company-specific bad news — do not assume single-name strength immunizes against it.
+(prefer reduced size, tighter invalidation, a v1 HOLD, or — only when you can name a concrete
+trigger — a wait-for-trigger v2 plan) unless admissible evidence directly offsets the regime risk.
+A crowded sector can unwind on a soft/second-order catalyst with no company-specific bad news — do
+not assume single-name strength immunizes against it.
 ---
 """
         pullback_vuln = state.get("pullback_vulnerability", {}) or {}
@@ -187,11 +194,12 @@ PULLBACK VULNERABILITY (per-ticker, 0-100; higher = more vulnerable to a sharp p
 {pullback_vuln_md}
 
 OVERRIDE RULE: If the rating is HIGH or CRITICAL, treat it as a conservative override on any
-BUY/add: prefer reduced position size, a tighter stop / invalidation, or a wait-for-trigger (v2)
-entry, unless admissible evidence directly offsets the vulnerability (e.g., a confirmed positive
-catalyst with durable follow-through). A high score does NOT by itself force SELL/HOLD — it tempers
-sizing and entry aggressiveness for new exposure and tightens risk controls on existing exposure.
-Explicitly state in your narrative whether you follow or override this signal and why.
+BUY/add: prefer reduced position size, a tighter stop / invalidation, a v1 HOLD, or — only when you
+can name a concrete trigger — a wait-for-trigger (v2) entry, unless admissible evidence directly
+offsets the vulnerability (e.g., a confirmed positive catalyst with durable follow-through). A high
+score does NOT by itself force SELL/HOLD — it tempers sizing and entry aggressiveness for new
+exposure and tightens risk controls on existing exposure. Explicitly state in your narrative whether
+you follow or override this signal and why.
 ---
 """
 
@@ -270,9 +278,14 @@ JSON RULES:
 - Numeric fields must be numbers, not formatted strings (no `%`, commas, or currency symbols).
 - `quantity` must be an integer or null.
 - `decision_version` must be "v1" or "v2".
-- `execution_intent` is REQUIRED and must be:
-  - `act_now` for `v1`
-  - `wait_for_trigger` for `v2`
+
+MODE SELECTION (decision_version <-> execution_intent) — READ CAREFULLY, THIS IS THE #1 SOURCE OF REJECTED DECISIONS:
+- These two fields MUST be consistent. There are EXACTLY two legal pairings — any other combination is rejected by the executor:
+  - `decision_version: "v1"` PAIRED WITH `execution_intent: "act_now"` — an immediate BUY/SELL/HOLD acted on right now.
+  - `decision_version: "v2"` PAIRED WITH `execution_intent: "wait_for_trigger"` — a conditional plan that REQUIRES a non-empty `execution_plan` of trigger branches.
+- NEVER emit `v1` with `wait_for_trigger`. NEVER emit `v2` with `act_now`. NEVER emit `v2` with an empty `execution_plan`.
+- If you want to be CAUTIOUS but you do NOT have a concrete conditional trigger (a specific price/volume/schedule/event to wait for), DO NOT use v2. Use `v1` + `act_now` + `action: "HOLD"` — a deliberate decision to take no position now. This is the correct, simplest way to express "wait and see" / conservative caution, and it is preferred over a half-specified v2 plan.
+- Only use `v2` when you can name at least ONE concrete `execution_plan` branch with real `conditions` (price/volume/schedule/event) AND a complete `action_template`.
 - Treat Trader intent as primary mode selector; only override when hard constraints require it.
 - If you override Trader mode, include `override_reason` in canonical JSON and explain override in narrative.
 - Anchor all prices to market_snapshot.reference_price. `limit_price` (when used) must be within the current bid/ask range — it is the actual execution price of the order being placed right now, not a hypothetical future trigger. `stop_loss` and `take_profit` must be realistic risk levels relative to reference_price.
@@ -372,14 +385,43 @@ Validation-critical constraints:
 - Include a short "price anchor rationale" in your narrative before the JSON block, describing % distance from the snapshot reference.
   """
 
-        response = invoke_with_backoff(
-            llm,
+        def _invoke(repair_prompt: str):
+            return invoke_with_backoff(
+                llm,
+                repair_prompt,
+                key="risk_manager",
+                min_interval_s=float(config.get("risk_manager_min_delay_s", 0.0) or 0.0),
+                max_retries=int(config.get("risk_manager_max_retries", 6) or 6),
+                base_backoff_s=float(config.get("risk_manager_backoff_base_s", 1.0) or 1.0),
+                max_backoff_s=float(config.get("risk_manager_backoff_max_s", 30.0) or 30.0),
+            )
+
+        def _check(content: str):
+            # Mirrors _attach_canonical_decision so the repair criterion matches the
+            # final hard gate exactly: extract -> structured validation -> contract.
+            raw, raw_err = extract_decision_json_block(content)
+            if raw_err:
+                return raw_err
+            structured, err = validate_structured_decision(
+                raw or {}, expected_ticker=company_name
+            )
+            if err:
+                return err
+            violations = validate_final_decision_contract(
+                structured if isinstance(structured, dict) else {}
+            )
+            if violations:
+                return violations
+            return None
+
+        response = invoke_with_contract_repair(
             prompt,
-            key="risk_manager",
-            min_interval_s=float(config.get("risk_manager_min_delay_s", 0.0) or 0.0),
-            max_retries=int(config.get("risk_manager_max_retries", 6) or 6),
-            base_backoff_s=float(config.get("risk_manager_backoff_base_s", 1.0) or 1.0),
-            max_backoff_s=float(config.get("risk_manager_backoff_max_s", 30.0) or 30.0),
+            stage="risk_manager",
+            invoke=_invoke,
+            check=_check,
+            max_repair_attempts=int(
+                config.get("debate_contract_repair_attempts", 2) or 0
+            ),
         )
         new_risk_debate_state = {
             "judge_decision": response.content,

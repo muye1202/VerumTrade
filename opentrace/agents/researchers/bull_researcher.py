@@ -10,9 +10,14 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
     prompt_diagnostics,
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
+from opentrace.dataflows.config import get_config
 from opentrace.graph.debate_schema import (
     debate_validation_context_from_state,
-    require_valid_research_turns,
+    degrade_or_raise,
+    evaluate_research_turns,
+    format_contract_violation,
+    intermediate_gates_hard,
+    invoke_with_contract_repair,
 )
 
 
@@ -88,18 +93,41 @@ DEBATE CONTRACT:
 - Use exactly one field per debate turn. If several fields are affected, choose the most important one.
 """
 
-        response = llm.invoke(prompt)
+        config = get_config()
+        debate_context = debate_validation_context_from_state(state)
+
+        def _evaluate(content: str):
+            return evaluate_research_turns(
+                content,
+                evidence_ids=debate_context["evidence_ids"],
+                active_issue_ids=debate_context["issue_ids"],
+                evidence_aliases=debate_context["evidence_aliases"],
+                active_issues=debate_context["issues"],
+            )
+
+        def _check(content: str):
+            _, violation = _evaluate(content)
+            return format_contract_violation(violation)
+
+        response = invoke_with_contract_repair(
+            prompt,
+            stage="bull_researcher",
+            invoke=llm.invoke,
+            check=_check,
+            max_repair_attempts=int(
+                config.get("debate_contract_repair_attempts", 2) or 0
+            ),
+        )
 
         argument = f"Bull Analyst: {response.content}"
-        debate_context = debate_validation_context_from_state(state)
-        validation = require_valid_research_turns(
-            response.content,
-            stage="bull_researcher",
-            evidence_ids=debate_context["evidence_ids"],
-            active_issue_ids=debate_context["issue_ids"],
-            evidence_aliases=debate_context["evidence_aliases"],
-            active_issues=debate_context["issues"],
-        )
+        validation, violation = _evaluate(response.content)
+        if violation:
+            reason, detail = violation
+            degraded = degrade_or_raise(
+                "bull_researcher", reason, detail, hard=intermediate_gates_hard(config)
+            )
+            if degraded:
+                validation = {**validation, "gate_degradation": degraded}
         all_turns = [*(state.get("research_debate_turns") or []), *validation["accepted_turns"]]
 
         new_investment_debate_state = {

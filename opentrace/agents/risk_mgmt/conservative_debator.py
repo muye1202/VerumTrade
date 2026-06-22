@@ -7,7 +7,14 @@ from opentrace.agents.utils.agent_runtime.context_budget import (
     prompt_diagnostics,
 )
 from opentrace.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
-from opentrace.graph.debate_schema import require_risk_response_contract
+from opentrace.dataflows.config import get_config
+from opentrace.graph.debate_schema import (
+    degrade_or_raise,
+    evaluate_risk_response_contract,
+    format_contract_violation,
+    intermediate_gates_hard,
+    invoke_with_contract_repair,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -83,10 +90,29 @@ RISK PATCH CONTRACT:
 - Format PLAN_PATCH as valid JSON with patch_id, author, target_plan_version, patch_type, field, old_value, new_value, evidence_ids, reason, expected_effect, and materiality.
 - Do not provide general commentary unless it is attached to a patch, rejection, or no-op rationale."""
 
-        response = llm.invoke(prompt)
-        response_content = require_risk_response_contract(
+        config = get_config()
+
+        def _check(content: str):
+            _, violation = evaluate_risk_response_contract(content, stage="safe_debator")
+            return format_contract_violation(violation)
+
+        response = invoke_with_contract_repair(
+            prompt,
+            stage="safe_debator",
+            invoke=llm.invoke,
+            check=_check,
+            max_repair_attempts=int(
+                config.get("debate_contract_repair_attempts", 2) or 0
+            ),
+        )
+        response_content, violation = evaluate_risk_response_contract(
             response.content, stage="safe_debator"
         )
+        if violation:
+            degrade_or_raise(
+                "safe_debator", violation[0], violation[1],
+                hard=intermediate_gates_hard(config),
+            )
 
         argument = f"Safe Analyst: {response_content}"
 
