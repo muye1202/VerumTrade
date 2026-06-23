@@ -156,3 +156,6 @@ class AgentState(_MessagesState):
     # Bounded peer-news "sector read-through" block (Tier-2 Phase 2b; gated off by default) — recent
     # guidance/news for the nearest-reporting peers, injected into the news + catalyst prompts.
     sector_read_through: Annotated[dict, "Recent news/guidance for the ticker's nearest-reporting peers"]
+    # Tier-4 deterministic positioning-risk gate result emitted by the risk judge (triggered flag,
+    # severity, tape factors, and the user-facing warning_text) — surfaced rather than silent.
+    positioning_warning: Annotated[dict, "Positioning-risk gate result (triggered/severity/warning_text)"]

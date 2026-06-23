@@ -18,7 +18,7 @@ from .pipeline_utils import parse_ohlcv_rows
 class PreStage0IntelligenceBuilder:
     """Compute strict-scope, pre-Stage-0 market intelligence snapshot."""
 
-    _VERSION = "v1"
+    _VERSION = "v2"  # bumped: added foreign_markets block (Tier-3 pullback-risk upgrade)
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
@@ -337,6 +337,31 @@ class PreStage0IntelligenceBuilder:
             "eth": primary.get("ETH-USD", {}),
         }
 
+    def _foreign_block(self, trade_date: str) -> Dict[str, Any]:
+        """Foreign-market & FX channel (Tier-3 item 6, pullback-risk upgrade).
+
+        Country ETFs (Korea/Taiwan/Japan/China) + USD index / USD-JPY as a *proxy* for foreign
+        stress and cross-border flows — a free foreign-investor-flows feed does not exist, so we
+        infer stress from country-ETF drawdowns + FX on the same cached yfinance path. The Korea
+        memory shock showed up in KOSPI and FX before it fully hit US ADRs. Gated by
+        ``enable_foreign_market_channel`` (default True); returns ``{}`` when disabled.
+        """
+        if not bool(self.config.get("enable_foreign_market_channel", True)):
+            return {}
+        markets = self._simple_return_block(
+            trade_date,
+            ["EWY", "EWT", "EWJ", "FXI", "DX-Y.NYB", "JPY=X"],
+            lookback_days=60,
+        )
+        return {
+            "korea": markets.get("EWY", {}),
+            "taiwan": markets.get("EWT", {}),
+            "japan": markets.get("EWJ", {}),
+            "china": markets.get("FXI", {}),
+            "usd_index": markets.get("DX-Y.NYB", {}),
+            "usd_jpy": markets.get("JPY=X", {}),
+        }
+
     def _sector_factor_block(self, trade_date: str) -> Dict[str, Any]:
         sectors = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC", "SPY"]
         factors = ["IWF", "IWD", "IWM", "SPY", "MTUM", "SPLV"]
@@ -509,6 +534,7 @@ class PreStage0IntelligenceBuilder:
             "rates_macro": {},
             "credit_liquidity": {},
             "cross_asset": {},
+            "foreign_markets": {},
             "sector_factor": {},
             "calendar": {},
             "global_news": {},
@@ -526,6 +552,7 @@ class PreStage0IntelligenceBuilder:
             snapshot["rates_macro"] = self._rates_macro_block(trade_date)
             snapshot["credit_liquidity"] = self._credit_block(trade_date)
             snapshot["cross_asset"] = self._cross_asset_block(trade_date)
+            snapshot["foreign_markets"] = self._foreign_block(trade_date)
             snapshot["sector_factor"] = self._sector_factor_block(trade_date)
             snapshot["calendar"] = self._calendar_block(trade_date)
             snapshot["global_news"] = self._global_news_block()

@@ -33,7 +33,17 @@ _VIX_ELEVATED_LEVEL = 20.0
 _VIX_SPIKE_1D_PCT = 8.0
 _MOMENTUM_CROWD_SPREAD_PCT = 4.0
 _SECTOR_DISTRIBUTION_5D_PCT = -3.0
+_FOREIGN_STRESS_1D_PCT = -3.0
+_FOREIGN_STRESS_5D_PCT = -5.0
 _MAX_MACRO_EVENTS = 10
+
+# Foreign-market label -> (display name, affected sectors for read-through). Tier-3 item 6.
+_FOREIGN_MARKETS = {
+    "korea": ("Korea (EWY)", ["memory", "semiconductors", "technology"]),
+    "taiwan": ("Taiwan (EWT)", ["semiconductors", "technology"]),
+    "japan": ("Japan (EWJ)", ["technology", "broad_market"]),
+    "china": ("China (FXI)", ["broad_market", "materials"]),
+}
 
 
 def _num(value: Any) -> Optional[float]:
@@ -73,7 +83,7 @@ def build_macro_regime_context(
                 builder_cfg["_route_to_vendor"] = route_fn
             builder = PreStage0IntelligenceBuilder(config=builder_cfg)
             snapshot, _availability = builder.build(str(trade_date))
-        return summarize_macro_regime(snapshot, trade_date=str(trade_date))
+        return summarize_macro_regime(snapshot, trade_date=str(trade_date), config=cfg)
     except Exception as exc:  # never break an analysis run on macro context
         logger.debug("macro_regime build failed for %s: %s", trade_date, exc)
         return {}
@@ -108,6 +118,19 @@ def _compact_sector_heatmap(heatmap: Dict[str, Any]) -> Dict[str, Any]:
     return compact
 
 
+def _compact_foreign(foreign: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, row in (foreign or {}).items():
+        if not isinstance(row, dict):
+            continue
+        returns = row.get("returns_pct") or {}
+        out[name] = {
+            "ret_1d_pct": _num(returns.get("1d")),
+            "ret_5d_pct": _num(returns.get("5d")),
+        }
+    return out
+
+
 def _sector_leaders_laggards(compact_heatmap: Dict[str, Any]) -> Dict[str, List[str]]:
     scored = [
         (etf, row.get("rs_vs_spy_5d_pct"))
@@ -120,10 +143,15 @@ def _sector_leaders_laggards(compact_heatmap: Dict[str, Any]) -> Dict[str, List[
     return {"leaders": leaders, "laggards": laggards}
 
 
-def summarize_macro_regime(snapshot: Dict[str, Any], trade_date: str = "") -> Dict[str, Any]:
+def summarize_macro_regime(
+    snapshot: Dict[str, Any],
+    trade_date: str = "",
+    config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Reduce a built snapshot dict to the compact ``macro_regime`` bus payload.
 
-    Pure / network-free: safe to call in tests with a synthetic snapshot.
+    Pure / network-free: safe to call in tests with a synthetic snapshot. ``config`` (optional) gates
+    the Tier-3 narrative tagger via ``enable_narrative_catalysts``; when omitted, tagging is on.
     """
     if not isinstance(snapshot, dict) or not snapshot:
         return {}
@@ -136,6 +164,7 @@ def summarize_macro_regime(snapshot: Dict[str, Any], trade_date: str = "") -> Di
     cross = snapshot.get("cross_asset") or {}
     sector = snapshot.get("sector_factor") or {}
     calendar = snapshot.get("calendar") or {}
+    foreign = snapshot.get("foreign_markets") or {}
 
     compact_heatmap = _compact_sector_heatmap(sector.get("sector_heatmap") or {})
     regime: Dict[str, Any] = {
@@ -153,6 +182,7 @@ def summarize_macro_regime(snapshot: Dict[str, Any], trade_date: str = "") -> Di
             "brent_5d_pct": _num(((cross.get("oil_brent") or {}).get("returns_pct") or {}).get("5d")),
             "wti_5d_pct": _num(((cross.get("oil_wti") or {}).get("returns_pct") or {}).get("5d")),
         },
+        "foreign_markets": _compact_foreign(foreign),
         "sector_heatmap": compact_heatmap,
         "sector_leaders_laggards": _sector_leaders_laggards(compact_heatmap),
         "factor_spreads_20d_pct": sector.get("factor_spreads_20d_pct") or {},
@@ -165,6 +195,22 @@ def summarize_macro_regime(snapshot: Dict[str, Any], trade_date: str = "") -> Di
         "headlines_markdown": str((snapshot.get("global_news") or {}).get("headlines_markdown") or "")[:1200],
     }
     regime["macro_events"] = extract_macro_events(regime)
+    # Tier-3 (item 5): tag soft/second-order/policy/foreign narrative catalysts from the
+    # already-fetched headline text and fold them into macro_events (no extra network call). The
+    # tagger degrades to [] on any error/disable, so this never breaks the reduction.
+    try:
+        from opentrace.agents.utils.market_data.narrative_catalyst import tag_narrative_events
+
+        narrative_events = tag_narrative_events(
+            regime.get("headlines_markdown") or "",
+            as_of=str(regime.get("as_of") or ""),
+            config=config,
+        )
+        if narrative_events:
+            regime["macro_events"] = (regime["macro_events"] + narrative_events)[:_MAX_MACRO_EVENTS]
+            regime["narrative_events"] = narrative_events
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("narrative catalyst tagging skipped: %s", exc)
     regime["summary"] = _summary_line(regime)
     return regime
 
@@ -285,6 +331,28 @@ def extract_macro_events(regime: Dict[str, Any]) -> List[Dict[str, Any]]:
                 )
             )
 
+    foreign = regime.get("foreign_markets") or {}
+    for key, (label, sectors) in _FOREIGN_MARKETS.items():
+        row = foreign.get(key) or {}
+        ret_1d = row.get("ret_1d_pct")
+        ret_5d = row.get("ret_5d_pct")
+        stressed = (isinstance(ret_1d, (int, float)) and ret_1d <= _FOREIGN_STRESS_1D_PCT) or (
+            isinstance(ret_5d, (int, float)) and ret_5d <= _FOREIGN_STRESS_5D_PCT
+        )
+        if not stressed:
+            continue
+        worst = min([v for v in (ret_1d, ret_5d) if isinstance(v, (int, float))], default=0.0)
+        events.append(
+            _event(
+                f"Foreign-market stress: {label} {worst:.1f}% - cross-border flow/basket "
+                "read-through (a foreign shock can hit the US basket before company news)",
+                release_time=as_of,
+                surprise_score=min(0.75, 0.45 + abs(worst) / 30.0),
+                affected_sectors=sectors,
+                relevance_to_ticker=0.55,
+            )
+        )
+
     calendar = regime.get("calendar") or {}
     if calendar.get("opex_week"):
         events.append(
@@ -368,6 +436,14 @@ def format_macro_regime_markdown(regime: Dict[str, Any]) -> str:
         f"- Calendar: OPEX week {cal.get('opex_week')}, quarter-end {cal.get('quarter_end')}, "
         f"earnings intensity {cal.get('earnings_intensity') or 'n/a'}",
     ]
+    foreign = regime.get("foreign_markets") or {}
+    foreign_bits = [
+        f"{_FOREIGN_MARKETS.get(k, (k.title(), []))[0]} {_fmt_pct((row or {}).get('ret_1d_pct'))}/1d"
+        for k, row in foreign.items()
+        if isinstance((row or {}).get("ret_1d_pct"), (int, float)) or isinstance((row or {}).get("ret_5d_pct"), (int, float))
+    ]
+    if foreign_bits:
+        lines.append("- Foreign markets (proxy for cross-border flow stress): " + ", ".join(foreign_bits))
     macro_events = regime.get("macro_events") or []
     if macro_events:
         lines.append("- Derived macro/regime events:")

@@ -89,6 +89,19 @@ DEFAULT_CONFIG = {
     # fragility + valuation richness) and give the risk judge a dedicated override path on a
     # HIGH/CRITICAL rating (Tier-1 pullback-risk upgrade). Degrades to no-op when data is sparse.
     "enable_pullback_vulnerability": _env_flag("OPENTRACE_ENABLE_PULLBACK_VULNERABILITY", True),
+    # When true, tag soft/second-order/policy/foreign narrative catalysts (policy_trial_balloon,
+    # regulatory_narrative, peer_guidance, positioning_unwind) from already-fetched headlines and
+    # fold them into macro_events (Tier-3 pullback-risk upgrade). Degrades to no-op on empty data.
+    "enable_narrative_catalysts": _env_flag("OPENTRACE_ENABLE_NARRATIVE_CATALYSTS", True),
+    # When true, fetch the foreign-market & FX channel (Korea/Taiwan/Japan/China country ETFs +
+    # USD index / USD-JPY) in the regime snapshot and derive foreign-stress events (Tier-3 item 6).
+    # A proxy for cross-border flow stress (no free flows feed). Degrades to no-op when disabled.
+    "enable_foreign_market_channel": _env_flag("OPENTRACE_ENABLE_FOREIGN_MARKET_CHANNEL", True),
+    # When true, run the deterministic positioning-risk gate in the risk judge: on a HIGH/CRITICAL
+    # pullback vulnerability coinciding with a fragile tape (risk-off / rates-up / oil / foreign
+    # stress), emit an explicit user-facing positioning_warning and a sharpened override directive
+    # (Tier-4 pullback-risk upgrade). Symmetric to the catalyst gate; degrades to no-op otherwise.
+    "enable_positioning_gate": _env_flag("OPENTRACE_ENABLE_POSITIONING_GATE", True),
     # Decision integrity: market snapshot used to provide reference price context to LLM
     "decision_snapshot_source": os.getenv("OPENTRACE_DECISION_SNAPSHOT_SOURCE", "executor_quote_first"),
     "executor_quote_max_rel_spread": float(os.getenv("OPENTRACE_EXECUTOR_QUOTE_MAX_REL_SPREAD", "0.01")),

@@ -95,6 +95,7 @@ def create_news_analyst(llm):
             "\n\nReport requirements (to-the-point, trading oriented):"
             "\n- Company catalysts: summarize key storylines; map each to likely price impact direction and time window."
             "\n- Macro/regime: risk-on/off tone, rates/inflation themes, and how they could affect the ticker/sector."
+            "\n- Soft / second-order / foreign-jurisdiction signals: explicitly weight narrative catalysts that move *crowded baskets* with no company-specific news — a foreign policy chief's social-media trial balloon (e.g. a windfall-tax / 'citizen dividend' proposal), a peer's soft or cut guidance tone, an export-control / antitrust narrative, or a foreign-market (KOSPI/Taiwan) + FX shock. A parabolic, momentum-crowded name can unwind on these; do not require a dated, company-specific event to flag the risk."
             "\n- Sentiment/positioning signals from the vendor output (e.g., Alpha Vantage news sentiment scores) if present."
             f"\n- Event-driven risk: list 3–5 plausible upcoming catalysts/risks over {window_text} (don’t invent dates; describe them generically if unknown)."
             "\n- Bottom line: short-term news-driven bias (bullish/bearish/neutral) + what headline would invalidate it."

@@ -20,6 +20,7 @@ from opentrace.execution.decision_guard import build_market_snapshot
 from opentrace.agents.utils.market_data.macro_regime import format_macro_regime_markdown
 from opentrace.agents.utils.market_data.pullback_vulnerability import (
     format_pullback_vulnerability_markdown,
+    compute_positioning_gate,
 )
 from opentrace.graph.evidence_ledger_schema import build_evidence_ledger
 from opentrace.graph.plan_patch_schema import (
@@ -203,6 +204,31 @@ you follow or override this signal and why.
 ---
 """
 
+        # Tier-4 deterministic positioning-risk gate: fires only when a HIGH/CRITICAL per-ticker
+        # vulnerability coincides with a fragile tape (risk-off / rates-up / oil / foreign stress).
+        # Symmetric to the catalyst-risk gate; produces an explicit, user-facing warning rather than
+        # a silent HOLD. Computed in code so it is deterministic and surfaced in returned state.
+        positioning_gate = {}
+        positioning_gate_block = ""
+        if bool(config.get("enable_positioning_gate", True)):
+            positioning_gate = compute_positioning_gate(
+                pullback_vuln, state.get("macro_regime", {}) or {}
+            )
+            if positioning_gate.get("triggered"):
+                positioning_gate_block = f"""
+---
+POSITIONING-RISK GATE (TRIGGERED — {positioning_gate.get('severity', 'HIGH')}):
+{positioning_gate.get('warning_text', '')}
+
+This gate is symmetric to the catalyst-risk override and has ALREADY fired deterministically (the
+conditions are met). You MUST address it explicitly: either (a) follow it — reduce size, tighten the
+stop/invalidation, choose a v1 HOLD, or name a concrete wait-for-trigger (v2) entry — or (b) override
+it, in which case you must cite the specific admissible evidence that offsets it and set
+`override_reason` in the canonical JSON. Do not ignore it silently. It does NOT by itself force
+SELL/HOLD; it tempers sizing/entry for new exposure and tightens controls on existing exposure.
+---
+"""
+
         prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts-Risky, Neutral, and Safe/Conservative-and determine the best course of action for the trader.
 Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
 
@@ -218,6 +244,7 @@ CURRENT MARKET SESSION CONTEXT:
 {snapshot_block}
 {macro_regime_block}
 {pullback_vuln_block}
+{positioning_gate_block}
 
 Guidelines for Decision-Making:
 1. **Summarize Key Arguments**: Extract the strongest points from each analyst, focusing on relevance to the context.
@@ -447,6 +474,7 @@ Validation-critical constraints:
                 response.content,
             ),
             "market_snapshot": market_snapshot,
+            "positioning_warning": positioning_gate,
         }
 
     return risk_manager_node

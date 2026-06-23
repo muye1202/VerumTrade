@@ -34,16 +34,19 @@ _BASKETS: Dict[str, Dict[str, Any]] = {
     "memory": {
         "members": ["MU", "WDC", "SNDK", "STX"],
         "foreign": ["000660.KS", "005930.KS"],  # SK Hynix, Samsung
+        "foreign_markets": ["korea", "taiwan"],  # KOSPI/Taiwan read-through (Tier-3 item 6)
         "sector_etf": "SMH",
     },
     "ai_semis": {
         "members": ["NVDA", "AMD", "AVGO", "MRVL", "INTC", "TSM", "QCOM", "ARM", "MU"],
         "foreign": [],
+        "foreign_markets": ["taiwan", "korea"],
         "sector_etf": "SMH",
     },
     "semi_equipment": {
         "members": ["AMAT", "LRCX", "KLAC", "ASML"],
         "foreign": [],
+        "foreign_markets": ["taiwan", "korea"],
         "sector_etf": "SMH",
     },
     "megacap_tech": {
@@ -122,6 +125,24 @@ def resolve_peers(ticker: str, config: Optional[Dict[str, Any]] = None) -> List[
     if not peers:
         peers = _taxonomy_peers(ticker, config)
     return peers[:_MAX_PEERS]
+
+
+def foreign_markets_for(ticker: str, config: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Resolve ``ticker`` to the foreign market(s) whose stress reads through to its basket.
+
+    Returns keys matching the foreign-market channel (``korea``/``taiwan``/``japan``/``china`` — see
+    ``macro_regime._FOREIGN_MARKETS``), e.g. memory/AI-semis -> ``["korea", "taiwan"]``. ``[]`` when
+    disabled or the ticker isn't in a curated basket. Gated by ``enable_foreign_market_channel``.
+    """
+    ticker = _norm(ticker)
+    if not ticker or not _flag(config, "enable_foreign_market_channel"):
+        return []
+    out: List[str] = []
+    for basket in _curated_baskets_for(ticker):
+        for mkt in basket.get("foreign_markets", []) or []:
+            if mkt not in out:
+                out.append(str(mkt))
+    return out
 
 
 def sector_etf_for(ticker: str, config: Optional[Dict[str, Any]] = None) -> Optional[str]:
