@@ -11,7 +11,11 @@
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
   </p>
 
-  <img src="demos/SNDK_demo_preview.gif" alt="OpenTrace SNDK demo preview" width="100%">
+  <p>
+    <a href="#single-ticker-analysis">Watch the single-ticker demo ↓</a>
+    ·
+    <a href="https://muye1202.github.io/OpenTrace/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
+  </p>
 </div>
 
 ---
@@ -31,6 +35,12 @@ Every run follows an auditable path:
 4. **Trader plan** turns the debate into an actionable proposal.
 5. **Risk review** checks sizing, timing, concentration, and downside.
 6. **Decision** records the final rationale, traces, and optional trade instructions.
+
+> [!IMPORTANT]
+> OpenTrace is a **research and decision-support pipeline**, not an independent investment
+> decision maker. Treat its output as a structured second opinion: inspect the evidence, challenge
+> the thesis, paper-trade first, and make any real-money decision yourself. Market data can be
+> incomplete or delayed, LLM outputs can be wrong, and trading involves risk of loss.
 
 ---
 
@@ -63,7 +73,6 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | 🧩 **Structured agent pipeline** | Specialised analysts → bull/bear debate → trader plan → risk review → execution, wired as a [LangGraph](https://github.com/langchain-ai/langgraph) workflow. |
 | 🗞️ **Catalyst & event-risk awareness** | A dedicated analyst surfaces earnings, FDA, and macro catalysts that move prices. |
 | 🛡️ **Crowding & macro-pullback awareness** | **(new)** A regime context bus + per-ticker **Pullback Vulnerability Score** + peer/sector read-through warn when a crowded, extended name is fragile. [Details ↓](#%EF%B8%8F-crowding--macro-pullback-awareness) |
-| 🧠 **Closed-loop learning** | A journal subsystem tracks each thesis to its real outcome and feeds the lessons back into agent memory. |
 | 🛰️ **AI stock discovery** | A multi-stage screener finds promising tickers, then runs the full pipeline on the best candidates. |
 | 🔌 **Bring your own model & data** | 9 LLM providers (incl. local Ollama) and 6+ market-data vendors with automatic fallback. Start free with Yahoo Finance and one LLM key. |
 | 💸 **Paper or live execution** | Optional Alpaca integration with position-size and concentration guardrails and 5 order types. |
@@ -79,7 +88,6 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | **Grounding** | **Evidence Graph** synthesis layer between analysts and researchers |
 | **New analyst** | **Catalyst / Event-Risk Analyst** (earnings, FDA, macro catalysts) |
 | **Risk awareness** | **Macro-regime context bus**, per-ticker **Pullback Vulnerability Score**, and **peer/sector read-through** with a dedicated risk-judge override ([details](#%EF%B8%8F-crowding--macro-pullback-awareness)) |
-| **Learning** | **Journal** subsystem: thesis state machine, outcome monitoring, reflection → lesson memory |
 | **Discovery** | Multi-stage **stock-discovery** pipeline + a macro **Theme Engine** |
 | **Decision rigor** | Structured **Decision Schema** + pre-execution **Decision Guard** validation |
 | **Execution** | Live/paper **Alpaca** execution with concentration & position-size guardrails and 5 order types |
@@ -102,12 +110,18 @@ OpenTrace runs the selected analyst team against one ticker, builds a structured
 stages the bull/bear research debate, asks the trader for a plan, and routes the result through risk
 review before producing a final decision.
 
+<video src="demos/MU_single_ticker_demo_720p_6x.mp4" controls muted playsinline width="100%"></video>
+
 You get a completed report with reasoning traces, decision traces, analyst evidence, risk notes, and
 an optional paper/live Alpaca order if execution is enabled. Start from the web app by entering a
 ticker in the main analysis form, or use the CLI with `python -m cli.main analyze` and choose
 single-ticker analysis at the first prompt.
 
-<!-- TODO: Embed single ticker analysis demo video here. -->
+Want to inspect the output quality before running your own analysis? Open the interactive
+[MU example report](https://muye1202.github.io/OpenTrace/demos/example-reports/MU-2026-06-23.html),
+generated from a completed OpenTrace run and rendered with app-like navigation, search, and
+collapsible report panels. The source artifact lives at
+[`demos/example-reports/MU-2026-06-23.html`](demos/example-reports/MU-2026-06-23.html).
 
 ### Stock discovery mode
 
@@ -158,6 +172,26 @@ DeepSeek, …). That's all you need — market data from Yahoo Finance works wit
 
 > [!TIP]
 > See [`.env.example`](.env.example) for every supported key and what it does.
+
+**Supported data sources**
+
+OpenTrace starts with a no-key Yahoo Finance path for basic stock data, then uses optional provider
+keys for richer coverage, fallback, filings, news, fundamentals, and execution data:
+
+| Source | Setup | Used for |
+|:--|:--|:--|
+| Yahoo Finance / `yfinance` | No key | Default fallback for stock prices, indicators, financial statements, and insider transactions |
+| Alpaca | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Broker market data plus optional paper/live execution |
+| Alpha Vantage | `ALPHA_VANTAGE_API_KEY` | Stock prices, indicators, fundamentals, financial statements, insider data, and news |
+| Twelve Data | `TWELVE_DATA_API_KEY` | Technical indicators fallback |
+| Finnhub | `FINNHUB_API_KEY` | Company/global news, news sentiment, earnings calendar, and insider data |
+| SEC EDGAR | No key | Recent company filings |
+| Local cached data | `OPENTRACE_DATA_DIR` optional | Offline/cache-backed fallback data |
+| LLM-backed news | Existing LLM key | News synthesis fallback when configured |
+
+The runtime can route each data category through a preferred vendor and automatically fall back when
+a provider is unavailable. See [Configuration](#%EF%B8%8F-configuration) for the `data_vendors`
+categories.
 
 **3 — Install frontend dependencies**
 
@@ -232,7 +266,7 @@ A live terminal dashboard streams agent progress, tool calls, and the growing re
 Results are saved to `results/stocks/{date}/{ticker}/`.
 
 <details>
-<summary><b>Portfolio analysis, Stock discovery & Journal commands</b></summary>
+<summary><b>Portfolio analysis & Stock discovery commands</b></summary>
 
 <br>
 
@@ -245,9 +279,6 @@ promising stocks)"** at the first prompt. The system screens for promising ticke
 scoring, then runs deep multi-agent analysis on the top candidates. You can launch a fresh discovery
 run or resume from a previously saved candidate list. See
 [Stock discovery mode](#stock-discovery-mode) for the workflow overview.
-
-**Journal** — `opentrace journal`
-Track trade outcomes and build agent memory. See [`journal_cli/README.md`](journal_cli/README.md).
 
 </details>
 
@@ -362,27 +393,6 @@ Each analyst has access to a curated set of data tools:
 > [!TIP]
 > When `enable_bundle_tools` is on (default), each analyst also gets a one-shot "bundle" tool that
 > fetches all key data in a single call, reducing LLM turns and latency.
-
-</details>
-
-<details>
-<summary><b>💾 Memory & closed-loop learning (Journal)</b></summary>
-
-<br>
-
-Each agent team has its own **vector-store memory** (backed by ChromaDB). On top of that, the
-**Journal** subsystem ([`opentrace/agents/journal/`](opentrace/agents/journal/)) closes the loop
-between a decision and its real-world outcome:
-
-- **Thesis extraction & state machine** — each trade's thesis is captured and tracked through its
-  lifecycle (open → playing out → invalidated/realized).
-- **Condition & outcome monitoring** — a scheduler watches positions, infers triggering events, and
-  records what actually happened.
-- **Reflection → lesson memory** — `reflect_and_remember()` turns outcomes into lessons that are
-  retrieved the next time a similar setup appears, so the system improves with experience.
-
-See [`opentrace/agents/journal/USAGE.md`](opentrace/agents/journal/USAGE.md) and
-[`journal_cli/README.md`](journal_cli/README.md).
 
 </details>
 
@@ -587,9 +597,10 @@ work on multi-agent LLM systems for financial analysis and trading.
 
 ## ⚠️ Disclaimer
 
-OpenTrace is a **research and educational tool**. It is not financial advice. Always paper-trade first
-and understand the risks before using real money. The authors are not responsible for any financial
-losses incurred through the use of this software.
+OpenTrace is a **research and educational decision-support tool**. It is not financial advice and
+is not an independent investment decision maker. Always inspect the evidence yourself, paper-trade
+first, and understand the risks before using real money. The authors are not responsible for any
+financial losses incurred through the use of this software.
 
 ---
 

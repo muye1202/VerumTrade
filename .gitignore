@@ -44,6 +44,7 @@ frontend/dist-ssr/
 # ─── Data / media ──────────────────────────────────────────
 *.csv
 *.mp4
+!demos/MU_single_ticker_demo_720p_6x.mp4
 *.log
 
 # ─── Source (top-level src/ is not project code) ────────────
