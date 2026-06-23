@@ -14,7 +14,7 @@
   <p>
     <a href="#single-ticker-analysis">Watch the single-ticker demo ↓</a>
     ·
-    <a href="https://muye1202.github.io/OpenTrace/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
+    <a href="https://muye1202.github.io/OpenTrace-Agentic-Trading/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
   </p>
 </div>
 
@@ -120,7 +120,7 @@ ticker in the main analysis form, or use the CLI with `python -m cli.main analyz
 single-ticker analysis at the first prompt.
 
 Want to inspect the output quality before running your own analysis? Open the interactive
-[MU example report](https://muye1202.github.io/OpenTrace/demos/example-reports/MU-2026-06-23.html),
+[MU example report](https://muye1202.github.io/OpenTrace-Agentic-Trading/demos/example-reports/MU-2026-06-23.html),
 generated from a completed OpenTrace run and rendered with app-like navigation, search, and
 collapsible report panels. The source artifact lives at
 [`demos/example-reports/MU-2026-06-23.html`](demos/example-reports/MU-2026-06-23.html).
