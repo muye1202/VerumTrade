@@ -110,9 +110,9 @@ OpenTrace runs the selected analyst team against one ticker, builds a structured
 stages the bull/bear research debate, asks the trader for a plan, and routes the result through risk
 review before producing a final decision.
 
-<video src="https://github.com/muye1202/OpenTrace-Agentic-Trading/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4" controls muted playsinline width="100%"></video>
+![MU single-ticker analysis demo](demos/MU_single_ticker_demo_preview.gif)
 
-> 📹 If the player above doesn't load, [watch the MU single-ticker demo here](https://github.com/muye1202/OpenTrace-Agentic-Trading/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
+> 📹 Prefer the full-quality video? [Download the MU single-ticker demo (MP4)](https://github.com/muye1202/OpenTrace-Agentic-Trading/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
 
 You get a completed report with reasoning traces, decision traces, analyst evidence, risk notes, and
 an optional paper/live Alpaca order if execution is enabled. Start from the web app by entering a
