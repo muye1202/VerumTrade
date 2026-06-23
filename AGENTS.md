@@ -85,4 +85,4 @@ Known validation gap:
 - Do not revert unrelated local changes; this workspace may have ongoing edits from prior discovery work.
 - `rg` may be blocked by Windows permissions in this workspace; use PowerShell `Select-String` as fallback.
 - `npm` may fail in PowerShell due execution policy blocking `npm.ps1`; use `npm.cmd` instead.
-- Git status may warn that `C:\Users\mj120/.config/git/ignore` is inaccessible. This warning has been harmless.
+- Git status may warn that your global excludes file (e.g. `~/.config/git/ignore` or `%USERPROFILE%\.config\git\ignore`) is inaccessible. This warning has been harmless.
