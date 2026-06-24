@@ -61,6 +61,40 @@
         text-rendering: optimizeLegibility;
       }
       .wrap { max-width: 920px; margin: 0 auto; padding: 72px 24px 96px; }
+      .topbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 42px;
+      }
+      .language-switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow-soft);
+      }
+      .language-switcher button {
+        min-width: 48px;
+        border: 0;
+        border-radius: 999px;
+        padding: 7px 12px;
+        color: var(--muted);
+        background: transparent;
+        font: 600 13px/1 var(--font);
+        cursor: pointer;
+        transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+      }
+      .language-switcher button[aria-pressed="true"] {
+        color: var(--accent-ink);
+        background: var(--accent);
+        box-shadow: 0 3px 10px rgba(36, 102, 250, 0.2);
+      }
+      .language-switcher button:focus-visible {
+        outline: 3px solid rgba(36, 102, 250, 0.28);
+        outline-offset: 2px;
+      }
       .brand {
         font-weight: 700;
         font-size: clamp(48px, 8vw, 84px);
@@ -133,41 +167,52 @@
         gap: 8px 18px;
         justify-content: space-between;
       }
+      @media (max-width: 560px) {
+        .wrap { padding-top: 32px; }
+        .topbar { margin-bottom: 34px; }
+        .language-switcher button { min-width: 44px; }
+      }
     </style>
   </head>
   <body>
     <main class="wrap">
+      <div class="topbar">
+        <div class="language-switcher" role="group" aria-label="Language">
+          <button type="button" data-lang-option="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang-option="zh-CN" aria-pressed="false">简体</button>
+        </div>
+      </div>
       <h1 class="brand">Verum<span>Trade</span></h1>
-      <p class="motto">verum &mdash; &ldquo;truth&rdquo;: a verifiable, evidence-first path to every trade.</p>
+      <p class="motto" data-i18n-html="motto">verum &mdash; &ldquo;truth&rdquo;: a verifiable, evidence-first path to every trade.</p>
 
-      <p class="tagline">
+      <p class="tagline" data-i18n-html="tagline">
         An open-source multi-agent LLM trading framework with
         <b>visible reasoning &amp; decision traces</b> &mdash; from evidence to trade thesis.
       </p>
 
       <div class="cta">
-        <a class="btn primary" href="https://github.com/muye1202/VerumTrade">View on GitHub</a>
-        <a class="btn ghost" href="https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html">See an example report</a>
-        <a class="btn ghost" href="https://github.com/muye1202/VerumTrade#readme">Read the docs</a>
+        <a class="btn primary" href="https://github.com/muye1202/VerumTrade" data-i18n="ctaGithub">View on GitHub</a>
+        <a class="btn ghost" href="https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html" data-i18n="ctaReport">See an example report</a>
+        <a class="btn ghost" href="https://github.com/muye1202/VerumTrade#readme" data-i18n="ctaDocs">Read the docs</a>
       </div>
 
-      <h2>How a run works</h2>
-      <p class="lead">
+      <h2 data-i18n="howTitle">How a run works</h2>
+      <p class="lead" data-i18n-html="howLead">
         VerumTrade analyzes a ticker you care about &mdash; or discovers new candidates &mdash; and turns
         market data, fundamentals, news, sentiment, catalysts, and risk context into an auditable trade
         thesis instead of a black-box buy/sell signal.
       </p>
       <ol class="pipeline">
-        <li><div class="step">01 · Analysts</div><div class="title">Gather evidence</div><div class="desc">Market, news, social, fundamental, and catalyst signals.</div></li>
-        <li><div class="step">02 · Evidence Graph</div><div class="title">Structure the facts</div><div class="desc">Findings distilled into a grounded fact graph.</div></li>
-        <li><div class="step">03 · Debate</div><div class="title">Bull vs. bear</div><div class="desc">The thesis is tested from both sides.</div></li>
-        <li><div class="step">04 · Trader plan</div><div class="title">Propose an action</div><div class="desc">The debate becomes a concrete proposal.</div></li>
-        <li><div class="step">05 · Risk review</div><div class="title">Check the downside</div><div class="desc">Sizing, timing, concentration, fragility.</div></li>
-        <li><div class="step">06 · Decision</div><div class="title">Record &amp; (optionally) execute</div><div class="desc">Rationale, traces, and paper/live Alpaca orders.</div></li>
+        <li><div class="step" data-i18n="step1Label">01 · Analysts</div><div class="title" data-i18n="step1Title">Gather evidence</div><div class="desc" data-i18n="step1Desc">Market, news, social, fundamental, and catalyst signals.</div></li>
+        <li><div class="step" data-i18n="step2Label">02 · Evidence Graph</div><div class="title" data-i18n="step2Title">Structure the facts</div><div class="desc" data-i18n="step2Desc">Findings distilled into a grounded fact graph.</div></li>
+        <li><div class="step" data-i18n="step3Label">03 · Debate</div><div class="title" data-i18n="step3Title">Bull vs. bear</div><div class="desc" data-i18n="step3Desc">The thesis is tested from both sides.</div></li>
+        <li><div class="step" data-i18n="step4Label">04 · Trader plan</div><div class="title" data-i18n="step4Title">Propose an action</div><div class="desc" data-i18n="step4Desc">The debate becomes a concrete proposal.</div></li>
+        <li><div class="step" data-i18n="step5Label">05 · Risk review</div><div class="title" data-i18n="step5Title">Check the downside</div><div class="desc" data-i18n="step5Desc">Sizing, timing, concentration, fragility.</div></li>
+        <li><div class="step" data-i18n="step6Label">06 · Decision</div><div class="title" data-i18n="step6Title">Record &amp; (optionally) execute</div><div class="desc" data-i18n="step6Desc">Rationale, traces, and paper/live Alpaca orders.</div></li>
       </ol>
 
-      <h2>Built on TradingAgents</h2>
-      <p class="lead">
+      <h2 data-i18n="builtTitle">Built on TradingAgents</h2>
+      <p class="lead" data-i18n-html="builtLead">
         VerumTrade builds on
         <a class="inline" href="https://github.com/tauricresearch/tradingagents">Tauric Research&rsquo;s TradingAgents</a>
         and extends it with an evidence graph, a catalyst/event-risk analyst, macro-pullback &amp; crowding
@@ -179,5 +224,144 @@
         <span><a class="inline" href="https://github.com/muye1202/VerumTrade">github.com/muye1202/VerumTrade</a></span>
       </footer>
     </main>
+    <script>
+      const translations = {
+        en: {
+          pageTitle: "VerumTrade — multi-agent LLM trading framework with visible reasoning & decision traces",
+          pageDescription:
+            "VerumTrade is an open-source multi-agent LLM trading framework. Specialist analysts build an evidence graph, debate bull vs bear, and pass a risk review to produce an auditable trade thesis — with visible reasoning and decision traces, paper or live via Alpaca.",
+          languageLabel: "Language",
+          motto: "verum &mdash; &ldquo;truth&rdquo;: a verifiable, evidence-first path to every trade.",
+          tagline:
+            "An open-source multi-agent LLM trading framework with <b>visible reasoning &amp; decision traces</b> &mdash; from evidence to trade thesis.",
+          ctaGithub: "View on GitHub",
+          ctaReport: "See an example report",
+          ctaDocs: "Read the docs",
+          howTitle: "How a run works",
+          howLead:
+            "VerumTrade analyzes a ticker you care about &mdash; or discovers new candidates &mdash; and turns market data, fundamentals, news, sentiment, catalysts, and risk context into an auditable trade thesis instead of a black-box buy/sell signal.",
+          step1Label: "01 · Analysts",
+          step1Title: "Gather evidence",
+          step1Desc: "Market, news, social, fundamental, and catalyst signals.",
+          step2Label: "02 · Evidence Graph",
+          step2Title: "Structure the facts",
+          step2Desc: "Findings distilled into a grounded fact graph.",
+          step3Label: "03 · Debate",
+          step3Title: "Bull vs. bear",
+          step3Desc: "The thesis is tested from both sides.",
+          step4Label: "04 · Trader plan",
+          step4Title: "Propose an action",
+          step4Desc: "The debate becomes a concrete proposal.",
+          step5Label: "05 · Risk review",
+          step5Title: "Check the downside",
+          step5Desc: "Sizing, timing, concentration, fragility.",
+          step6Label: "06 · Decision",
+          step6Title: "Record & (optionally) execute",
+          step6Desc: "Rationale, traces, and paper/live Alpaca orders.",
+          builtTitle: "Built on TradingAgents",
+          builtLead:
+            'VerumTrade builds on <a class="inline" href="https://github.com/tauricresearch/tradingagents">Tauric Research&rsquo;s TradingAgents</a> and extends it with an evidence graph, a catalyst/event-risk analyst, macro-pullback &amp; crowding awareness, AI stock discovery, and visible reasoning &amp; decision traces rendered in a web UI.',
+        },
+        "zh-CN": {
+          pageTitle: "VerumTrade — 提供可见推理与决策轨迹的多智能体 LLM 交易框架",
+          pageDescription:
+            "VerumTrade 是一个开源多智能体 LLM 交易框架。专业分析智能体构建证据图谱，展开多空辩论，并通过风险审查，产出可审计的交易论点；支持可见推理、决策轨迹，以及通过 Alpaca 进行模拟或实盘交易。",
+          languageLabel: "语言",
+          motto: "verum &mdash; &ldquo;truth&rdquo;：让每一次交易都沿着可验证、证据优先的路径完成。",
+          tagline:
+            "开源的多智能体 LLM 交易框架，提供 <b>可见推理与决策轨迹</b>，从证据走向交易论点。",
+          ctaGithub: "在 GitHub 查看",
+          ctaReport: "查看示例报告",
+          ctaDocs: "阅读文档",
+          howTitle: "一次运行如何工作",
+          howLead:
+            "VerumTrade 会分析你关注的股票，或发现新的候选标的，并将市场数据、基本面、新闻、情绪、催化因素和风险背景转化为可审计的交易论点，而不是黑箱买入/卖出信号。",
+          step1Label: "01 · 分析师",
+          step1Title: "收集证据",
+          step1Desc: "市场、新闻、社交、基本面和催化信号。",
+          step2Label: "02 · 证据图谱",
+          step2Title: "结构化事实",
+          step2Desc: "将发现提炼为有依据的事实图谱。",
+          step3Label: "03 · 辩论",
+          step3Title: "多空交锋",
+          step3Desc: "从正反两面检验交易论点。",
+          step4Label: "04 · 交易计划",
+          step4Title: "提出行动",
+          step4Desc: "将辩论结果转化为具体方案。",
+          step5Label: "05 · 风险审查",
+          step5Title: "检查下行风险",
+          step5Desc: "仓位、时机、集中度和脆弱性。",
+          step6Label: "06 · 决策",
+          step6Title: "记录并（可选）执行",
+          step6Desc: "记录理由、轨迹，并下达模拟或 Alpaca 实盘订单。",
+          builtTitle: "基于 TradingAgents 构建",
+          builtLead:
+            'VerumTrade 基于 <a class="inline" href="https://github.com/tauricresearch/tradingagents">Tauric Research 的 TradingAgents</a> 构建，并扩展了证据图谱、催化/事件风险分析师、宏观回撤与拥挤感知、AI 股票发现，以及在 Web UI 中呈现的可见推理与决策轨迹。',
+        },
+      };
+
+      const supportedLanguages = Object.keys(translations);
+      const defaultLanguage = "en";
+      const descriptionMeta = document.querySelector('meta[name="description"]');
+      const languageSwitcher = document.querySelector(".language-switcher");
+      const languageButtons = document.querySelectorAll("[data-lang-option]");
+
+      function readStoredLanguage() {
+        try {
+          return localStorage.getItem("verumtrade-language");
+        } catch {
+          return null;
+        }
+      }
+
+      function writeStoredLanguage(language) {
+        try {
+          localStorage.setItem("verumtrade-language", language);
+        } catch {
+          // The switch still works for the current page load when browser storage is unavailable.
+        }
+      }
+
+      function getInitialLanguage() {
+        const stored = readStoredLanguage();
+        if (supportedLanguages.includes(stored)) return stored;
+
+        const browserLanguage = navigator.language || "";
+        if (browserLanguage.toLowerCase().startsWith("zh")) return "zh-CN";
+        return defaultLanguage;
+      }
+
+      function setLanguage(language) {
+        const selectedLanguage = supportedLanguages.includes(language) ? language : defaultLanguage;
+        const copy = translations[selectedLanguage];
+
+        document.documentElement.lang = selectedLanguage;
+        document.title = copy.pageTitle;
+        if (descriptionMeta) descriptionMeta.setAttribute("content", copy.pageDescription);
+        if (languageSwitcher) languageSwitcher.setAttribute("aria-label", copy.languageLabel);
+
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          const key = element.getAttribute("data-i18n");
+          if (copy[key]) element.textContent = copy[key];
+        });
+
+        document.querySelectorAll("[data-i18n-html]").forEach((element) => {
+          const key = element.getAttribute("data-i18n-html");
+          if (copy[key]) element.innerHTML = copy[key];
+        });
+
+        languageButtons.forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.langOption === selectedLanguage));
+        });
+
+        writeStoredLanguage(selectedLanguage);
+      }
+
+      languageButtons.forEach((button) => {
+        button.addEventListener("click", () => setLanguage(button.dataset.langOption));
+      });
+
+      setLanguage(getInitialLanguage());
+    </script>
   </body>
 </html>

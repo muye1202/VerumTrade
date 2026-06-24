@@ -1,6 +1,12 @@
 <div align="center">
   <img src="assets/verumtrade.svg" alt="Verumtrade" width="300">
 
+  <p>
+    <a href="README.md">English</a>
+    ·
+    <a href="README.zh-CN.md">简体中文</a>
+  </p>
+
   <p><em>An open-source multi-agent AI trading framework where each agentic analyst follows a structured reasoning graph, with visible reasoning traces and decision traces from evidence to final trade proposal.</em></p>
 
   <p>
