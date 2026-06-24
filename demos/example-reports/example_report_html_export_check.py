@@ -37,6 +37,8 @@ Narrative and decision rationale
     assert 'class="report-layout"' in html
     assert "<nav" in html
     assert "<button" in html
+    assert 'data-lang-option="zh-CN"' in html
+    assert "简体中文视图" in html
     assert "Event risk rating" in html
     assert "Narrative and decision rationale" in html
     assert "<script>" in html
