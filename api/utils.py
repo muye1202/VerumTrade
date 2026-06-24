@@ -3,11 +3,11 @@ import asyncio
 from typing import Dict, Any, Iterable
 from fastapi import WebSocket
 
-from opentrace.graph.opentrace_graph import OpenTraceGraph
-from opentrace.graph.provider_settings import serialize_provider_settings
-from opentrace.graph.reasoning_trace import build_agent_reasoning_trace
-from opentrace.default_config import DEFAULT_CONFIG
-from opentrace.execution.portfolio_context import fetch_portfolio_context
+from verumtrade.graph.verumtrade_graph import VerumtradeGraph
+from verumtrade.graph.provider_settings import serialize_provider_settings
+from verumtrade.graph.reasoning_trace import build_agent_reasoning_trace
+from verumtrade.default_config import DEFAULT_CONFIG
+from verumtrade.execution.portfolio_context import fetch_portfolio_context
 from cli.analysis_utils import _msg_type_and_content, _extract_tool_calls
 from api.database import SessionLocal
 from api.models import AnalysisSession
@@ -165,7 +165,7 @@ def extract_stream_reports_payload(chunk: Dict[str, Any] | None) -> Dict[str, An
 
 async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
     """
-    Runs the OpenTraceGraph analysis and streams intermediate messages,
+    Runs the VerumtradeGraph analysis and streams intermediate messages,
     tool calls, and report updates over a WebSocket.
     """
     all_logs = []
@@ -298,7 +298,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
             "position_size_pct": req.execution.position_size_pct,
         }
         
-    graph = OpenTraceGraph(
+    graph = VerumtradeGraph(
         continuation_analysts, config=config, debug=True
     )
     
@@ -415,7 +415,7 @@ async def stream_analysis_ws(req, websocket: WebSocket) -> Dict[str, Any]:
 
 async def run_analysis_sync(req) -> Dict[str, Any]:
     """
-    Runs the OpenTraceGraph analysis synchronously and returns the final state.
+    Runs the VerumtradeGraph analysis synchronously and returns the final state.
     Used for REST API endpoints where streaming isn't required.
     """
     config = DEFAULT_CONFIG.copy()
@@ -461,7 +461,7 @@ async def run_analysis_sync(req) -> Dict[str, Any]:
         finally:
             db.close()
 
-    graph = OpenTraceGraph(
+    graph = VerumtradeGraph(
         continuation_analysts, config=config, debug=False
     )
 

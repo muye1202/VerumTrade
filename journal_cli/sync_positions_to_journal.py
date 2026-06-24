@@ -9,7 +9,7 @@ import sys
 import os
 from pathlib import Path
 
-# Add project root to Python path so we can import opentrace
+# Add project root to Python path so we can import verumtrade
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 JOURNAL_DIR = SCRIPT_DIR / "journal"
@@ -42,9 +42,9 @@ if not os.getenv("APCA_API_KEY_ID") and not os.getenv("ALPACA_API_KEY"):
     print("\nChecked .env file location:", Path(__file__).parent.parent.parent / ".env")
     raise SystemExit(1)
 
-from opentrace.execution import AlpacaExecutor
-from opentrace.agents.journal import JournalStore
-from opentrace.agents.journal.portfolio.portfolio_sync import sync_missing_positions
+from verumtrade.execution import AlpacaExecutor
+from verumtrade.agents.journal import JournalStore
+from verumtrade.agents.journal.portfolio.portfolio_sync import sync_missing_positions
 
 
 def sync_positions() -> None:

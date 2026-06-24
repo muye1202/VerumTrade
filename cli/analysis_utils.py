@@ -12,13 +12,13 @@ from rich.live import Live
 from rich.table import Table
 from rich.rule import Rule
 
-from opentrace.execution.portfolio_context import fetch_portfolio_context
-from opentrace.execution.execution_kwargs import executor_kwargs_from_structured
-from opentrace.graph.opentrace_graph import OpenTraceGraph
-from opentrace.default_config import DEFAULT_CONFIG
-from opentrace.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
-from opentrace.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
-from opentrace.agents.utils.llm.llm_metrics import (
+from verumtrade.execution.portfolio_context import fetch_portfolio_context
+from verumtrade.execution.execution_kwargs import executor_kwargs_from_structured
+from verumtrade.graph.verumtrade_graph import VerumtradeGraph
+from verumtrade.default_config import DEFAULT_CONFIG
+from verumtrade.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
+from verumtrade.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
+from verumtrade.agents.utils.llm.llm_metrics import (
     snapshot_llm_api_calls,
     diff_llm_api_calls,
 )
@@ -233,7 +233,7 @@ def process_analysis_stream(graph, init_agent_state, args, mbuf, update_display_
     Stream graph chunks and update the Live display.
 
     Args:
-        graph: OpenTraceGraph instance (uses graph.graph.astream)
+        graph: VerumtradeGraph instance (uses graph.graph.astream)
         init_agent_state: Initial state dict for the graph
         args: Graph invocation args from propagator.get_graph_args()
         mbuf: MessageBuffer instance
@@ -490,7 +490,7 @@ def run_single_ticker_analysis(
 
 
     # Initialize the graph
-    graph = OpenTraceGraph(
+    graph = VerumtradeGraph(
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
     )
 
@@ -824,8 +824,8 @@ def run_single_ticker_analysis(
 
                         # Journal capture (non-critical)
                         try:
-                            from opentrace.agents.journal.core.store import JournalStore
-                            from opentrace.agents.journal.ingestion.hooks import capture_trade_thesis
+                            from verumtrade.agents.journal.core.store import JournalStore
+                            from verumtrade.agents.journal.ingestion.hooks import capture_trade_thesis
                             
                             journal_store = JournalStore()
                             capture_trade_thesis(

@@ -1,12 +1,12 @@
 cff-version: 1.2.0
-message: "If you use OpenTrace in your research, please cite it as below, and also cite the upstream TradingAgents framework it builds on."
-title: "OpenTrace: A multi-agent AI trading framework with visible reasoning and decision traces"
+message: "If you use Verumtrade in your research, please cite it as below, and also cite the upstream TradingAgents framework it builds on."
+title: "Verumtrade: A multi-agent AI trading framework with visible reasoning and decision traces"
 type: software
 authors:
   - family-names: "Jia"
     given-names: "Muye"
-repository-code: "https://github.com/muye1202/OpenTrace"
-url: "https://github.com/muye1202/OpenTrace"
+repository-code: "https://github.com/muye1202/Verumtrade"
+url: "https://github.com/muye1202/Verumtrade"
 license: Apache-2.0
 version: "0.1.0"
 references:

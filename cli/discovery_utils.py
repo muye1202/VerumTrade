@@ -16,10 +16,10 @@ from rich import box
 from rich.rule import Rule
 from rich.align import Align
 
-from opentrace.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
-from opentrace.default_config import DEFAULT_CONFIG
-from opentrace.execution import fetch_portfolio_symbols
-from opentrace.execution.execution_kwargs import executor_kwargs_from_structured
+from verumtrade.graph.stock_discovery import StockDiscoveryGraph, DiscoveryResult
+from verumtrade.default_config import DEFAULT_CONFIG
+from verumtrade.execution import fetch_portfolio_symbols
+from verumtrade.execution.execution_kwargs import executor_kwargs_from_structured
 from cli.discovery_report_logger import (
     load_tickers_from_discovery_report,
     write_deep_analysis_report,
@@ -156,9 +156,9 @@ def _run_discovery_deep_analysis(
     import time
     import logging
     from rich.live import Live
-    from opentrace.graph.opentrace_graph import OpenTraceGraph
+    from verumtrade.graph.verumtrade_graph import VerumtradeGraph
     from functools import wraps
-    from opentrace.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
+    from verumtrade.utils.report_sanitization import strip_thinking_blocks as _strip_thinking_blocks
     from cli.analysis_utils import (
         process_analysis_stream,
         _reset_message_buffer,
@@ -176,7 +176,7 @@ def _run_discovery_deep_analysis(
         executor = setup_executor(exec_settings, log_dir=results_dir)
 
     # Create the graph once (reused across tickers)
-    graph = OpenTraceGraph(
+    graph = VerumtradeGraph(
         selected_analysts=selected_analysts,
         config=config,
         debug=False,

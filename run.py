@@ -192,7 +192,7 @@ def run_preflight(root: Path) -> PreflightResult:
         found = ".".join(map(str, py_version)) if py_version else "not found"
         result.errors.append(
             Issue(
-                f"Python {found} is selected, but OpenTrace needs Python 3.10 or newer.",
+                f"Python {found} is selected, but Verumtrade needs Python 3.10 or newer.",
                 "Install Python 3.10+ and rerun: python run.py",
             )
         )
@@ -212,7 +212,7 @@ def run_preflight(root: Path) -> PreflightResult:
         found = ".".join(map(str, node_version)) if node_version else "not found"
         result.errors.append(
             Issue(
-                f"Node.js {found} is selected, but OpenTrace needs Node.js 18 or newer.",
+                f"Node.js {found} is selected, but Verumtrade needs Node.js 18 or newer.",
                 "Install Node.js 18+ from https://nodejs.org/ and rerun: python run.py",
             )
         )
@@ -222,7 +222,7 @@ def run_preflight(root: Path) -> PreflightResult:
         found = ".".join(map(str, npm_version)) if npm_version else "not found"
         result.errors.append(
             Issue(
-                f"npm {found} is selected, but OpenTrace needs npm 9 or newer.",
+                f"npm {found} is selected, but Verumtrade needs npm 9 or newer.",
                 "Install a current Node.js LTS release, then rerun: python run.py",
             )
         )
@@ -232,7 +232,7 @@ def run_preflight(root: Path) -> PreflightResult:
         result.errors.append(
             Issue(
                 "The frontend/package.json file was not found.",
-                "Run this launcher from the OpenTrace project root.",
+                "Run this launcher from the Verumtrade project root.",
             )
         )
     elif not (frontend / "node_modules").exists():
@@ -280,7 +280,7 @@ def run_preflight(root: Path) -> PreflightResult:
 
 def print_banner() -> None:
     print("=" * 58)
-    print("  OpenTrace local launcher")
+    print("  Verumtrade local launcher")
     print("=" * 58)
 
 
@@ -330,7 +330,7 @@ def launch(root: Path, preflight: PreflightResult) -> int:
         print("Starting frontend: " + command_hint(*frontend_cmd))
         frontend_process = subprocess.Popen(frontend_cmd, cwd=str(root / "frontend"))
 
-        print("\nOpenTrace is starting.")
+        print("\nVerumtrade is starting.")
         print(f"  Frontend: http://localhost:{FRONTEND_PORT}")
         print(f"  Backend:  http://localhost:{BACKEND_PORT}")
         print("Press Ctrl+C to stop both processes.\n")
@@ -346,7 +346,7 @@ def launch(root: Path, preflight: PreflightResult) -> int:
                 return frontend_code
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("\nShutting down OpenTrace...")
+        print("\nShutting down Verumtrade...")
         return 0
     finally:
         terminate_process(frontend_process)

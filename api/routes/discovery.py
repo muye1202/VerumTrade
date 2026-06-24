@@ -6,10 +6,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from opentrace.default_config import DEFAULT_CONFIG
-from opentrace.graph.stock_discovery import StockDiscoveryGraph
-from opentrace.graph.provider_settings import serialize_provider_settings
-from opentrace.agents.discovery.theme_engine import ThemeScanner
+from verumtrade.default_config import DEFAULT_CONFIG
+from verumtrade.graph.stock_discovery import StockDiscoveryGraph
+from verumtrade.graph.provider_settings import serialize_provider_settings
+from verumtrade.agents.discovery.theme_engine import ThemeScanner
 from api.schemas import DiscoveryRequest
 
 router = APIRouter()

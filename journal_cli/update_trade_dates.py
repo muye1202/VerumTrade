@@ -30,8 +30,8 @@ except ImportError:
                     key, value = line.split("=", 1)
                     os.environ[key.strip()] = value.strip().strip("'\"")
 
-from opentrace.execution import AlpacaExecutor
-from opentrace.agents.journal.core.models import TradeThesis
+from verumtrade.execution import AlpacaExecutor
+from verumtrade.agents.journal.core.models import TradeThesis
 
 def fetch_filled_orders(executor: AlpacaExecutor, limit: int = 500) -> List[Any]:
     """Fetch all filled orders from Alpaca."""

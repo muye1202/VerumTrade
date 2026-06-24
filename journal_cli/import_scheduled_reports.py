@@ -19,8 +19,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from opentrace.agents.journal import JournalStore
-from opentrace.agents.journal.ingestion.report_import import import_scheduled_reports
+from verumtrade.agents.journal import JournalStore
+from verumtrade.agents.journal.ingestion.report_import import import_scheduled_reports
 
 
 def _build_parser() -> argparse.ArgumentParser:

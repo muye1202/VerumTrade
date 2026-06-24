@@ -212,7 +212,7 @@ def _split_sections(markdown: str) -> tuple[str, list[tuple[str, str]]]:
 def render_example_report_html(markdown: str, source_path: Path) -> str:
     intro, sections = _split_sections(markdown)
     title_match = re.search(r"^#\s+(.+)$", markdown, re.MULTILINE)
-    page_title = title_match.group(1).strip() if title_match else "OpenTrace example report"
+    page_title = title_match.group(1).strip() if title_match else "Verumtrade example report"
     section_ids: dict[str, int] = {}
     rendered_sections: list[str] = []
     nav_items: list[str] = []
@@ -240,7 +240,7 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(page_title)} | OpenTrace example report</title>
+  <title>{html.escape(page_title)} | Verumtrade example report</title>
   <style>
     :root {{
       color-scheme: light;
@@ -404,7 +404,7 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
 <body>
   <header class="app-header">
     <div class="brand">
-      <strong>OpenTrace example report</strong>
+      <strong>Verumtrade example report</strong>
       <span>{html.escape(page_title)} · generated from {html.escape(str(source_path))}</span>
     </div>
     <div class="toolbar">
@@ -484,7 +484,7 @@ def export_html(markdown_path: Path, html_path: Path | None = None) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export an OpenTrace example markdown report to static HTML.")
+    parser = argparse.ArgumentParser(description="Export an Verumtrade example markdown report to static HTML.")
     parser.add_argument("markdown_path", type=Path)
     parser.add_argument("html_path", type=Path, nargs="?")
     args = parser.parse_args()

@@ -1,6 +1,6 @@
-# OpenTrace Frontend
+# Verumtrade Frontend
 
-React/Vite web client for OpenTrace.
+React/Vite web client for Verumtrade.
 
 ## Development
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-By default the app expects the OpenTrace API on `http://localhost:8000`.
+By default the app expects the Verumtrade API on `http://localhost:8000`.
 
 ## Build
 

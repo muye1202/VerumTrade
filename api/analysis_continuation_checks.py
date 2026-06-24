@@ -10,7 +10,7 @@ from api.utils import (
     find_previous_analysis_session,
     plan_continuation_analysts,
 )
-from opentrace.graph.opentrace_graph import OpenTraceGraph
+from verumtrade.graph.verumtrade_graph import VerumtradeGraph
 
 
 def test_find_previous_analysis_session_prefers_latest_incomplete_matching_run():
@@ -67,7 +67,7 @@ def test_plan_continuation_analysts_skips_completed_analyst_reports():
         complete_reports,
     ) == []
 
-    assert OpenTraceGraph.normalize_selected_analysts([]) == []
+    assert VerumtradeGraph.normalize_selected_analysts([]) == []
 
 
 def test_apply_previous_reports_to_state_restores_persisted_graph_state():

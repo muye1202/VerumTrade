@@ -3,21 +3,41 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "opentrace"
+name = "verumtrade"
 version = "0.1.0"
-description = "OpenTrace: agentic market research, trading analysis, and portfolio workflows."
+description = "VerumTrade: an open-source multi-agent LLM trading framework with visible reasoning and decision traces — from evidence to trade thesis."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "OpenTrace Maintainers" },
+    { name = "Verumtrade Maintainers" },
 ]
 license = "Apache-2.0"
+keywords = [
+    "trading",
+    "agentic-trading",
+    "multi-agent",
+    "llm-agents",
+    "ai-trading",
+    "algorithmic-trading",
+    "financial-analysis",
+    "stock-analysis",
+    "langgraph",
+    "investment-research",
+    "reasoning-traces",
+    "quantitative-finance",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Financial and Trading Industry",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
     "akshare>=1.16.98",
@@ -59,10 +79,14 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/muye1202/OpenTrace"
+Homepage = "https://github.com/muye1202/Verumtrade"
+Repository = "https://github.com/muye1202/Verumtrade"
+Documentation = "https://github.com/muye1202/Verumtrade#readme"
+Issues = "https://github.com/muye1202/Verumtrade/issues"
+"Example report" = "https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html"
 
 [project.scripts]
-opentrace = "cli.main:app"
+verumtrade = "cli.main:app"
 
 [tool.setuptools.packages.find]
-include = ["api*", "cli*", "opentrace*"]
+include = ["api*", "cli*", "verumtrade*"]

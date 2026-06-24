@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>VerumTrade — multi-agent LLM trading framework with visible reasoning &amp; decision traces</title>
+    <meta
+      name="description"
+      content="VerumTrade is an open-source multi-agent LLM trading framework. Specialist analysts build an evidence graph, debate bull vs bear, and pass a risk review to produce an auditable trade thesis — with visible reasoning and decision traces, paper or live via Alpaca."
+    />
+    <link rel="canonical" href="https://muye1202.github.io/Verumtrade/" />
+    <meta name="theme-color" content="#f7f9fc" />
+
+    <!-- Open Graph / social cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="VerumTrade — multi-agent LLM trading framework" />
+    <meta
+      property="og:description"
+      content="An open-source multi-agent LLM trading framework with visible reasoning & decision traces — from evidence to trade thesis."
+    />
+    <meta property="og:url" content="https://muye1202.github.io/Verumtrade/" />
+    <meta property="og:image" content="https://muye1202.github.io/Verumtrade/assets/social-preview.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        /* Light theme — mirrors the web app's [data-theme="light"] tokens */
+        --bg: #f7f9fc;
+        --bg-soft: #eaf0f8;
+        --surface-strong: #ffffff;
+        --border: rgba(12, 21, 65, 0.12);
+        --border-strong: rgba(12, 21, 65, 0.18);
+        --text: #172033;
+        --muted: #5f6e86;
+        --faint: #8994a8;
+        --accent: #2466fa;
+        --accent-soft: #c58a4c;
+        --accent-ink: #ffffff;
+        --shadow-soft: 0 5px 18px rgba(12, 21, 65, 0.08);
+        --radius-lg: 22px;
+        --radius-md: 14px;
+        --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+        --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: linear-gradient(165deg, var(--bg), var(--bg-soft));
+        color: var(--text);
+        font-family: var(--font);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 72px 24px 96px; }
+      .brand {
+        font-weight: 700;
+        font-size: clamp(48px, 8vw, 84px);
+        letter-spacing: -0.03em;
+        margin: 0;
+      }
+      .brand span { color: var(--accent); }
+      .motto {
+        color: var(--muted);
+        font-style: italic;
+        font-size: clamp(15px, 2.4vw, 19px);
+        margin: 10px 0 0;
+      }
+      .tagline {
+        font-size: clamp(22px, 3.6vw, 34px);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 36px 0 0;
+        max-width: 760px;
+      }
+      .tagline b { color: var(--accent); font-weight: 600; }
+      .cta { margin: 40px 0 8px; display: flex; flex-wrap: wrap; gap: 14px; }
+      .btn {
+        display: inline-block;
+        padding: 13px 22px;
+        border-radius: var(--radius-md);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 16px;
+        border: 1px solid var(--border-strong);
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+      }
+      .btn.primary {
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-color: var(--accent);
+        box-shadow: var(--shadow-soft);
+      }
+      .btn.ghost { background: var(--surface-strong); color: var(--text); }
+      .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+      .pipeline {
+        margin: 56px 0 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+      }
+      .pipeline li {
+        background: var(--surface-strong);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: 18px 20px;
+        box-shadow: var(--shadow-soft);
+      }
+      .pipeline .step { color: var(--accent); font-family: var(--font-mono); font-size: 13px; }
+      .pipeline .title { font-weight: 600; margin: 4px 0 2px; }
+      .pipeline .desc { color: var(--muted); font-size: 14px; }
+      h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; margin: 64px 0 12px; }
+      p.lead { color: var(--muted); max-width: 760px; }
+      a.inline { color: var(--accent); }
+      footer {
+        margin-top: 72px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 class="brand">Verum<span>Trade</span></h1>
+      <p class="motto">verum &mdash; &ldquo;truth&rdquo;: a verifiable, evidence-first path to every trade.</p>
+
+      <p class="tagline">
+        An open-source multi-agent LLM trading framework with
+        <b>visible reasoning &amp; decision traces</b> &mdash; from evidence to trade thesis.
+      </p>
+
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/muye1202/Verumtrade">View on GitHub</a>
+        <a class="btn ghost" href="https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html">See an example report</a>
+        <a class="btn ghost" href="https://github.com/muye1202/Verumtrade#readme">Read the docs</a>
+      </div>
+
+      <h2>How a run works</h2>
+      <p class="lead">
+        VerumTrade analyzes a ticker you care about &mdash; or discovers new candidates &mdash; and turns
+        market data, fundamentals, news, sentiment, catalysts, and risk context into an auditable trade
+        thesis instead of a black-box buy/sell signal.
+      </p>
+      <ol class="pipeline">
+        <li><div class="step">01 · Analysts</div><div class="title">Gather evidence</div><div class="desc">Market, news, social, fundamental, and catalyst signals.</div></li>
+        <li><div class="step">02 · Evidence Graph</div><div class="title">Structure the facts</div><div class="desc">Findings distilled into a grounded fact graph.</div></li>
+        <li><div class="step">03 · Debate</div><div class="title">Bull vs. bear</div><div class="desc">The thesis is tested from both sides.</div></li>
+        <li><div class="step">04 · Trader plan</div><div class="title">Propose an action</div><div class="desc">The debate becomes a concrete proposal.</div></li>
+        <li><div class="step">05 · Risk review</div><div class="title">Check the downside</div><div class="desc">Sizing, timing, concentration, fragility.</div></li>
+        <li><div class="step">06 · Decision</div><div class="title">Record &amp; (optionally) execute</div><div class="desc">Rationale, traces, and paper/live Alpaca orders.</div></li>
+      </ol>
+
+      <h2>Built on TradingAgents</h2>
+      <p class="lead">
+        VerumTrade builds on
+        <a class="inline" href="https://github.com/tauricresearch/tradingagents">Tauric Research&rsquo;s TradingAgents</a>
+        and extends it with an evidence graph, a catalyst/event-risk analyst, macro-pullback &amp; crowding
+        awareness, AI stock discovery, and visible reasoning &amp; decision traces rendered in a web UI.
+      </p>
+
+      <footer>
+        <span>Apache-2.0 · LangGraph · Python ≥3.10</span>
+        <span><a class="inline" href="https://github.com/muye1202/Verumtrade">github.com/muye1202/Verumtrade</a></span>
+      </footer>
+    </main>
+  </body>
+</html>

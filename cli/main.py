@@ -4,7 +4,7 @@ import datetime
 import json
 import re
 import typer
-from opentrace.utils.market_session import now_et
+from verumtrade.utils.market_session import now_et
 import questionary
 from pathlib import Path
 from rich.console import Console
@@ -23,10 +23,10 @@ from collections import deque
 from rich import box
 from rich.align import Align
 
-from opentrace.graph.portfolio_analyzer import PortfolioAnalyzer
-from opentrace.execution.portfolio_context import fetch_portfolio_context
-from opentrace.graph.batch_analysis import BatchAnalyzer
-from opentrace.execution import AlpacaExecutor
+from verumtrade.graph.portfolio_analyzer import PortfolioAnalyzer
+from verumtrade.execution.portfolio_context import fetch_portfolio_context
+from verumtrade.graph.batch_analysis import BatchAnalyzer
+from verumtrade.execution import AlpacaExecutor
 from cli.utils import *
 from cli.analysis_utils import init_analysis_context, run_analysis
 from cli.portfolio_analysis_utils import init_portfolio_context, analyze_portfolio as _analyze_portfolio_impl
@@ -35,8 +35,8 @@ from cli.discovery_utils import init_discovery_context, run_discovery_flow
 console = Console()
 
 app = typer.Typer(
-    name="OpenTrace",
-    help="OpenTrace CLI: agentic market research and trading analysis",
+    name="Verumtrade",
+    help="Verumtrade CLI: agentic market research and trading analysis",
     add_completion=True,  # Enable shell completion
 )
 
@@ -288,9 +288,9 @@ def update_display(layout, spinner_text=None):
     # Header with welcome message
     layout["header"].update(
         Panel(
-            "[bold green]Welcome to OpenTrace CLI[/bold green]\n"
-            "[dim]OpenTrace by [muye1202](https://github.com/muye1202/OpenTrace)[/dim]",
-            title="Welcome to OpenTrace",
+            "[bold green]Welcome to Verumtrade CLI[/bold green]\n"
+            "[dim]Verumtrade by [muye1202](https://github.com/muye1202/Verumtrade)[/dim]",
+            title="Welcome to Verumtrade",
             border_style="green",
             padding=(1, 2),
             expand=True,
@@ -511,11 +511,11 @@ def get_user_selections():
 
     # Create welcome box content
     welcome_content = f"{welcome_ascii}\n"
-    welcome_content += "[bold green]OpenTrace: Agentic Market Research & Trading Analysis - CLI[/bold green]\n\n"
+    welcome_content += "[bold green]Verumtrade: Agentic Market Research & Trading Analysis - CLI[/bold green]\n\n"
     welcome_content += "[bold]Workflow Steps:[/bold]\n"
     welcome_content += "I. Analyst Team → II. Research Team → III. Trader → IV. Risk Management → V. Portfolio Management\n\n"
     welcome_content += (
-        "[dim]OpenTrace by [muye1202](https://github.com/muye1202/OpenTrace)[/dim]"
+        "[dim]Verumtrade by [muye1202](https://github.com/muye1202/Verumtrade)[/dim]"
     )
 
     # Create and center the welcome box
@@ -523,7 +523,7 @@ def get_user_selections():
         welcome_content,
         border_style="green",
         padding=(1, 2),
-        title="Welcome to OpenTrace",
+        title="Welcome to Verumtrade",
         subtitle="Agentic Market Research & Trading Analysis",
     )
     console.print(Align.center(welcome_box))

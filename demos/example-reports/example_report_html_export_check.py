@@ -4,7 +4,7 @@ from export_example_report_html import render_example_report_html
 
 
 def test_render_example_report_html_builds_interactive_static_page():
-    markdown = """# Example OpenTrace Report: MU (2026-06-23)
+    markdown = """# Example Verumtrade Report: MU (2026-06-23)
 > Historical example.
 ## Run Snapshot
 | Field | Value |
@@ -30,7 +30,7 @@ Narrative and decision rationale
     html = render_example_report_html(markdown, source_path=Path("MU-2026-06-23.md"))
 
     assert "<!doctype html>" in html
-    assert "OpenTrace example report" in html
+    assert "Verumtrade example report" in html
     assert 'data-section-id="run-snapshot"' in html
     assert 'data-section-id="analyst-reports"' in html
     assert 'data-panel-title="Catalyst"' in html

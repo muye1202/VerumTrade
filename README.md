@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" alt="OpenTrace" width="300">
+  <img src="assets/verumtrade.svg" alt="Verumtrade" width="300">
 
   <p><em>An open-source multi-agent AI trading framework where each agentic analyst follows a structured reasoning graph, with visible reasoning traces and decision traces from evidence to final trade proposal.</em></p>
 
@@ -14,18 +14,22 @@
   <p>
     <a href="#single-ticker-analysis">Watch the single-ticker demo ↓</a>
     ·
-    <a href="https://muye1202.github.io/OpenTrace-Agentic-Trading/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
+    <a href="https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
   </p>
 </div>
 
 ---
 
-## 🔭 What is OpenTrace?
+## 🔭 What is VerumTrade?
 
-OpenTrace is an open-source, multi-agent trading research framework for two jobs: analyzing a
+VerumTrade is an open-source, multi-agent trading research framework for two jobs: analyzing a
 ticker you already care about and discovering new candidates worth deeper work. It turns market
 data, fundamentals, news, sentiment, catalysts, and risk context into a transparent trade thesis
 instead of a black-box "buy/sell" signal.
+
+The name pairs Latin *verum* ("truth") with *trade*: the goal is a verifiable, evidence-first path
+to every decision — you can read the reasoning, inspect the evidence, and audit how each
+recommendation was reached, rather than trusting an opaque score.
 
 Every run follows an auditable path:
 
@@ -37,7 +41,7 @@ Every run follows an auditable path:
 6. **Decision** records the final rationale, traces, and optional trade instructions.
 
 > [!IMPORTANT]
-> OpenTrace is a **research and decision-support pipeline**, not an independent investment
+> VerumTrade is a **research and decision-support pipeline**, not an independent investment
 > decision maker. Treat its output as a structured second opinion: inspect the evidence, challenge
 > the thesis, paper-trade first, and make any real-money decision yourself. Market data can be
 > incomplete or delayed, LLM outputs can be wrong, and trading involves risk of loss.
@@ -54,7 +58,7 @@ Jump straight to what you came for:
 | 💻 **Terminal-first** | [Quick Start — CLI](#-quick-start--cli) → guided, no config files to edit |
 | 🎯 **Evaluating one ticker** | [Single ticker analysis](#single-ticker-analysis) → inspect one name through the full agent pipeline |
 | 🔎 **Looking for candidates** | [Stock discovery mode](#stock-discovery-mode) → screen the market, then analyze the strongest ideas |
-| 🐍 **Building on top of it** | [Python API](#-python-api-programmatic) → embed OpenTrace in your own scripts |
+| 🐍 **Building on top of it** | [Python API](#-python-api-programmatic) → embed VerumTrade in your own scripts |
 | 🔬 **Researching multi-agent LLMs** | [Core workflows](#-core-workflows) · [Reasoning & Decision Traces](#-reasoning--decision-traces) · [Architecture](#%EF%B8%8F-architecture) |
 | 💼 **Trading (paper or live)** | [CLI](#-quick-start--cli) · [Trade execution config](#%EF%B8%8F-configuration) · [Troubleshooting](#-troubleshooting--faq) |
 | 🛠️ **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
@@ -63,7 +67,7 @@ Jump straight to what you came for:
 
 ## ✨ What you get
 
-OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricresearch/tradingagents)
+VerumTrade builds on [Tauric Research's TradingAgents](https://github.com/tauricresearch/tradingagents)
 (see [Credits](#-credits--acknowledgments)) and extends it into a transparent, risk-aware system.
 
 | Capability | What it gives you |
@@ -78,11 +82,11 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 | 💸 **Paper or live execution** | Optional Alpaca integration with position-size and concentration guardrails and 5 order types. |
 
 <details>
-<summary><b>📊 Full comparison — what OpenTrace adds over the original TradingAgents</b></summary>
+<summary><b>📊 Full comparison — what VerumTrade adds over the original TradingAgents</b></summary>
 
 <br>
 
-| Area | Addition in OpenTrace |
+| Area | Addition in VerumTrade |
 |:--|:--|
 | **Transparency** | Reasoning & decision **traces** plus a React UI to inspect them ([details](#-reasoning--decision-traces)) |
 | **Grounding** | **Evidence Graph** synthesis layer between analysts and researchers |
@@ -100,19 +104,19 @@ OpenTrace builds on [Tauric Research's TradingAgents](https://github.com/tauricr
 
 ## 🧭 Core workflows
 
-OpenTrace has two main entry points: analyze a ticker you already care about, or discover candidates
+VerumTrade has two main entry points: analyze a ticker you already care about, or discover candidates
 first and send the strongest ideas into the same multi-agent review process.
 
 ### Single ticker analysis
 
 Use this when you already have a stock in mind and want an auditable investment or trading thesis.
-OpenTrace runs the selected analyst team against one ticker, builds a structured evidence graph,
+VerumTrade runs the selected analyst team against one ticker, builds a structured evidence graph,
 stages the bull/bear research debate, asks the trader for a plan, and routes the result through risk
 review before producing a final decision.
 
 ![MU single-ticker analysis demo](demos/MU_single_ticker_demo_preview.gif)
 
-> 📹 Prefer the full-quality video? [Download the MU single-ticker demo (MP4)](https://github.com/muye1202/OpenTrace-Agentic-Trading/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
+> 📹 Prefer the full-quality video? [Download the MU single-ticker demo (MP4)](https://github.com/muye1202/Verumtrade/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
 
 You get a completed report with reasoning traces, decision traces, analyst evidence, risk notes, and
 an optional paper/live Alpaca order if execution is enabled. Start from the web app by entering a
@@ -120,17 +124,17 @@ ticker in the main analysis form, or use the CLI with `python -m cli.main analyz
 single-ticker analysis at the first prompt.
 
 Want to inspect the output quality before running your own analysis? Open the interactive
-[MU example report](https://muye1202.github.io/OpenTrace-Agentic-Trading/demos/example-reports/MU-2026-06-23.html),
-generated from a completed OpenTrace run and rendered with app-like navigation, search, and
+[MU example report](https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html),
+generated from a completed VerumTrade run and rendered with app-like navigation, search, and
 collapsible report panels. The source artifact lives at
 [`demos/example-reports/MU-2026-06-23.html`](demos/example-reports/MU-2026-06-23.html).
 
 ### Stock discovery mode
 
-Use this when you want OpenTrace to help find names worth researching instead of starting from a
+Use this when you want VerumTrade to help find names worth researching instead of starting from a
 known ticker. Discovery screens a market universe through catalyst, theme, enrichment, inflection,
 attention-gap, and scoring stages, then promotes the most promising candidates into deeper
-OpenTrace analysis.
+VerumTrade analysis.
 
 You get ranked candidates, evidence packs, two-layer discovery scores, thesis cards, and completed
 reports for the selected names. Start from the web app by switching to Discovery mode, or use the
@@ -156,8 +160,8 @@ The web interface is the easiest way to get started. It launches a **React + Vit
 **1 — Clone & install**
 
 ```bash
-git clone https://github.com/muye1202/OpenTrace.git
-cd OpenTrace
+git clone https://github.com/muye1202/Verumtrade.git
+cd Verumtrade
 
 pip install -e .       # or, if you have uv:  uv sync
 ```
@@ -177,7 +181,7 @@ DeepSeek, …). That's all you need — market data from Yahoo Finance works wit
 
 **Supported data sources**
 
-OpenTrace starts with a no-key Yahoo Finance path for basic stock data, then uses optional provider
+VerumTrade starts with a no-key Yahoo Finance path for basic stock data, then uses optional provider
 keys for richer coverage, fallback, filings, news, fundamentals, and execution data:
 
 | Source | Setup | Used for |
@@ -188,7 +192,7 @@ keys for richer coverage, fallback, filings, news, fundamentals, and execution d
 | Twelve Data | `TWELVE_DATA_API_KEY` | Technical indicators fallback |
 | Finnhub | `FINNHUB_API_KEY` | Company/global news, news sentiment, earnings calendar, and insider data |
 | SEC EDGAR | No key | Recent company filings |
-| Local cached data | `OPENTRACE_DATA_DIR` optional | Offline/cache-backed fallback data |
+| Local cached data | `VERUMTRADE_DATA_DIR` optional | Offline/cache-backed fallback data |
 | LLM-backed news | Existing LLM key | News synthesis fallback when configured |
 
 The runtime can route each data category through a preferred vendor and automatically fall back when
@@ -224,7 +228,7 @@ Open [http://localhost:5173](http://localhost:5173). The frontend talks to the b
 
 <br>
 
-OpenTrace runs many LLM calls per analysis, so each run takes time and incurs API cost:
+VerumTrade runs many LLM calls per analysis, so each run takes time and incurs API cost:
 
 | Setting | Rough time | Rough LLM cost* |
 |:--|:--|:--|
@@ -247,7 +251,7 @@ The interactive CLI walks you through every setting step by step — no config f
 the same prerequisites as above plus the editable install (`pip install -e .`).
 
 ```bash
-python -m cli.main analyze       # or, after editable install:  opentrace analyze
+python -m cli.main analyze       # or, after editable install:  verumtrade analyze
 ```
 
 `analyze` first asks whether you want **single-ticker analysis**, **portfolio analysis**, or
@@ -272,7 +276,7 @@ Results are saved to `results/stocks/{date}/{ticker}/`.
 
 <br>
 
-**Portfolio analysis** — `opentrace analyze-portfolio`
+**Portfolio analysis** — `verumtrade analyze-portfolio`
 Pulls your Alpaca positions, runs a **triage step** to identify which stocks most need attention,
 then performs full multi-agent analysis on those. Remaining stocks get a lightweight "HOLD" entry.
 
@@ -285,7 +289,7 @@ run or resume from a previously saved candidate list. See
 </details>
 
 > [!TIP]
-> Run `opentrace --help` (or `python -m cli.main --help`) to see every command and option.
+> Run `verumtrade --help` (or `python -m cli.main --help`) to see every command and option.
 
 ---
 
@@ -294,8 +298,8 @@ run or resume from a previously saved candidate list. See
 For scripting or integration, skip the UI entirely:
 
 ```python
-from opentrace.graph.opentrace_graph import OpenTraceGraph
-from opentrace.default_config import DEFAULT_CONFIG
+from verumtrade.graph.verumtrade_graph import VerumtradeGraph
+from verumtrade.default_config import DEFAULT_CONFIG
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -305,7 +309,7 @@ config["llm_provider"]      = "google"          # or "openai", "azure-foundry", 
 config["deep_think_llm"]    = "gemini-2.5-flash"
 config["quick_think_llm"]   = "gemini-2.0-flash"
 
-ta = OpenTraceGraph(config=config)
+ta = VerumtradeGraph(config=config)
 
 # Returns the full state and a structured trade decision
 state, decision = ta.propagate("NVDA", "2024-05-10")
@@ -316,16 +320,16 @@ print(decision)
 
 ## 🔬 Reasoning & Decision Traces
 
-Transparency is OpenTrace's reason for existing. Every analysis emits two kinds of trace, both
+Transparency is VerumTrade's reason for existing. Every analysis emits two kinds of trace, both
 viewable in the web UI:
 
 - **Reasoning trace** — for each agent, *what it looked at and how it concluded*. Built by
-  [`graph/reasoning_trace.py`](opentrace/graph/reasoning_trace.py) and surfaced in the
+  [`graph/reasoning_trace.py`](verumtrade/graph/reasoning_trace.py) and surfaced in the
   **Trader Reasoning** and **Evidence Graph** panels.
 - **Decision trace** — the chain from evidence → research debate → trader plan → risk review →
   final structured decision, rendered in the **Decision Trace** panel. The final decision itself is
-  a structured object validated against [`graph/decision_schema.py`](opentrace/graph/decision_schema.py)
-  and extracted by [`graph/signal_processing.py`](opentrace/graph/signal_processing.py).
+  a structured object validated against [`graph/decision_schema.py`](verumtrade/graph/decision_schema.py)
+  and extracted by [`graph/signal_processing.py`](verumtrade/graph/signal_processing.py).
 
 Conceptually, a trace lets you answer "*why this trade?*" at every level:
 
@@ -351,9 +355,9 @@ trusting a single opaque verdict.
 
 ## 🏗️ Architecture
 
-OpenTrace is built on **LangGraph** — each agent is a node in a directed workflow graph. Here is the full pipeline:
+VerumTrade is built on **LangGraph** — each agent is a node in a directed workflow graph. Here is the full pipeline:
 
-![OpenTrace Multi-Agent Analysis Pipeline](assets/pipeline.png)
+![VerumTrade Multi-Agent Analysis Pipeline](assets/pipeline.png)
 
 ### 🧠 Two tiers of LLM
 
@@ -367,8 +371,8 @@ Every agent uses one of two model slots — you set both in one place (`deep_thi
 
 ### 🔗 Evidence graph
 
-After the analysts finish, OpenTrace doesn't just concatenate their reports. It distills them into a
-**structured evidence graph** ([`agents/utils/agent_runtime/evidence_graph.py`](opentrace/agents/utils/agent_runtime/evidence_graph.py))
+After the analysts finish, VerumTrade doesn't just concatenate their reports. It distills them into a
+**structured evidence graph** ([`agents/utils/agent_runtime/evidence_graph.py`](verumtrade/agents/utils/agent_runtime/evidence_graph.py))
 — a compact set of typed facts (catalysts, metrics, risks, sentiment) that every downstream agent
 references. This keeps the bull/bear debate and the trader anchored to concrete evidence instead of
 free-floating prose, and it's what powers the Evidence Graph panel in the UI.
@@ -379,7 +383,7 @@ free-floating prose, and it's what powers the Evidence Graph panel in the UI.
 <br>
 
 All market-data tool calls go through a single routing layer
-([`dataflows/interface.py`](opentrace/dataflows/interface.py)). You pick a preferred vendor per
+([`dataflows/interface.py`](verumtrade/dataflows/interface.py)). You pick a preferred vendor per
 category in your config; if that vendor is unavailable the system silently tries the next one.
 
 Each analyst has access to a curated set of data tools:
@@ -413,11 +417,11 @@ else gets a quick "HOLD" recommendation.
 1. **Stage 0 — Catalyst prefilter**: screens for upcoming earnings, FDA events, and macro catalysts
 2. **Stage 1 — Multi-factor enrichment**: technical momentum, relative strength, volume analysis across the universe
 3. **Stage 2 — Candidate scoring**: composite ranking with configurable relaxation rules
-4. **Deep analysis**: top candidates are fed into the full OpenTraceGraph for multi-agent analysis
+4. **Deep analysis**: top candidates are fed into the full VerumtradeGraph for multi-agent analysis
 
 Supports three tracks: **Enricher** (swing trade), **Anomaly Scan** (intraday/next-day), and
 **Dual-Track** (merged). A complementary **Theme Engine**
-([`agents/discovery/theme_engine/`](opentrace/agents/discovery/theme_engine/)) scans for active macro
+([`agents/discovery/theme_engine/`](verumtrade/agents/discovery/theme_engine/)) scans for active macro
 themes and scores how exposed each candidate is to them, so discovery can be steered by what's
 actually driving the market.
 
@@ -433,7 +437,7 @@ policy headline) in a **deteriorating macro tape** (rising rates, spiking oil, r
 those triggers is a discrete, dated, company-specific event — exactly the quadrant a news/catalyst
 analyst is built to ignore.
 
-OpenTrace now computes that fragility from data it already fetches and feeds it into every decision:
+VerumTrade now computes that fragility from data it already fetches and feeds it into every decision:
 
 | Layer | What it does | Default | Config flag |
 |:--|:--|:--|:--|
@@ -451,7 +455,7 @@ OpenTrace now computes that fragility from data it already fetches and feeds it 
 
 ## ⚙️ Configuration
 
-All defaults live in [`opentrace/default_config.py`](opentrace/default_config.py). The knobs you'll
+All defaults live in [`verumtrade/default_config.py`](verumtrade/default_config.py). The knobs you'll
 reach for most:
 
 | Key | What it controls | Example / default |
@@ -514,8 +518,8 @@ All on by default; set the env var to `false` to disable. See
 
 | Env var | What it controls |
 |:--|:--|
-| `OPENTRACE_ENABLE_MACRO_REGIME_CONTEXT` | Build & inject the cross-asset/regime `macro_regime` context bus |
-| `OPENTRACE_ENABLE_PULLBACK_VULNERABILITY` | Compute the per-ticker Pullback Vulnerability Score + risk-judge override |
+| `VERUMTRADE_ENABLE_MACRO_REGIME_CONTEXT` | Build & inject the cross-asset/regime `macro_regime` context bus |
+| `VERUMTRADE_ENABLE_PULLBACK_VULNERABILITY` | Compute the per-ticker Pullback Vulnerability Score + risk-judge override |
 | `enable_peer_read_through` / `enable_sector_parabola` | Peer earnings → `peer_catalyst` events + sector-parabola / basket-beta crowding signal |
 | `peer_read_through.fetch_peer_news` | Opt-in bounded peer-news fetch (off by default — costs extra vendor calls) |
 
@@ -536,7 +540,7 @@ Controls how prompts are compressed to fit within model context windows:
 
 Set via `.env`:
 ```env
-OPENTRACE_CONTEXT_BUDGET_MODE=adaptive
+VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive
 ```
 
 </details>
@@ -548,14 +552,14 @@ OPENTRACE_CONTEXT_BUDGET_MODE=adaptive
 | Symptom | Likely cause & fix |
 |:--|:--|
 | `No API key` / auth errors | A provider key is missing or wrong in `.env`. You need **one** LLM key; market data works with no key via Yahoo Finance. |
-| **HTTP 400 — context length exceeded** | The model's context window is too small for the prompt. Keep `OPENTRACE_CONTEXT_BUDGET_MODE=adaptive` (default) or set it to `compact`; avoid `off` on strict models. |
-| **HTTP 429 — rate limited** | Your provider is throttling. Use a smaller/faster model, lower research depth, or raise the manager delay knobs (`OPENTRACE_RESEARCH_MANAGER_MIN_DELAY_S`, `OPENTRACE_RISK_MANAGER_MIN_DELAY_S`). |
+| **HTTP 400 — context length exceeded** | The model's context window is too small for the prompt. Keep `VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive` (default) or set it to `compact`; avoid `off` on strict models. |
+| **HTTP 429 — rate limited** | Your provider is throttling. Use a smaller/faster model, lower research depth, or raise the manager delay knobs (`VERUMTRADE_RESEARCH_MANAGER_MIN_DELAY_S`, `VERUMTRADE_RISK_MANAGER_MIN_DELAY_S`). |
 | Frontend loads but calls fail | The backend isn't running or is on a different port. Start `uvicorn api.main:app --reload` (default `http://localhost:8000`). |
 | `npm run dev` fails | Check Node ≥ 18 and run `npm install` inside `frontend/`. |
 | ChromaDB / native build errors on install | Ensure you're on Python ≥ 3.10 in a clean virtualenv; upgrade `pip` before `pip install -e .`. |
 | Analysis is slow / expensive | Use **Shallow** depth and small quick/deep models (see [cost & time](#-quick-start--web-app)), or run local models with Ollama. |
 
-Run `opentrace --help` to discover every command and flag.
+Run `verumtrade --help` to discover every command and flag.
 
 ---
 
@@ -569,15 +573,15 @@ Contributions — research ideas and engineering fixes alike — are welcome. Se
 
 ## 📚 Citation
 
-If you use OpenTrace in academic work, please cite this repository (see
+If you use VerumTrade in academic work, please cite this repository (see
 [`CITATION.cff`](CITATION.cff)) **and** the upstream TradingAgents framework it builds on:
 
 ```bibtex
-@software{opentrace,
-  title  = {OpenTrace: A multi-agent AI trading framework with visible reasoning and decision traces},
+@software{verumtrade,
+  title  = {VerumTrade: A multi-agent AI trading framework with visible reasoning and decision traces},
   author = {Jia, Muye},
   year   = {2026},
-  url    = {https://github.com/muye1202/OpenTrace}
+  url    = {https://github.com/muye1202/Verumtrade}
 }
 
 @misc{tradingagents,
@@ -599,7 +603,7 @@ work on multi-agent LLM systems for financial analysis and trading.
 
 ## ⚠️ Disclaimer
 
-OpenTrace is a **research and educational decision-support tool**. It is not financial advice and
+VerumTrade is a **research and educational decision-support tool**. It is not financial advice and
 is not an independent investment decision maker. Always inspect the evidence yourself, paper-trade
 first, and understand the risks before using real money. The authors are not responsible for any
 financial losses incurred through the use of this software.

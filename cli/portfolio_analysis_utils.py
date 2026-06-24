@@ -15,9 +15,9 @@ from rich.table import Table
 from rich.text import Text
 from rich.markdown import Markdown
 
-from opentrace.graph.portfolio_analyzer import PortfolioAnalyzer
-from opentrace.graph.opentrace_graph import OpenTraceGraph
-from opentrace.default_config import DEFAULT_CONFIG
+from verumtrade.graph.portfolio_analyzer import PortfolioAnalyzer
+from verumtrade.graph.verumtrade_graph import VerumtradeGraph
+from verumtrade.default_config import DEFAULT_CONFIG
 
 from cli.utils import (
     select_analysts,
@@ -443,7 +443,7 @@ def run_portfolio_analysis_from_selections(selections: dict) -> None:
     config["llm_provider"] = selections["llm_provider"]
 
 
-    graph = OpenTraceGraph(
+    graph = VerumtradeGraph(
         [analyst.value for analyst in selections["analysts"]],
         config=config,
         debug=False,

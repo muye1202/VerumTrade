@@ -5,20 +5,20 @@
 - Current working branch for this effort: `web/discovery_mode`.
 - Latest `origin/main` was pulled into `web/discovery_mode` with a fast-forward merge before the stock discovery upgrade work continued.
 - Backend discovery now includes these deterministic intelligence modules:
-  - `opentrace/agents/discovery/intelligence/business_inflection.py`
-  - `opentrace/agents/discovery/intelligence/attention_gap.py`
-  - `opentrace/agents/discovery/intelligence/discovery_evidence_pack.py`
-  - `opentrace/agents/discovery/intelligence/two_layer_discovery_scoring.py`
-  - `opentrace/agents/discovery/intelligence/thesis_card_validator.py`
+  - `verumtrade/agents/discovery/intelligence/business_inflection.py`
+  - `verumtrade/agents/discovery/intelligence/attention_gap.py`
+  - `verumtrade/agents/discovery/intelligence/discovery_evidence_pack.py`
+  - `verumtrade/agents/discovery/intelligence/two_layer_discovery_scoring.py`
+  - `verumtrade/agents/discovery/intelligence/thesis_card_validator.py`
 - These modules are wired through:
-  - `opentrace/agents/discovery/intelligence/pipeline_models.py`
-  - `opentrace/agents/discovery/intelligence/pipeline_orchestrator.py`
-  - `opentrace/agents/discovery/intelligence_integration.py`
-  - `opentrace/graph/stock_discovery.py`
-  - `opentrace/default_config.py`
+  - `verumtrade/agents/discovery/intelligence/pipeline_models.py`
+  - `verumtrade/agents/discovery/intelligence/pipeline_orchestrator.py`
+  - `verumtrade/agents/discovery/intelligence_integration.py`
+  - `verumtrade/graph/stock_discovery.py`
+  - `verumtrade/default_config.py`
 - Business inflection extraction is disabled by default and can be enabled with:
   - config key: `discovery.business_inflection.enabled`
-  - env flag: `OPENTRACE_DISCOVERY_BUSINESS_INFLECTION_ENABLED`
+  - env flag: `VERUMTRADE_DISCOVERY_BUSINESS_INFLECTION_ENABLED`
 - Discovery result metadata now carries:
   - `business_inflection`
   - `attention_gap`

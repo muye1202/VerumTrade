@@ -1,16 +1,16 @@
-# Contributing to OpenTrace
+# Contributing to Verumtrade
 
-Thanks for your interest in improving OpenTrace! This project is both an academic
+Thanks for your interest in improving Verumtrade! This project is both an academic
 exploration of multi-agent LLM trading systems and a practical stock-analysis aid,
 and contributions of either flavour — research ideas or engineering fixes — are
 welcome.
 
-> ⚠️ **Reminder:** OpenTrace is a research and educational tool, not financial
+> ⚠️ **Reminder:** Verumtrade is a research and educational tool, not financial
 > advice. See the [Disclaimer](README.md#-disclaimer).
 
 ## Ways to contribute
 
-- **Bug reports** — open an [issue](https://github.com/muye1202/OpenTrace/issues)
+- **Bug reports** — open an [issue](https://github.com/muye1202/Verumtrade/issues)
   with steps to reproduce, your OS/Python/Node versions, the LLM provider you used,
   and the relevant log output.
 - **Features & agents** — new analysts, data vendors, or pipeline stages. Please
@@ -21,8 +21,8 @@ welcome.
 
 ```bash
 # 1. Clone
-git clone https://github.com/muye1202/OpenTrace.git
-cd OpenTrace
+git clone https://github.com/muye1202/Verumtrade.git
+cd Verumtrade
 
 # 2. Python (editable install — pulls deps from pyproject.toml)
 pip install -e .          # or: uv sync
@@ -42,14 +42,14 @@ uvicorn api.main:app --reload     # backend → http://localhost:8000
 cd frontend && npm run dev        # frontend → http://localhost:5173
 
 # CLI
-opentrace analyze
+verumtrade analyze
 ```
 
 ## Project layout
 
 The published repository tracks the runnable application only:
 
-- `opentrace/` — core multi-agent framework (agents, dataflows, graph, execution)
+- `verumtrade/` — core multi-agent framework (agents, dataflows, graph, execution)
 - `api/` — FastAPI backend
 - `cli/` — Typer + Rich terminal interface
 - `frontend/` — React + Vite web client
@@ -62,8 +62,8 @@ decide how to include them.
 ## Coding conventions
 
 - Match the style of the surrounding code; keep agent prompts and node wiring
-  consistent with existing patterns in `opentrace/agents/` and
-  `opentrace/graph/`.
+  consistent with existing patterns in `verumtrade/agents/` and
+  `verumtrade/graph/`.
 - Dependencies live in `pyproject.toml`. `requirements.txt` is a mirror — update
   **both** if you change a dependency.
 - Keep secrets out of commits. Never commit a real `.env`, API key, or brokerage
