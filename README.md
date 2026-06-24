@@ -14,7 +14,7 @@
   <p>
     <a href="#single-ticker-analysis">Watch the single-ticker demo ↓</a>
     ·
-    <a href="https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
+    <a href="https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
   </p>
 </div>
 
@@ -116,7 +116,7 @@ review before producing a final decision.
 
 ![MU single-ticker analysis demo](demos/MU_single_ticker_demo_preview.gif)
 
-> 📹 Prefer the full-quality video? [Download the MU single-ticker demo (MP4)](https://github.com/muye1202/Verumtrade/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
+> 📹 Prefer the full-quality video? [Download the MU single-ticker demo (MP4)](https://github.com/muye1202/VerumTrade/raw/main/demos/MU_single_ticker_demo_720p_6x.mp4).
 
 You get a completed report with reasoning traces, decision traces, analyst evidence, risk notes, and
 an optional paper/live Alpaca order if execution is enabled. Start from the web app by entering a
@@ -124,7 +124,7 @@ ticker in the main analysis form, or use the CLI with `python -m cli.main analyz
 single-ticker analysis at the first prompt.
 
 Want to inspect the output quality before running your own analysis? Open the interactive
-[MU example report](https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html),
+[MU example report](https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html),
 generated from a completed VerumTrade run and rendered with app-like navigation, search, and
 collapsible report panels. The source artifact lives at
 [`demos/example-reports/MU-2026-06-23.html`](demos/example-reports/MU-2026-06-23.html).
@@ -160,8 +160,8 @@ The web interface is the easiest way to get started. It launches a **React + Vit
 **1 — Clone & install**
 
 ```bash
-git clone https://github.com/muye1202/Verumtrade.git
-cd Verumtrade
+git clone https://github.com/muye1202/VerumTrade.git
+cd VerumTrade
 
 pip install -e .       # or, if you have uv:  uv sync
 ```
@@ -581,7 +581,7 @@ If you use VerumTrade in academic work, please cite this repository (see
   title  = {VerumTrade: A multi-agent AI trading framework with visible reasoning and decision traces},
   author = {Jia, Muye},
   year   = {2026},
-  url    = {https://github.com/muye1202/Verumtrade}
+  url    = {https://github.com/muye1202/VerumTrade}
 }
 
 @misc{tradingagents,

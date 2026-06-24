@@ -79,11 +79,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/muye1202/Verumtrade"
-Repository = "https://github.com/muye1202/Verumtrade"
-Documentation = "https://github.com/muye1202/Verumtrade#readme"
-Issues = "https://github.com/muye1202/Verumtrade/issues"
-"Example report" = "https://muye1202.github.io/Verumtrade/demos/example-reports/MU-2026-06-23.html"
+Homepage = "https://github.com/muye1202/VerumTrade"
+Repository = "https://github.com/muye1202/VerumTrade"
+Documentation = "https://github.com/muye1202/VerumTrade#readme"
+Issues = "https://github.com/muye1202/VerumTrade/issues"
+"Example report" = "https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html"
 
 [project.scripts]
 verumtrade = "cli.main:app"

@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Jia"
     given-names: "Muye"
-repository-code: "https://github.com/muye1202/Verumtrade"
-url: "https://github.com/muye1202/Verumtrade"
+repository-code: "https://github.com/muye1202/VerumTrade"
+url: "https://github.com/muye1202/VerumTrade"
 license: Apache-2.0
 version: "0.1.0"
 references:

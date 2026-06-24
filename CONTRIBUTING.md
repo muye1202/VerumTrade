@@ -10,7 +10,7 @@ welcome.
 
 ## Ways to contribute
 
-- **Bug reports** — open an [issue](https://github.com/muye1202/Verumtrade/issues)
+- **Bug reports** — open an [issue](https://github.com/muye1202/VerumTrade/issues)
   with steps to reproduce, your OS/Python/Node versions, the LLM provider you used,
   and the relevant log output.
 - **Features & agents** — new analysts, data vendors, or pipeline stages. Please
@@ -21,8 +21,8 @@ welcome.
 
 ```bash
 # 1. Clone
-git clone https://github.com/muye1202/Verumtrade.git
-cd Verumtrade
+git clone https://github.com/muye1202/VerumTrade.git
+cd VerumTrade
 
 # 2. Python (editable install — pulls deps from pyproject.toml)
 pip install -e .          # or: uv sync

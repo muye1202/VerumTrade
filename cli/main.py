@@ -289,7 +289,7 @@ def update_display(layout, spinner_text=None):
     layout["header"].update(
         Panel(
             "[bold green]Welcome to Verumtrade CLI[/bold green]\n"
-            "[dim]Verumtrade by [muye1202](https://github.com/muye1202/Verumtrade)[/dim]",
+            "[dim]Verumtrade by [muye1202](https://github.com/muye1202/VerumTrade)[/dim]",
             title="Welcome to Verumtrade",
             border_style="green",
             padding=(1, 2),
@@ -515,7 +515,7 @@ def get_user_selections():
     welcome_content += "[bold]Workflow Steps:[/bold]\n"
     welcome_content += "I. Analyst Team → II. Research Team → III. Trader → IV. Risk Management → V. Portfolio Management\n\n"
     welcome_content += (
-        "[dim]Verumtrade by [muye1202](https://github.com/muye1202/Verumtrade)[/dim]"
+        "[dim]Verumtrade by [muye1202](https://github.com/muye1202/VerumTrade)[/dim]"
     )
 
     # Create and center the welcome box
