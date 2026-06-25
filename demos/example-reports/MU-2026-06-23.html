@@ -395,6 +395,135 @@
     .evgraph-fact-claim { font-size: 13px; color: var(--text); word-break: break-word; }
     .evgraph-footer { font-size: 12px; color: var(--muted); font-style: italic; padding: 10px 0 0; text-align: center; }
 
+    /* Enhanced evidence JSON / audit readers */
+    .graph-dashboard, .audit-dashboard { display: grid; gap: 16px; }
+    .graph-hero, .audit-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+    .graph-brief, .audit-brief {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(135deg, #f8fafc 0%, #eef7f5 100%);
+    }
+    .graph-brief h3, .audit-brief h3 { margin-top: 0; color: var(--text); }
+    .graph-brief p, .audit-brief p { color: var(--muted); margin-bottom: 0; }
+    .graph-stat-grid, .audit-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .graph-stat, .audit-stat {
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .graph-stat-value, .audit-stat-value {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .graph-stat-label, .audit-stat-label {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .graph-domain-grid, .audit-code-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 12px;
+    }
+    .graph-domain-card, .audit-code-card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--domain-accent, var(--accent));
+      border-radius: 8px;
+      background: #fff;
+    }
+    .graph-domain-card header, .audit-code-card header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fafbfc;
+    }
+    .graph-domain-title, .audit-code-title { min-width: 0; font-weight: 800; color: var(--text); }
+    .graph-domain-meta, .audit-code-meta { flex-shrink: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .graph-fact-list, .audit-issue-list { display: grid; gap: 0; }
+    .graph-fact-card, .audit-issue-card {
+      padding: 12px 14px;
+      border-bottom: 1px solid #eef2f5;
+    }
+    .graph-fact-card:last-child, .audit-issue-card:last-child { border-bottom: 0; }
+    .graph-fact-card strong, .audit-issue-card strong { display: block; margin-bottom: 4px; font-size: 12px; color: #344054; }
+    .graph-fact-card p, .audit-issue-card p { margin: 0; color: var(--text); font-size: 13px; }
+    .graph-fact-meta, .audit-issue-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .mini-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .mini-chip--high { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .mini-chip--medium { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
+    .mini-chip--low { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+    .graph-raw, .audit-raw {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .graph-raw > summary, .audit-raw > summary {
+      cursor: pointer;
+      padding: 12px 14px;
+      color: var(--accent);
+      font-weight: 800;
+      list-style: none;
+    }
+    .graph-raw > summary::-webkit-details-marker,
+    .audit-raw > summary::-webkit-details-marker { display: none; }
+    .graph-raw > summary::before,
+    .audit-raw > summary::before { content: "Show "; color: var(--muted); font-weight: 700; }
+    .graph-raw[open] > summary::before,
+    .audit-raw[open] > summary::before { content: "Hide "; }
+    .graph-raw pre { margin: 0 14px 14px; max-height: 560px; }
+    .audit-raw .table-wrap { margin: 0 14px 14px; }
+    .audit-focus {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .audit-focus-item {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .audit-focus-item strong { display: block; margin-bottom: 4px; color: var(--text); }
+    .audit-focus-item span { color: var(--muted); font-size: 13px; }
+
     @media (max-width: 900px) {
       .app-header { align-items: stretch; flex-direction: column; }
       .toolbar { flex-wrap: wrap; }
@@ -405,6 +534,8 @@
       .brief-overview { grid-template-columns: 1fr; }
       .exec-params { grid-template-columns: 1fr; }
       .setup-header { flex-direction: column; align-items: flex-start; }
+      .graph-hero, .audit-hero { grid-template-columns: 1fr; }
+      .graph-stat-grid, .audit-stat-grid { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -426,11 +557,11 @@
   </header>
   <div class="report-layout">
     <nav class="side-nav" aria-label="Report sections">
+<a href="#analyst-reports" data-nav-target="analyst-reports">Analyst Reports</a>
+<a href="#evidence-tracing" data-nav-target="evidence-tracing">Evidence &amp; Tracing</a>
       <a href="#key-terms" data-nav-target="key-terms">Key terms &amp; symbols</a>
 <a href="#run-snapshot" data-nav-target="run-snapshot">Run Snapshot</a>
 <a href="#scenario-snapshot" data-nav-target="scenario-snapshot">Scenario Snapshot</a>
-<a href="#analyst-reports" data-nav-target="analyst-reports">Analyst Reports</a>
-<a href="#evidence-tracing" data-nav-target="evidence-tracing">Evidence &amp; Tracing</a>
 <a href="#trading-pipeline" data-nav-target="trading-pipeline">Trading Pipeline</a>
 <a href="#final-verdict" data-nav-target="final-verdict">Final Verdict</a>
 <a href="#additional-diagnostics" data-nav-target="additional-diagnostics">Additional Diagnostics</a>
@@ -439,10 +570,10 @@
       <section class="intro"><h2>Example Verumtrade Report: MU (2026-06-23)</h2>
 <blockquote>Historical example generated from a completed local Verumtrade analysis session. This is not investment advice. The report reflects the data, model outputs, and configuration available when the run was produced.</blockquote></section>
       <div class="translation-note" data-translation-note hidden>简体中文视图会翻译报告正文和页面 UI；ticker、ratings、setup、agent names、指标名、配置键以及原始 JSON/code diagnostics 保留英文，便于和原始运行结果逐项核对。</div>
-      <section class="report-section glossary-card" id="key-terms" data-section-id="key-terms"><div class="section-heading"><h2>Key terms &amp; symbols</h2></div><details class="glossary" open><summary>New to the jargon? Underlined terms in the report show a definition on hover &mdash; or expand this card for the full list.</summary><dl><dt>ATR / ATR(14)</dt><dd>Average True Range, here measured over 14 days. It captures how far the price typically travels in a day. A larger ATR means wider swings, so protective stops need more room.</dd><dt>VWAP</dt><dd>Volume-Weighted Average Price. The average price paid through the session weighted by how much traded at each level. Trading above VWAP is often read as buyers in control; below as sellers.</dd><dt>OI (Open Interest)</dt><dd>Open Interest is the count of option contracts that are still open. A high put/call OI ratio (e.g. 2.23) means far more open puts than calls, which can signal hedging or bearish positioning.</dd><dt>HBM</dt><dd>High-Bandwidth Memory: stacked, very fast memory used alongside AI GPUs/accelerators. Demand for HBM is the core bullish narrative for Micron (MU) in this report.</dd><dt>EMA10 / EMA</dt><dd>Exponential Moving Average. Like a simple moving average but weighting recent days more heavily, so it reacts faster to new prices. EMA10 is a short-term trend reference.</dd><dt>SMA50 / SMA200 / SMA</dt><dd>Simple Moving Average: the plain average closing price over N days. SMA50 tracks the medium-term trend and SMA200 the long-term trend; closing below them is a common invalidation signal.</dd><dt>MTUM</dt><dd>MTUM is the iShares momentum-factor ETF. &quot;MTUM-SPY +13.9%/20d&quot; means momentum stocks have outrun the S&amp;P 500 recently — a sign the momentum trade is crowded and prone to fast unwinds.</dd><dt>10-Q / 10-K</dt><dd>Standardized financial reports companies file with the U.S. SEC. The 10-Q is filed each quarter and the 10-K annually. In this run the 10-Q text was garbled and could not be used as evidence.</dd><dt>T+1</dt><dd>&quot;T+1&quot; means one business day after the trade date. FINRA dark-pool short-volume data publishes on a T+1 basis, so today&#x27;s institutional activity is not yet visible.</dd><dt>Realized volatility</dt><dd>A backward-looking measure of how much the price has actually moved, scaled to a yearly figure. ~119% annualized here is very high and argues for smaller position sizes and wider stops.</dd><dt>Put/call ratio</dt><dd>Compares put activity to call activity. A volume ratio near 0.90 means slightly more call trading today, while a high open-interest ratio (2.23) means many more standing puts — mixed, hedged positioning.</dd><dt>Dark pool</dt><dd>Private trading venues where big institutions trade away from public exchanges. Dark-pool/off-exchange prints help reveal whether large players are quietly accumulating or distributing.</dd><dt>Short interest / days-to-cover</dt><dd>Short interest is the amount of stock sold short (often as a % of float). Days-to-cover estimates how long shorts would need to buy it back. High values raise the odds of a short squeeze.</dd><dt>Gamma / short squeeze</dt><dd>A squeeze is a feedback loop: a rising price forces short sellers (and option market-makers hedging gamma) to buy, which pushes the price up further. It can amplify moves well beyond fundamentals.</dd><dt>Float</dt><dd>The portion of a company&#x27;s shares freely available for public trading. A low float makes a stock easier to squeeze, because relatively small buying can move the price sharply.</dd><dt>Return windows (5D / 1M / 2M)</dt><dd>Shorthand for trailing price changes: 5D = last 5 trading days, 1M ≈ one month, 2M ≈ two months. &quot;20D high/low&quot; is the highest/lowest close over the last 20 trading days, used as breakout or invalidation levels.</dd></dl></details></section>
+      <section class="report-section glossary-card" id="key-terms" data-section-id="key-terms"><div class="section-heading"><h2>Key terms &amp; symbols</h2></div><details class="glossary"><summary>New to the jargon? Underlined terms in the report show a definition on hover &mdash; or expand this card for the full list.</summary><dl><dt>ATR / ATR(14)</dt><dd>Average True Range, here measured over 14 days. It captures how far the price typically travels in a day. A larger ATR means wider swings, so protective stops need more room.</dd><dt>VWAP</dt><dd>Volume-Weighted Average Price. The average price paid through the session weighted by how much traded at each level. Trading above VWAP is often read as buyers in control; below as sellers.</dd><dt>OI (Open Interest)</dt><dd>Open Interest is the count of option contracts that are still open. A high put/call OI ratio (e.g. 2.23) means far more open puts than calls, which can signal hedging or bearish positioning.</dd><dt>HBM</dt><dd>High-Bandwidth Memory: stacked, very fast memory used alongside AI GPUs/accelerators. Demand for HBM is the core bullish narrative for Micron (MU) in this report.</dd><dt>EMA10 / EMA</dt><dd>Exponential Moving Average. Like a simple moving average but weighting recent days more heavily, so it reacts faster to new prices. EMA10 is a short-term trend reference.</dd><dt>SMA50 / SMA200 / SMA</dt><dd>Simple Moving Average: the plain average closing price over N days. SMA50 tracks the medium-term trend and SMA200 the long-term trend; closing below them is a common invalidation signal.</dd><dt>MTUM</dt><dd>MTUM is the iShares momentum-factor ETF. &quot;MTUM-SPY +13.9%/20d&quot; means momentum stocks have outrun the S&amp;P 500 recently — a sign the momentum trade is crowded and prone to fast unwinds.</dd><dt>10-Q / 10-K</dt><dd>Standardized financial reports companies file with the U.S. SEC. The 10-Q is filed each quarter and the 10-K annually. In this run the 10-Q text was garbled and could not be used as evidence.</dd><dt>T+1</dt><dd>&quot;T+1&quot; means one business day after the trade date. FINRA dark-pool short-volume data publishes on a T+1 basis, so today&#x27;s institutional activity is not yet visible.</dd><dt>Realized volatility</dt><dd>A backward-looking measure of how much the price has actually moved, scaled to a yearly figure. ~119% annualized here is very high and argues for smaller position sizes and wider stops.</dd><dt>Put/call ratio</dt><dd>Compares put activity to call activity. A volume ratio near 0.90 means slightly more call trading today, while a high open-interest ratio (2.23) means many more standing puts — mixed, hedged positioning.</dd><dt>Dark pool</dt><dd>Private trading venues where big institutions trade away from public exchanges. Dark-pool/off-exchange prints help reveal whether large players are quietly accumulating or distributing.</dd><dt>Short interest / days-to-cover</dt><dd>Short interest is the amount of stock sold short (often as a % of float). Days-to-cover estimates how long shorts would need to buy it back. High values raise the odds of a short squeeze.</dd><dt>Gamma / short squeeze</dt><dd>A squeeze is a feedback loop: a rising price forces short sellers (and option market-makers hedging gamma) to buy, which pushes the price up further. It can amplify moves well beyond fundamentals.</dd><dt>Float</dt><dd>The portion of a company&#x27;s shares freely available for public trading. A low float makes a stock easier to squeeze, because relatively small buying can move the price sharply.</dd><dt>Return windows (5D / 1M / 2M)</dt><dd>Shorthand for trailing price changes: 5D = last 5 trading days, 1M ≈ one month, 2M ≈ two months. &quot;20D high/low&quot; is the highest/lowest close over the last 20 trading days, used as breakout or invalidation levels.</dd></dl></details></section>
 <section class="report-section" id="run-snapshot" data-section-id="run-snapshot"><div class="section-heading"><h2>Run Snapshot</h2></div><div class="table-wrap"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Ticker</td><td>MU</td></tr><tr><td>Analysis date</td><td>2026-06-23</td></tr><tr><td>Time horizon</td><td>2-3 months</td></tr><tr><td>Session status</td><td>completed</td></tr><tr><td>Created at</td><td>2026-06-23 15:28:49.768429</td></tr><tr><td>Primary setup</td><td>SQUEEZE_OR_FLOW_TRADE</td></tr><tr><td>Setup quality</td><td>C</td></tr><tr><td>Recommended action</td><td>HOLD</td></tr><tr><td>Execution intent</td><td>WAIT_FOR_TRIGGER</td></tr></tbody></table></div></section>
 <section class="report-section" id="scenario-snapshot" data-section-id="scenario-snapshot"><div class="section-heading"><h2>Scenario Snapshot</h2></div><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Probability</th><th>Target / Risk</th><th>Path</th></tr></thead><tbody><tr><td>Bull</td><td>0.45</td><td>114.0</td><td>SQUEEZE_OR_FLOW_TRADE confirms and price works toward the next reward zone.</td></tr><tr><td>Base</td><td>0.09</td><td></td><td>Setup remains unresolved; preserve optionality until trigger quality improves.</td></tr><tr><td>Bear</td><td>0.46</td><td></td><td>Setup fails or catalyst risk dominates before confirmation.</td></tr></tbody></table></div></section>
-<section class="report-section" id="analyst-reports" data-section-id="analyst-reports"><div class="section-heading"><h2>Analyst Reports</h2></div><article class="report-panel is-open" data-panel-title="Catalyst"><button class="panel-toggle" type="button" aria-expanded="true"><span>Catalyst</span><span class="chevron">⌄</span></button><div class="panel-body"><h3>Catalyst / Event-Risk Report</h3>
+<section class="report-section" id="analyst-reports" data-section-id="analyst-reports"><div class="section-heading"><h2>Analyst Reports</h2></div><article class="report-panel" data-panel-title="Catalyst"><button class="panel-toggle" type="button" aria-expanded="false"><span>Catalyst</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><h3>Catalyst / Event-Risk Report</h3>
 <ul>
 <li>Event risk rating: <strong>MEDIUM</strong></li>
 <li>Catalyst score: <code>0.6</code></li>
@@ -885,7 +1016,7 @@
 <li>Confirmed company guidance/FYQ3 numbers that materially beat expectations (revenue &amp; margins) and are accompanied by sustained above-average volume and positive cashflow drivers.</li>
 <li>Verified company guidance or official 10-Q/earnings that do NOT show material upside in FYQ3 revenue/margins tied to AI/HBM demand, or peer reads that contradict strong HBM demand drivers.</li>
 </ul></div></article></section>
-<section class="report-section" id="evidence-tracing" data-section-id="evidence-tracing"><div class="section-heading"><h2>Evidence &amp; Tracing</h2></div><article class="report-panel is-open" data-panel-title="Evidence Graph Summary"><button class="panel-toggle" type="button" aria-expanded="true"><span>Evidence Graph Summary</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="evidence-graph">
+<section class="report-section" id="evidence-tracing" data-section-id="evidence-tracing"><div class="section-heading"><h2>Evidence &amp; Tracing</h2></div><article class="report-panel" data-panel-title="Evidence Graph Summary"><button class="panel-toggle" type="button" aria-expanded="false"><span>Evidence Graph Summary</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="evidence-graph">
 <div class="evgraph-summary">
 <span class="evgraph-total">20 evidence facts</span>
 <div class="evgraph-domain-pills">
@@ -2864,7 +2995,7 @@
 }</code></pre></div></article>
 <article class="report-panel" data-panel-title="Evidence Graph Audit"><button class="panel-toggle" type="button" aria-expanded="false"><span>Evidence Graph Audit</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="table-wrap"><table><thead><tr><th>Severity</th><th>Code</th><th>Message</th></tr></thead><tbody><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_001 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_002 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_003 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_004 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_005 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_006 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_007 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_003 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_006 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH3 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH3 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH2 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>missing_source_fact_id</td><td>obs_007 cites missing vendor fact macro_regulatory_narrative_2026-06-23.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_007 had no valid vendor fact references; recovery fact created.</td></tr></tbody></table></div>
 <p>_Showing 25 of 44 audit entries._</p></div></article>
-<article class="report-panel is-open" data-panel-title="Agent Reasoning Trace"><button class="panel-toggle" type="button" aria-expanded="true"><span>Agent Reasoning Trace</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="pipeline-trace">
+<article class="report-panel" data-panel-title="Agent Reasoning Trace"><button class="panel-toggle" type="button" aria-expanded="false"><span>Agent Reasoning Trace</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="pipeline-trace">
 <div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trader Decision Brief</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured input</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">ticker</span><span class="trace-chip-value">MU</span></span><span class="trace-chip"><span class="trace-chip-label">reference price</span><span class="trace-chip-value">—</span></span><span class="trace-chip"><span class="trace-chip-label">supporting evidence count</span><span class="trace-chip-value">4</span></span><span class="trace-chip"><span class="trace-chip-label">opposing evidence count</span><span class="trace-chip-value">5</span></span><span class="trace-chip"><span class="trace-chip-label">hard constraints count</span><span class="trace-chip-value">7</span></span></div></div></div>
 <div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trade Setup Diagnosis</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured reasoning</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">primary setup</span><span class="trace-chip-value">SQUEEZE_OR_FLOW_TRADE</span></span><span class="trace-chip"><span class="trace-chip-label">setup quality</span><span class="trace-chip-value">C</span></span><span class="trace-chip"><span class="trace-chip-label">entry status</span><span class="trace-chip-value">unclear</span></span><span class="trace-chip"><span class="trace-chip-label">setup requires trigger</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">trigger type</span><span class="trace-chip-value">event</span></span></div></div></div>
 <div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Scenario Analysis</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured reasoning</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">dominant risk</span><span class="trace-chip-value">Catalyst/event risk is MEDIUM; recommended action is free...</span></span><span class="trace-chip"><span class="trace-chip-label">risk reward estimate</span><span class="trace-chip-value">1.87</span></span><span class="trace-chip"><span class="trace-chip-label">asymmetric payoff</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">bull probability</span><span class="trace-chip-value">0.45</span></span><span class="trace-chip"><span class="trace-chip-label">bear probability</span><span class="trace-chip-value">0.46</span></span></div></div></div>
@@ -2967,7 +3098,7 @@
   &quot;current_neutral_response&quot;: &quot;Neutral Analyst: {\n  \&quot;patch_id\&quot;: \&quot;neutral-2026-06-23-01\&quot;,\n  \&quot;author\&quot;: \&quot;Neutral Risk Analyst\&quot;,\n  \&quot;target_plan_version\&quot;: \&quot;final\&quot;,\n  \&quot;patch_type\&quot;: \&quot;PLAN_PATCH\&quot;,\n  \&quot;field\&quot;: \&quot;position_size_pct\&quot;,\n  \&quot;old_value\&quot;: \&quot;N/A\&quot;,\n  \&quot;new_value\&quot;: \&quot;Initial 4% on confirmed breakout (daily close &gt; 20D high with either volume follow-through or verifiable options-unwind); add a second tranche to reach a hard cap of 8% only after 3 consecutive trading days of sustained non-declining volume OR clear company-level confirmation (guidance/beat) and/or verifiable options-unwind; no single-day entry &gt;4%; hard cap 8%.\&quot;,\n  \&quot;evidence_ids\&quot;: [\n    \&quot;E-MKT-002\&quot;,\n    \&quot;E-SEN-002\&quot;,\n    \&quot;E-SEN-006\&quot;,\n    \&quot;E-SEN-004\&quot;,\n    \&quot;fact_fundamentals_income_statement_2025_08_31_gross_margin\&quot;,\n    \&quot;fact_fundamentals_balance_sheet_2025_08_31_net_cash\&quot;\n  ],\n  \&quot;reason\&quot;: \&quot;This patch reconciles the Risky and Safe positions by (a) recognizing the asymmetric, front-loaded payoff of an options/flow-driven breakout (supported by E-MKT-002 and peer/company signals E-SEN-002, E-SEN-006, E-SEN-004), and (b) acknowledging material downside fragility (illiquidity, momentum unwinds, and Micron’s negative net cash position) that argues for disciplined sizing (fact_fundamentals_balance_sheet_2025_08_31_net_cash, fact_fundamentals_income_statement_2025_08_31_gross_margin). The Risky Analyst is overly optimistic in pushing a larger single-day bite because it downplays execution, slippage and balance-sheet/flow tail risks; the Safe Analyst is overly cautious in a way that could miss the bulk of a front-loaded unwind. A 4% initial tranche is large enough to capture a meaningful portion of a fast squeeze while keeping single-day risk modest; conditional scaling to 8% with short-duration confirmation (3 days) preserves upside optionality without conceding the entire risk budget to one day or to unproven momentum.\&quot;,\n  \&quot;expected_effect\&quot;: \&quot;Balances upside capture and capital preservation: increases participation relative to the Safe 2% plan to avoid missing front-loaded returns, but constrains single-day exposure and ties further scaling to short, objective confirmations to limit slippage and tail losses. Keeps the trader’s trigger logic and existing stop (92.5) / TP (114.0) intact while reducing the chance of a large, uncontrolled loss from a failed/illiquid unwind.\&quot;,\n  \&quot;materiality\&quot;: \&quot;medium\&quot;\n}\nPLAN_PATCH&quot;,
   &quot;count&quot;: 9
 }</code></pre></div></article></section>
-<section class="report-section" id="trading-pipeline" data-section-id="trading-pipeline"><div class="section-heading"><h2>Trading Pipeline</h2></div><article class="report-panel is-open" data-panel-title="Trader Investment Plan"><button class="panel-toggle" type="button" aria-expanded="true"><span>Trader Investment Plan</span><span class="chevron">⌄</span></button><div class="panel-body"><p>TRADER_REASONING_SUMMARY:</p>
+<section class="report-section" id="trading-pipeline" data-section-id="trading-pipeline"><div class="section-heading"><h2>Trading Pipeline</h2></div><article class="report-panel" data-panel-title="Trader Investment Plan"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Investment Plan</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><p>TRADER_REASONING_SUMMARY:</p>
 <ul>
 <li>SETUP_TYPE: SQUEEZE_OR_FLOW_TRADE</li>
 <li>SETUP_QUALITY: C</li>
@@ -3108,7 +3239,7 @@
 <li class="check-item"><span class="check-icon">✓</span> catalyst override freeze_new_buys applied</li>
 </ul></div></div></article>
 <article class="report-panel" data-panel-title="Trader Self Audit"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Self Audit</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="audit-status audit-status--pass"><span class="audit-status-icon">✓</span><div class="audit-status-details"><span class="audit-status-label">PASSED</span><span class="audit-status-meta">0 violations · 0 repairs · Action consistent: yes</span></div></div></div></article></section>
-<section class="report-section" id="final-verdict" data-section-id="final-verdict"><div class="section-heading"><h2>Final Verdict</h2></div><article class="report-panel is-open" data-panel-title="Final Trade Decision"><button class="panel-toggle" type="button" aria-expanded="true"><span>Final Trade Decision</span><span class="chevron">⌄</span></button><div class="panel-body"><p>Narrative and decision rationale</p>
+<section class="report-section" id="final-verdict" data-section-id="final-verdict"><div class="section-heading"><h2>Final Verdict</h2></div><article class="report-panel" data-panel-title="Final Trade Decision"><button class="panel-toggle" type="button" aria-expanded="false"><span>Final Trade Decision</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><p>Narrative and decision rationale</p>
 <p>Summary of the debate (key points)</p>
 <ul>
 <li>Risky: Push for a larger, front-loaded entry on a confirmed 20-day-high breakout because options/gamma-driven squeezes pay off front-loaded; supports a 6% initial tranche (scale to 10% conditional on follow-through). Key evidence cited: E-MKT-002 (20D high as real trigger), peer strength and company guidance signals (E-SEN-002, E-SEN-006, E-SEN-004), and improving fundamentals.</li>
@@ -5507,6 +5638,20 @@
 
     setLanguage(getInitialLanguage());
 
+    function promoteLeadSections() {
+      const intro = document.querySelector('.intro');
+      if (!intro) return;
+      let insertionPoint = intro;
+      ['analyst-reports', 'evidence-tracing'].forEach((sectionId) => {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        insertionPoint.insertAdjacentElement('afterend', section);
+        insertionPoint = section;
+      });
+    }
+
+    promoteLeadSections();
+
     const panels = Array.from(document.querySelectorAll('.report-panel'));
     const sections = Array.from(document.querySelectorAll('.report-section'));
     const navLinks = Array.from(document.querySelectorAll('[data-nav-target]'));
@@ -5519,6 +5664,231 @@
       button.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
     }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function cleanLabel(value) {
+      return String(value || 'unknown')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+
+    function cleanClaim(value) {
+      return String(value || '')
+        .replace(/^#+\s*/, '')
+        .replace(/^\s*[-*]\s*/, '')
+        .replace(/\*\*/g, '')
+        .trim();
+    }
+
+    function truncateText(value, maxLength = 150) {
+      const text = cleanClaim(value);
+      return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+    }
+
+    function countBy(items, getKey) {
+      return items.reduce((counts, item) => {
+        const key = typeof getKey === 'function' ? getKey(item) : item[getKey];
+        const safeKey = key || 'unknown';
+        counts[safeKey] = (counts[safeKey] || 0) + 1;
+        return counts;
+      }, {});
+    }
+
+    function sortedEntries(counts) {
+      return Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    }
+
+    function average(values) {
+      const numeric = values.filter((value) => Number.isFinite(value));
+      if (!numeric.length) return null;
+      return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+    }
+
+    const domainAccents = {
+      catalyst: '#0f766e',
+      market: '#2563eb',
+      sentiment: '#7c3aed',
+      news: '#b45309',
+      fundamentals: '#059669',
+      unknown: '#667085',
+    };
+
+    function getDomainAccent(domain) {
+      return domainAccents[domain] || domainAccents.unknown;
+    }
+
+    function parseEvidenceGraphData() {
+      const panel = document.querySelector('[data-panel-title="Full Evidence Graph JSON"]');
+      const code = panel?.querySelector('code.language-json');
+      if (!code) return null;
+      try {
+        return JSON.parse(code.textContent);
+      } catch {
+        return null;
+      }
+    }
+
+    function enhanceEvidenceGraphJson(graphData) {
+      const panel = document.querySelector('[data-panel-title="Full Evidence Graph JSON"]');
+      const body = panel?.querySelector('.panel-body');
+      const pre = body?.querySelector('pre');
+      if (!panel || !body || !pre || !graphData) return;
+
+      const facts = Array.isArray(graphData.facts) ? graphData.facts : [];
+      const inferences = Array.isArray(graphData.inferences) ? graphData.inferences : [];
+      const conflicts = Array.isArray(graphData.conflicts) ? graphData.conflicts : [];
+      const auditIssues = Array.isArray(graphData.audit_issues) ? graphData.audit_issues : [];
+      const domains = sortedEntries(countBy(facts, (fact) => fact.domain || 'unknown'));
+      const rawJson = pre.outerHTML;
+
+      const domainCards = domains.map(([domain, count]) => {
+        const domainFacts = facts.filter((fact) => (fact.domain || 'unknown') === domain);
+        const confidence = average(domainFacts.map((fact) => Number(fact.confidence)));
+        const topFacts = domainFacts.slice(0, 4).map((fact) => `
+          <div class="graph-fact-card">
+            <strong>${escapeHtml(fact.id || 'unnamed fact')}</strong>
+            <p>${escapeHtml(truncateText(fact.claim || fact.text || fact.section || fact.source))}</p>
+            <div class="graph-fact-meta">
+              <span class="mini-chip">${escapeHtml(fact.source_type || 'source')}</span>
+              <span class="mini-chip">${escapeHtml(fact.section || fact.source || 'section')}</span>
+              ${Number.isFinite(Number(fact.confidence)) ? `<span class="mini-chip">confidence ${Number(fact.confidence).toFixed(2)}</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <article class="graph-domain-card" style="--domain-accent: ${getDomainAccent(domain)}">
+            <header>
+              <div class="graph-domain-title">${escapeHtml(cleanLabel(domain))}</div>
+              <div class="graph-domain-meta">${count} facts${confidence === null ? '' : ` / avg ${confidence.toFixed(2)}`}</div>
+            </header>
+            <div class="graph-fact-list">${topFacts}</div>
+          </article>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <div class="graph-dashboard">
+          <div class="graph-hero">
+            <div class="graph-brief">
+              <h3>Evidence Graph Explorer</h3>
+              <p>This view turns the raw evidence graph into scan-friendly domain groups, confidence cues, and source labels while keeping the original JSON available below.</p>
+            </div>
+            <div class="graph-stat-grid">
+              <div class="graph-stat"><span class="graph-stat-value">${facts.length}</span><span class="graph-stat-label">Facts</span></div>
+              <div class="graph-stat"><span class="graph-stat-value">${inferences.length}</span><span class="graph-stat-label">Inferences</span></div>
+              <div class="graph-stat"><span class="graph-stat-value">${conflicts.length}</span><span class="graph-stat-label">Conflicts</span></div>
+              <div class="graph-stat"><span class="graph-stat-value">${auditIssues.length}</span><span class="graph-stat-label">Audit Issues</span></div>
+            </div>
+          </div>
+          <div class="graph-domain-grid">${domainCards}</div>
+          <details class="graph-raw">
+            <summary>raw evidence graph JSON</summary>
+            ${rawJson}
+          </details>
+        </div>
+      `;
+    }
+
+    function buildAuditIssuesFromTable() {
+      const rows = Array.from(document.querySelectorAll('[data-panel-title="Evidence Graph Audit"] tbody tr'));
+      return rows.map((row) => {
+        const cells = Array.from(row.cells).map((cell) => cell.textContent.trim());
+        return { severity: cells[0], code: cells[1], message: cells[2] };
+      });
+    }
+
+    function enhanceEvidenceGraphAudit(graphData) {
+      const panel = document.querySelector('[data-panel-title="Evidence Graph Audit"]');
+      const body = panel?.querySelector('.panel-body');
+      if (!panel || !body) return;
+
+      const rawAuditHtml = body.innerHTML;
+      const issues = Array.isArray(graphData?.audit_issues) && graphData.audit_issues.length
+        ? graphData.audit_issues
+        : buildAuditIssuesFromTable();
+      if (!issues.length) return;
+
+      const severityCounts = sortedEntries(countBy(issues, (issue) => issue.severity || 'unknown'));
+      const codeGroups = sortedEntries(countBy(issues, (issue) => issue.code || 'unknown'));
+      const domainCounts = sortedEntries(countBy(issues, (issue) => issue.domain || 'unknown'));
+
+      const codeCards = codeGroups.map(([code, count]) => {
+        const codeIssues = issues.filter((issue) => (issue.code || 'unknown') === code);
+        const sampleIssues = codeIssues.slice(0, 5).map((issue) => `
+          <div class="audit-issue-card">
+            <strong>${escapeHtml(issue.node_id || issue.domain || 'audit entry')}</strong>
+            <p>${escapeHtml(issue.message || 'No message provided.')}</p>
+            <div class="audit-issue-meta">
+              <span class="mini-chip mini-chip--${escapeHtml(issue.severity || 'low')}">${escapeHtml(issue.severity || 'unknown')}</span>
+              ${issue.domain ? `<span class="mini-chip">${escapeHtml(cleanLabel(issue.domain))}</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <article class="audit-code-card" style="--domain-accent: ${count > 10 ? '#b45309' : '#2563eb'}">
+            <header>
+              <div class="audit-code-title">${escapeHtml(cleanLabel(code))}</div>
+              <div class="audit-code-meta">${count} issue${count === 1 ? '' : 's'}</div>
+            </header>
+            <div class="audit-issue-list">${sampleIssues}</div>
+          </article>
+        `;
+      }).join('');
+
+      const severityStats = severityCounts.map(([severity, count]) => `
+        <div class="audit-stat">
+          <span class="audit-stat-value">${count}</span>
+          <span class="audit-stat-label">${escapeHtml(cleanLabel(severity))}</span>
+        </div>
+      `).join('');
+
+      const focusItems = domainCounts.slice(0, 4).map(([domain, count]) => `
+        <div class="audit-focus-item">
+          <strong>${escapeHtml(cleanLabel(domain))}</strong>
+          <span>${count} audit issue${count === 1 ? '' : 's'} linked to this domain</span>
+        </div>
+      `).join('');
+
+      body.innerHTML = `
+        <div class="audit-dashboard">
+          <div class="audit-hero">
+            <div class="audit-brief">
+              <h3>Evidence Graph Audit</h3>
+              <p>The audit now highlights issue concentration by severity, code, and domain before exposing the original row-level ledger.</p>
+            </div>
+            <div class="audit-stat-grid">
+              <div class="audit-stat"><span class="audit-stat-value">${issues.length}</span><span class="audit-stat-label">Total Issues</span></div>
+              <div class="audit-stat"><span class="audit-stat-value">${codeGroups.length}</span><span class="audit-stat-label">Issue Codes</span></div>
+              ${severityStats}
+            </div>
+          </div>
+          <div class="audit-focus">${focusItems}</div>
+          <div class="audit-code-grid">${codeCards}</div>
+          <details class="audit-raw">
+            <summary>original audit table</summary>
+            ${rawAuditHtml}
+          </details>
+        </div>
+      `;
+    }
+
+    const evidenceGraphData = parseEvidenceGraphData();
+    enhanceEvidenceGraphJson(evidenceGraphData);
+    enhanceEvidenceGraphAudit(evidenceGraphData);
+
+    panels.forEach((panel) => setPanel(panel, false));
 
     panels.forEach((panel) => {
       panel.querySelector('.panel-toggle').addEventListener('click', () => {
