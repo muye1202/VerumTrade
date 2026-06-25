@@ -1431,6 +1431,103 @@ def _render_self_audit_structured(data: dict) -> str | None:
     return "\n".join(parts)
 
 
+_DOMAIN_COLORS: dict[str, tuple[str, str, str]] = {
+    # (border-left, badge-bg, badge-text)
+    "catalyst":    ("#8b5cf6", "#ede9fe", "#5b21b6"),
+    "market":      ("#3b82f6", "#dbeafe", "#1e40af"),
+    "sentiment":   ("#f59e0b", "#fef3c7", "#92400e"),
+    "fundamentals":("#10b981", "#d1fae5", "#065f46"),
+    "news":        ("#ef4444", "#fee2e2", "#991b1b"),
+}
+_DOMAIN_ICONS: dict[str, str] = {
+    "catalyst": "⚡", "market": "📊", "sentiment": "💬",
+    "fundamentals": "📈", "news": "📰",
+}
+
+
+def _render_evidence_graph_structured(body: str) -> str | None:
+    """Parse the markdown table in Evidence Graph Summary and render as grouped cards."""
+    lines = body.strip().splitlines()
+    rows: list[tuple[str, str, str]] = []
+    in_table = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and "ID" in stripped and "Domain" in stripped:
+            in_table = True
+            continue
+        if in_table and stripped.startswith("|:") and "--" in stripped:
+            continue
+        if in_table and stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if len(cells) >= 3:
+                rows.append((cells[0], cells[1], cells[2]))
+        elif in_table and not stripped.startswith("|"):
+            in_table = False
+
+    if not rows:
+        return None
+
+    # Group by domain
+    from collections import OrderedDict
+    groups: OrderedDict[str, list[tuple[str, str]]] = OrderedDict()
+    for fact_id, domain, claim in rows:
+        groups.setdefault(domain, []).append((fact_id, claim))
+
+    # Find footer text like "Showing 20 of 95..."
+    footer_text = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("_Showing") or stripped.startswith("Showing"):
+            footer_text = stripped.strip("_")
+            break
+
+    parts: list[str] = ['<div class="evidence-graph">']
+
+    # Summary bar
+    total = len(rows)
+    domain_counts = [(d, len(facts)) for d, facts in groups.items()]
+    parts.append('<div class="evgraph-summary">')
+    parts.append(f'<span class="evgraph-total">{total} evidence facts</span>')
+    parts.append('<div class="evgraph-domain-pills">')
+    for d, count in domain_counts:
+        colors = _DOMAIN_COLORS.get(d, ("#6b7280", "#f3f4f6", "#4b5563"))
+        icon = _DOMAIN_ICONS.get(d, "📋")
+        parts.append(
+            f'<span class="evgraph-pill" style="background:{colors[1]};color:{colors[2]}">'
+            f'{icon} {html.escape(d)} <strong>{count}</strong></span>'
+        )
+    parts.append('</div></div>')
+
+    # Domain groups
+    for domain, facts in groups.items():
+        colors = _DOMAIN_COLORS.get(domain, ("#6b7280", "#f3f4f6", "#4b5563"))
+        icon = _DOMAIN_ICONS.get(domain, "📋")
+        parts.append(f'<div class="evgraph-domain" style="--domain-accent:{colors[0]}">')
+        parts.append(
+            f'<h4 class="evgraph-domain-title">'
+            f'<span class="evgraph-domain-icon">{icon}</span> '
+            f'{html.escape(domain.capitalize())}'
+            f'<span class="evgraph-domain-count">{len(facts)}</span></h4>'
+        )
+        for fact_id, claim in facts:
+            claim_clean = claim.replace("\\|", "|").strip()
+            # Detect if claim starts with markdown heading markers
+            claim_display = re.sub(r"^#+\s*", "", claim_clean)
+            is_header = claim_clean.startswith("#")
+            header_class = " evgraph-fact--header" if is_header else ""
+            parts.append(f'<div class="evgraph-fact{header_class}">')
+            parts.append(f'<code class="evgraph-fact-id">{html.escape(fact_id)}</code>')
+            parts.append(f'<span class="evgraph-fact-claim">{html.escape(claim_display)}</span>')
+            parts.append('</div>')
+        parts.append('</div>')
+
+    if footer_text:
+        parts.append(f'<div class="evgraph-footer">{html.escape(footer_text)}</div>')
+
+    parts.append('</div>')
+    return "\n".join(parts)
+
+
 _JSON_PANEL_RENDERERS: dict[str, object] = {
     "Decision Trace JSON": _render_decision_trace_structured,
     "Trader Decision Brief": _render_decision_brief_structured,
@@ -1444,6 +1541,9 @@ _JSON_PANEL_RENDERERS: dict[str, object] = {
 def _try_structured_render(title: str, body: str) -> str | None:
     if title == "Agent Reasoning Trace":
         return _render_reasoning_trace_structured(body)
+
+    if title == "Evidence Graph Summary":
+        return _render_evidence_graph_structured(body)
 
     renderer = _JSON_PANEL_RENDERERS.get(title)
     if renderer is None:
@@ -1984,6 +2084,27 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .audit-status--pass .audit-status-label {{ color: #065f46; }}
     .audit-status--fail .audit-status-label {{ color: #991b1b; }}
     .audit-status-meta {{ font-size: 13px; color: var(--muted); display: block; }}
+
+    /* ── Evidence graph summary ── */
+    .evidence-graph {{ padding: 4px 0; }}
+    .evgraph-summary {{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfc; margin-bottom: 18px; }}
+    .evgraph-total {{ font-size: 15px; font-weight: 800; color: var(--text); white-space: nowrap; }}
+    .evgraph-domain-pills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+    .evgraph-pill {{ display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; }}
+    .evgraph-pill strong {{ font-weight: 800; }}
+    .evgraph-domain {{ margin-bottom: 16px; }}
+    .evgraph-domain-title {{ display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--domain-accent, var(--line)); color: var(--text); }}
+    .evgraph-domain-icon {{ font-size: 16px; }}
+    .evgraph-domain-count {{ font-size: 11px; font-weight: 700; background: var(--domain-accent, var(--muted)); color: #fff; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }}
+    .evgraph-fact {{ display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; padding: 8px 12px; border-left: 3px solid var(--domain-accent, var(--line)); background: #fff; margin: 0; border-bottom: 1px solid #f3f4f6; }}
+    .evgraph-fact:first-of-type {{ border-radius: 8px 8px 0 0; }}
+    .evgraph-fact:last-of-type {{ border-radius: 0 0 8px 8px; border-bottom: none; }}
+    .evgraph-fact:only-of-type {{ border-radius: 8px; }}
+    .evgraph-fact--header {{ background: #fafbfc; }}
+    .evgraph-fact--header .evgraph-fact-claim {{ font-weight: 700; font-size: 13px; }}
+    .evgraph-fact-id {{ font-size: 10px; font-family: var(--font-mono, 'SF Mono', 'Consolas', monospace); padding: 2px 6px; border-radius: 4px; background: #f3f4f6; color: #6b7280; white-space: nowrap; font-weight: 500; }}
+    .evgraph-fact-claim {{ font-size: 13px; color: var(--text); word-break: break-word; }}
+    .evgraph-footer {{ font-size: 12px; color: var(--muted); font-style: italic; padding: 10px 0 0; text-align: center; }}
 
     @media (max-width: 900px) {{
       .app-header {{ align-items: stretch; flex-direction: column; }}

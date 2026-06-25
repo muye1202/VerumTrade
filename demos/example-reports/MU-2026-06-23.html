@@ -374,6 +374,27 @@
     .audit-status--fail .audit-status-label { color: #991b1b; }
     .audit-status-meta { font-size: 13px; color: var(--muted); display: block; }
 
+    /* ── Evidence graph summary ── */
+    .evidence-graph { padding: 4px 0; }
+    .evgraph-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfc; margin-bottom: 18px; }
+    .evgraph-total { font-size: 15px; font-weight: 800; color: var(--text); white-space: nowrap; }
+    .evgraph-domain-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .evgraph-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; }
+    .evgraph-pill strong { font-weight: 800; }
+    .evgraph-domain { margin-bottom: 16px; }
+    .evgraph-domain-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--domain-accent, var(--line)); color: var(--text); }
+    .evgraph-domain-icon { font-size: 16px; }
+    .evgraph-domain-count { font-size: 11px; font-weight: 700; background: var(--domain-accent, var(--muted)); color: #fff; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+    .evgraph-fact { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; padding: 8px 12px; border-left: 3px solid var(--domain-accent, var(--line)); background: #fff; margin: 0; border-bottom: 1px solid #f3f4f6; }
+    .evgraph-fact:first-of-type { border-radius: 8px 8px 0 0; }
+    .evgraph-fact:last-of-type { border-radius: 0 0 8px 8px; border-bottom: none; }
+    .evgraph-fact:only-of-type { border-radius: 8px; }
+    .evgraph-fact--header { background: #fafbfc; }
+    .evgraph-fact--header .evgraph-fact-claim { font-weight: 700; font-size: 13px; }
+    .evgraph-fact-id { font-size: 10px; font-family: var(--font-mono, 'SF Mono', 'Consolas', monospace); padding: 2px 6px; border-radius: 4px; background: #f3f4f6; color: #6b7280; white-space: nowrap; font-weight: 500; }
+    .evgraph-fact-claim { font-size: 13px; color: var(--text); word-break: break-word; }
+    .evgraph-footer { font-size: 12px; color: var(--muted); font-style: italic; padding: 10px 0 0; text-align: center; }
+
     @media (max-width: 900px) {
       .app-header { align-items: stretch; flex-direction: column; }
       .toolbar { flex-wrap: wrap; }
@@ -391,7 +412,7 @@
   <header class="app-header">
     <div class="brand">
       <strong>Verumtrade example report</strong>
-      <span>Example Verumtrade Report: MU (2026-06-23) · generated from demos\example-reports\MU-2026-06-23.md</span>
+      <span>Example Verumtrade Report: MU (2026-06-23) · generated from MU-2026-06-23.md</span>
     </div>
     <div class="toolbar">
       <div class="language-switcher" role="group" aria-label="Language">
@@ -864,8 +885,101 @@
 <li>Confirmed company guidance/FYQ3 numbers that materially beat expectations (revenue &amp; margins) and are accompanied by sustained above-average volume and positive cashflow drivers.</li>
 <li>Verified company guidance or official 10-Q/earnings that do NOT show material upside in FYQ3 revenue/margins tied to AI/HBM demand, or peer reads that contradict strong HBM demand drivers.</li>
 </ul></div></article></section>
-<section class="report-section" id="evidence-tracing" data-section-id="evidence-tracing"><div class="section-heading"><h2>Evidence &amp; Tracing</h2></div><article class="report-panel is-open" data-panel-title="Evidence Graph Summary"><button class="panel-toggle" type="button" aria-expanded="true"><span>Evidence Graph Summary</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="table-wrap"><table><thead><tr><th>ID</th><th>Domain</th><th>Claim</th></tr></thead><tbody><tr><td>price_action_summary_001</td><td>catalyst</td><td>## Price-action snapshot for MU (daily)</td></tr><tr><td>price_action_summary_002</td><td>catalyst</td><td><abbr class="gloss" title="Average True Range — the typical daily high-to-low move; a volatility gauge (bigger = wider swings).">ATR(14)</abbr>: 91.92 (7.59% of price)</td></tr><tr><td>price_action_summary_003</td><td>catalyst</td><td>Volume: last 52572500 \</td><td>avg(20D) 54948670 \</td><td>rel 0.96</td></tr><tr><td>price_action_summary_004</td><td>catalyst</td><td>Key level \</td><td>Price \</td><td>Notes</td></tr><tr><td>filing_001</td><td>catalyst</td><td><abbr class="gloss" title="SEC filings — 10-Q is the quarterly financial report, 10-K the annual one.">10-Q</abbr> filed</td></tr><tr><td>peer_earnings_001</td><td>catalyst</td><td>Peer earnings: AMD</td></tr><tr><td>text_filing_001</td><td>catalyst</td><td>[10-Q — Vanguard Green Investment Ltd  (VGES)  (CIK 0001746119) (filed 2026-06-10), 10-Q — Willow Lane Acquisition Corp.  (WLAC, WLACU, WLACW)  (CIK 0002032379) (filed 2026-05-15), {&#x27;form_type&#x27;: &#x27;10-Q&#x27;, &#x27;catalyst_category&#x27;: &#x27;unknown&#x27;, &#x27;company_name&#x27;: &#x27;CIMG Inc.  (CI</td></tr><tr><td>fact_market_price_action_summary_001</td><td>market</td><td>- ATR(14): 91.92 (7.59% of price)</td></tr><tr><td>fact_market_price_action_summary_002</td><td>market</td><td>\</td><td>20D high \</td><td>1213.56 \</td><td>near-term resistance / breakout trigger \</td><td></td></tr><tr><td>fact_market_price_action_summary_003</td><td>market</td><td>- Last close: 1211.38 (prev: 1133.99)</td></tr><tr><td>fact_market_price_action_summary_004</td><td>market</td><td>- Returns: 5D 23.41% \</td><td>1M(21D) 65.49% \</td><td>2M(42D) 169.57% \</td><td>3M(63D) 186.57%</td></tr><tr><td>fact_market_unusual_options_activity_001</td><td>market</td><td>- <strong>Stock Price</strong>: $1076.32</td></tr><tr><td>fact_market_unusual_options_activity_002</td><td>market</td><td>\</td><td>Volume \</td><td>9,301 \</td><td>7,605 \</td><td></td></tr><tr><td>fact_market_unusual_options_activity_003</td><td>market</td><td>- <strong>Key levels</strong>: Watch strikes with heavy volume ($1070, $1075, $1080)</td></tr><tr><td>fact_market_unusual_options_activity_004</td><td>market</td><td>- <strong>Expirations Scanned</strong>: 6</td></tr><tr><td>fact_market_options_sentiment_summary_001</td><td>market</td><td>- <strong>Put/Call Volume Ratio</strong>: 0.90</td></tr><tr><td>fact_market_options_sentiment_summary_002</td><td>market</td><td>- Total Call Volume: 109,955</td></tr><tr><td>fact_market_options_sentiment_summary_003</td><td>market</td><td>- Total Put Volume: 98,779</td></tr><tr><td>fact_market_options_sentiment_summary_004</td><td>market</td><td>- <strong>Put/Call <abbr class="gloss" title="Open Interest — the number of option contracts currently outstanding (not yet closed).">OI</abbr> Ratio</strong>: 2.23</td></tr><tr><td>fact_market_dark_pool_short_volume_001</td><td>market</td><td><strong>Status</strong>: No FINRA short volume data found for recent dates.</td></tr></tbody></table></div>
-<p>_Showing 20 of 95 evidence facts. Full evidence graph JSON is included below._</p></div></article>
+<section class="report-section" id="evidence-tracing" data-section-id="evidence-tracing"><div class="section-heading"><h2>Evidence &amp; Tracing</h2></div><article class="report-panel is-open" data-panel-title="Evidence Graph Summary"><button class="panel-toggle" type="button" aria-expanded="true"><span>Evidence Graph Summary</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="evidence-graph">
+<div class="evgraph-summary">
+<span class="evgraph-total">20 evidence facts</span>
+<div class="evgraph-domain-pills">
+<span class="evgraph-pill" style="background:#ede9fe;color:#5b21b6">⚡ catalyst <strong>7</strong></span>
+<span class="evgraph-pill" style="background:#dbeafe;color:#1e40af">📊 market <strong>13</strong></span>
+</div></div>
+<div class="evgraph-domain" style="--domain-accent:#8b5cf6">
+<h4 class="evgraph-domain-title"><span class="evgraph-domain-icon">⚡</span> Catalyst<span class="evgraph-domain-count">7</span></h4>
+<div class="evgraph-fact evgraph-fact--header">
+<code class="evgraph-fact-id">price_action_summary_001</code>
+<span class="evgraph-fact-claim">Price-action snapshot for MU (daily)</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">price_action_summary_002</code>
+<span class="evgraph-fact-claim">ATR(14): 91.92 (7.59% of price)</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">price_action_summary_003</code>
+<span class="evgraph-fact-claim">Volume: last 52572500 \</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">price_action_summary_004</code>
+<span class="evgraph-fact-claim">Key level \</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">filing_001</code>
+<span class="evgraph-fact-claim">10-Q filed</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">peer_earnings_001</code>
+<span class="evgraph-fact-claim">Peer earnings: AMD</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">text_filing_001</code>
+<span class="evgraph-fact-claim">[{&#x27;form_type&#x27;: &#x27;10-Q&#x27;, &#x27;catalyst_category&#x27;: &#x27;unknown&#x27;, &#x27;company_name&#x27;: &#x27;Vanguard Green Investment Ltd  (VGES)  (CIK 0001746119)&#x27;, &#x27;ticker&#x27;: &#x27;&#x27;, &#x27;filed_at&#x27;: &#x27;2026-06-10&#x27;, &#x27;description&#x27;: &#x27;&#x27;, &#x27;url&#x27;: &#x27;&#x27;}, {&#x27;form_type&#x27;: &#x27;10-Q&#x27;, &#x27;catalyst_category&#x27;: &#x27;unknown&#x27;, &#x27;company_name&#x27;: &#x27;Willow Lane Acquisition Corp.  (WLAC, WLACU, WLACW)  (CIK 0002032379)&#x27;, &#x27;ticker&#x27;: &#x27;&#x27;, &#x27;filed_at&#x27;: &#x27;2026-05-15&#x27;, &#x27;description&#x27;: &#x27;&#x27;, &#x27;url&#x27;: &#x27;&#x27;}, {&#x27;form_type&#x27;: &#x27;10-Q&#x27;, &#x27;catalyst_category&#x27;: &#x27;unknown&#x27;, &#x27;company_name&#x27;: &#x27;CIMG Inc.  (CI</span>
+</div>
+</div>
+<div class="evgraph-domain" style="--domain-accent:#3b82f6">
+<h4 class="evgraph-domain-title"><span class="evgraph-domain-icon">📊</span> Market<span class="evgraph-domain-count">13</span></h4>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_price_action_summary_001</code>
+<span class="evgraph-fact-claim">- ATR(14): 91.92 (7.59% of price)</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_price_action_summary_002</code>
+<span class="evgraph-fact-claim">\</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_price_action_summary_003</code>
+<span class="evgraph-fact-claim">- Last close: 1211.38 (prev: 1133.99)</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_price_action_summary_004</code>
+<span class="evgraph-fact-claim">- Returns: 5D 23.41% \</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_unusual_options_activity_001</code>
+<span class="evgraph-fact-claim">- **Stock Price**: $1076.32</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_unusual_options_activity_002</code>
+<span class="evgraph-fact-claim">\</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_unusual_options_activity_003</code>
+<span class="evgraph-fact-claim">- **Key levels**: Watch strikes with heavy volume ($1070, $1075, $1080)</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_unusual_options_activity_004</code>
+<span class="evgraph-fact-claim">- **Expirations Scanned**: 6</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_options_sentiment_summary_001</code>
+<span class="evgraph-fact-claim">- **Put/Call Volume Ratio**: 0.90</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_options_sentiment_summary_002</code>
+<span class="evgraph-fact-claim">- Total Call Volume: 109,955</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_options_sentiment_summary_003</code>
+<span class="evgraph-fact-claim">- Total Put Volume: 98,779</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_options_sentiment_summary_004</code>
+<span class="evgraph-fact-claim">- **Put/Call OI Ratio**: 2.23</span>
+</div>
+<div class="evgraph-fact">
+<code class="evgraph-fact-id">fact_market_dark_pool_short_volume_001</code>
+<span class="evgraph-fact-claim">**Status**: No FINRA short volume data found for recent dates.</span>
+</div>
+</div>
+<div class="evgraph-footer">Showing 20 of 95 evidence facts. Full evidence graph JSON is included below.</div>
+</div></div></article>
 <article class="report-panel" data-panel-title="Full Evidence Graph JSON"><button class="panel-toggle" type="button" aria-expanded="false"><span>Full Evidence Graph JSON</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
   &quot;facts&quot;: [
     {
