@@ -850,7 +850,8 @@ def _render_panels(section_markdown: str) -> str:
 
         title = html.unescape(match.group("title")).strip()
         is_open = bool(match.group("open"))
-        body = render_markdown_fragment(match.group("body"))
+        structured = _try_structured_render(title, match.group("body"))
+        body = structured if structured is not None else render_markdown_fragment(match.group("body"))
         expanded = "true" if is_open else "false"
         hidden = "" if is_open else " hidden"
         open_class = " is-open" if is_open else ""
@@ -916,6 +917,541 @@ def _build_glossary_card(markdown: str) -> str:
         f'<dl>{rows}</dl>'
         '</details></section>'
     )
+
+
+# ---------------------------------------------------------------------------
+# Structured renderers for Trading Pipeline panels
+# ---------------------------------------------------------------------------
+
+def _extract_json_from_body(body: str) -> dict | list | None:
+    match = re.search(r"```json\s*\n(.*?)```", body, re.DOTALL)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _direction_class(direction: str) -> str:
+    if direction in ("bullish", "supporting"):
+        return "bullish"
+    if direction in ("bearish", "opposing"):
+        return "bearish"
+    return "risk"
+
+
+def _direction_arrow(direction: str) -> str:
+    if direction in ("bullish", "supporting"):
+        return "↑"
+    if direction in ("bearish", "opposing"):
+        return "↓"
+    return "⚠"
+
+
+def _strength_bar_html(strength: float) -> str:
+    pct = round(strength * 100)
+    return (
+        f'<div class="strength-bar">'
+        f'<div class="strength-track"><div class="strength-fill" style="width:{pct}%"></div></div>'
+        f'<span class="strength-label">{strength:.2f}</span>'
+        f'</div>'
+    )
+
+
+def _render_reasoning_trace_structured(body: str) -> str | None:
+    lines = [l.strip() for l in body.strip().splitlines() if l.strip().startswith("|")]
+    if len(lines) < 3:
+        return None
+
+    rows: list[dict[str, str]] = []
+    for line in lines[2:]:
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) >= 5:
+            rows.append({
+                "stage": cells[0].strip(),
+                "agent": cells[1].strip(),
+                "kind": cells[2].strip(),
+                "status": cells[3].strip(),
+                "summary_raw": cells[4].strip(),
+            })
+    if not rows:
+        return None
+
+    parts = ['<div class="pipeline-trace">']
+    for i, row in enumerate(rows):
+        status_cls = "available" if row["status"] == "available" else "missing"
+        is_last = i == len(rows) - 1
+
+        chips_html = ""
+        raw = row["summary_raw"]
+        if raw and raw != "{}":
+            pairs = _PAIR_RE.findall(raw)
+            if pairs:
+                chips: list[str] = []
+                for key, val in pairs:
+                    if val.startswith("'") and val.endswith("'"):
+                        val = val[1:-1].strip()
+                    val = _VALUE_LABELS.get(val, val)
+                    label = key.replace("_", " ")
+                    if len(val) > 60:
+                        val = val[:57] + "..."
+                    chips.append(
+                        f'<span class="trace-chip">'
+                        f'<span class="trace-chip-label">{html.escape(label)}</span>'
+                        f'<span class="trace-chip-value">{html.escape(val)}</span>'
+                        f'</span>'
+                    )
+                chips_html = '<div class="trace-chips">' + "".join(chips) + '</div>'
+
+        kind_label = row["kind"].replace("_", " ")
+        status_icon = "✓" if status_cls == "available" else "✗"
+
+        parts.append(
+            f'<div class="trace-step">'
+            f'<div class="trace-connector">'
+            f'<span class="trace-dot trace-dot--{status_cls}"></span>'
+            f'{"<span class=\"trace-line\"></span>" if not is_last else ""}'
+            f'</div>'
+            f'<div class="trace-card">'
+            f'<div class="trace-header">'
+            f'<span class="trace-stage">{html.escape(row["stage"])}</span>'
+            f'<span class="trace-status trace-status--{status_cls}">{status_icon} {html.escape(row["status"])}</span>'
+            f'</div>'
+            f'<div class="trace-meta">'
+            f'<span class="trace-badge trace-badge--agent">{html.escape(row["agent"])}</span>'
+            f'<span class="trace-badge trace-badge--kind">{html.escape(kind_label)}</span>'
+            f'</div>'
+            f'{chips_html}'
+            f'</div>'
+            f'</div>'
+        )
+
+    parts.append('</div>')
+    return "\n".join(parts)
+
+
+def _render_decision_trace_structured(data: dict) -> str | None:
+    parts: list[str] = []
+
+    decision = data.get("decision", {})
+    action = decision.get("action", "—")
+    ticker = decision.get("ticker", "—")
+    action_cls = action.lower() if action in ("BUY", "SELL", "HOLD") else "hold"
+
+    parts.append(
+        f'<div class="decision-header">'
+        f'<span class="action-badge action-badge--{action_cls}">{html.escape(action)}</span>'
+        f'<span class="decision-ticker">{html.escape(ticker)}</span>'
+        f'</div>'
+    )
+
+    thesis = data.get("thesis", {})
+    claim = thesis.get("claim", "")
+    if claim:
+        parts.append(
+            f'<div class="decision-thesis">'
+            f'<h4>Thesis</h4>'
+            f'<p>{html.escape(claim)}</p>'
+            f'</div>'
+        )
+
+    inference_ids = data.get("inference_ids", [])
+    if inference_ids:
+        id_chips = "".join(f'<code>{html.escape(i)}</code>' for i in inference_ids)
+        parts.append(
+            f'<div class="decision-section">'
+            f'<h4>Inferences ({len(inference_ids)})</h4>'
+            f'<div class="chip-grid">{id_chips}</div>'
+            f'</div>'
+        )
+
+    source_labels = data.get("source_labels", [])
+    if source_labels:
+        src_chips = "".join(f'<code>{html.escape(s)}</code>' for s in source_labels)
+        parts.append(
+            f'<div class="decision-section">'
+            f'<h4>Source Labels ({len(source_labels)})</h4>'
+            f'<div class="chip-grid">{src_chips}</div>'
+            f'</div>'
+        )
+
+    fact_ids = data.get("fact_ids", [])
+    if fact_ids:
+        parts.append(
+            f'<div class="decision-section">'
+            f'<h4>Fact References</h4>'
+            f'<p class="text-muted">{len(fact_ids)} facts linked to this decision</p>'
+            f'</div>'
+        )
+
+    audit_issues = data.get("audit_issues", [])
+    if audit_issues:
+        by_domain: dict[str, list[dict]] = {}
+        for issue in audit_issues:
+            domain = issue.get("domain", "unknown")
+            by_domain.setdefault(domain, []).append(issue)
+
+        parts.append(f'<div class="decision-section">')
+        parts.append(f'<h4>Audit Issues ({len(audit_issues)})</h4>')
+        parts.append('<div class="audit-groups">')
+        for domain, issues in sorted(by_domain.items()):
+            parts.append('<details class="audit-group">')
+            parts.append(
+                f'<summary><strong>{html.escape(domain)}</strong>'
+                f' <span class="text-muted">({len(issues)} issues)</span></summary>'
+            )
+            parts.append('<ul class="audit-list">')
+            for issue in issues:
+                sev = issue.get("severity", "info")
+                sev_cls = "high" if sev == "high" else "medium" if sev == "medium" else "low"
+                msg = issue.get("message", "")
+                node = issue.get("node_id", "")
+                parts.append(
+                    f'<li class="audit-item audit-item--{sev_cls}">'
+                    f'<span class="audit-sev audit-sev--{sev_cls}">{html.escape(sev)}</span>'
+                    f'{html.escape(msg)}'
+                    f'{f" <code>{html.escape(node)}</code>" if node else ""}'
+                    f'</li>'
+                )
+            parts.append('</ul></details>')
+        parts.append('</div></div>')
+
+    return "\n".join(parts)
+
+
+def _render_decision_brief_structured(data: dict) -> str | None:
+    parts: list[str] = []
+
+    ticker = data.get("ticker", "—")
+    ref_price = data.get("reference_price")
+    time_horizon = data.get("time_horizon", "—")
+
+    parts.append(
+        f'<div class="brief-overview">'
+        f'<div class="brief-stat"><span class="brief-stat-label">Ticker</span>'
+        f'<span class="brief-stat-value">{html.escape(str(ticker))}</span></div>'
+        f'<div class="brief-stat"><span class="brief-stat-label">Reference Price</span>'
+        f'<span class="brief-stat-value">{html.escape(str(ref_price) if ref_price else "—")}</span></div>'
+        f'<div class="brief-stat"><span class="brief-stat-label">Time Horizon</span>'
+        f'<span class="brief-stat-value">{html.escape(str(time_horizon))}</span></div>'
+        f'</div>'
+    )
+
+    evidence_by_domain = data.get("evidence_by_domain", {})
+    if evidence_by_domain:
+        parts.append('<div class="evidence-domains"><h4>Evidence by Domain</h4>')
+        for domain, items in evidence_by_domain.items():
+            parts.append(
+                f'<div class="evidence-domain">'
+                f'<h5 class="domain-label">{html.escape(domain)}'
+                f' <span class="text-muted">({len(items)})</span></h5>'
+            )
+            for item in items:
+                direction = item.get("direction", "risk_only")
+                dir_cls = _direction_class(direction)
+                arrow = _direction_arrow(direction)
+                strength = item.get("strength", 0)
+                relevance = item.get("decision_relevance", "")
+                ev_claim = item.get("claim", "")
+                parts.append(
+                    f'<div class="evidence-card evidence-card--{dir_cls}">'
+                    f'<div class="evidence-meta">'
+                    f'<span class="direction-badge direction-badge--{dir_cls}">{arrow} {html.escape(direction)}</span>'
+                    f'{_strength_bar_html(strength)}'
+                    f'{"<span class=\"relevance-tag\">" + html.escape(relevance) + "</span>" if relevance else ""}'
+                    f'</div>'
+                    f'<p class="evidence-claim">{html.escape(ev_claim)}</p>'
+                    f'</div>'
+                )
+            parts.append('</div>')
+        parts.append('</div>')
+
+    for label, key in [("Top Supporting Evidence", "top_supporting_evidence"),
+                       ("Top Opposing Evidence", "top_opposing_evidence")]:
+        items = data.get(key, [])
+        if items:
+            parts.append(
+                f'<div class="evidence-domain">'
+                f'<h5 class="domain-label">{html.escape(label)}'
+                f' <span class="text-muted">({len(items)})</span></h5>'
+            )
+            for item in items:
+                direction = item.get("direction", "risk_only")
+                dir_cls = _direction_class(direction)
+                arrow = _direction_arrow(direction)
+                strength = item.get("strength", 0)
+                relevance = item.get("decision_relevance", "")
+                ev_claim = item.get("claim", "")
+                src_domain = item.get("source_domain", "")
+                parts.append(
+                    f'<div class="evidence-card evidence-card--{dir_cls}">'
+                    f'<div class="evidence-meta">'
+                    f'<span class="direction-badge direction-badge--{dir_cls}">{arrow} {html.escape(direction)}</span>'
+                    f'{_strength_bar_html(strength)}'
+                    f'{"<span class=\"relevance-tag\">" + html.escape(relevance) + "</span>" if relevance else ""}'
+                    f'{"<span class=\"domain-tag\">" + html.escape(src_domain) + "</span>" if src_domain else ""}'
+                    f'</div>'
+                    f'<p class="evidence-claim">{html.escape(ev_claim)}</p>'
+                    f'</div>'
+                )
+            parts.append('</div>')
+
+    constraints = data.get("hard_constraints", [])
+    if constraints:
+        parts.append(f'<div class="constraints-section"><h4>Hard Constraints ({len(constraints)})</h4>')
+        parts.append('<ol class="constraint-list">')
+        for c in constraints:
+            parts.append(f'<li>{html.escape(c)}</li>')
+        parts.append('</ol></div>')
+
+    missing = data.get("missing_or_stale_data", [])
+    if missing:
+        parts.append(
+            f'<div class="missing-data-banner"><h4>Missing / Stale Data ({len(missing)})</h4><ul>'
+            + "".join(f'<li>{html.escape(m)}</li>' for m in missing)
+            + '</ul></div>'
+        )
+
+    return "\n".join(parts)
+
+
+def _render_setup_diagnosis_structured(data: dict) -> str | None:
+    setup = data.get("primary_setup", "—")
+    quality = data.get("setup_quality", "—")
+    entry = data.get("entry_status", "—")
+    trigger_required = data.get("setup_requires_trigger", False)
+    trigger_type = data.get("trigger_type", "—")
+    quality_cls = quality.lower() if quality in ("A", "B", "C", "D", "F") else "default"
+
+    parts: list[str] = [
+        f'<div class="setup-header">'
+        f'<div class="setup-type">{html.escape(setup.replace("_", " "))}</div>'
+        f'<div class="setup-metrics">'
+        f'<span class="quality-badge quality-badge--{quality_cls}">Quality {html.escape(quality)}</span>'
+        f'<span class="setup-detail">Entry: <strong>{html.escape(entry)}</strong></span>'
+        f'<span class="setup-detail">Trigger: <strong>'
+        f'{"required (" + html.escape(trigger_type) + ")" if trigger_required else "not required"}'
+        f'</strong></span>'
+        f'</div></div>',
+    ]
+
+    reasons = data.get("why_this_setup", [])
+    if reasons:
+        parts.append('<div class="setup-section"><h4>Why this setup</h4><ul class="setup-reasons">')
+        for r in reasons:
+            parts.append(f'<li>{html.escape(r)}</li>')
+        parts.append('</ul></div>')
+
+    invalidations = data.get("what_would_invalidate_setup", [])
+    if invalidations:
+        parts.append('<div class="setup-section setup-section--warn"><h4>What would invalidate</h4><ul>')
+        for inv in invalidations:
+            parts.append(f'<li>{html.escape(inv)}</li>')
+        parts.append('</ul></div>')
+
+    return "\n".join(parts)
+
+
+def _render_scenario_analysis_structured(data: dict) -> str | None:
+    scenarios: list[tuple[str, float, str, str, str]] = []
+    for key, label, color in [
+        ("bull_case", "Bull", "#059669"),
+        ("base_case", "Base", "#6b7280"),
+        ("bear_case", "Bear", "#dc2626"),
+    ]:
+        case = data.get(key, {})
+        if case:
+            prob = case.get("probability", 0)
+            path = case.get("path", "")
+            target = case.get("target_price")
+            zone = case.get("expected_price_zone")
+            inv = case.get("invalidation_price")
+            price_label = ""
+            if target:
+                price_label = f"Target: ${target}"
+            elif zone:
+                price_label = f"Range: ${zone}"
+            elif inv:
+                price_label = f"Invalidation: ${inv}"
+            scenarios.append((label, prob, path, price_label, color))
+
+    if not scenarios:
+        return None
+
+    rr = data.get("risk_reward_estimate")
+    asymmetric = data.get("asymmetric_payoff")
+    dominant_risk = data.get("dominant_risk", "")
+
+    parts = ['<div class="scenario-grid">']
+    for label, prob, path, price_label, color in scenarios:
+        pct = round(prob * 100)
+        parts.append(
+            f'<div class="scenario-card">'
+            f'<div class="scenario-label" style="color:{color}">{html.escape(label)}</div>'
+            f'<div class="scenario-prob">'
+            f'<span class="scenario-pct">{pct}%</span>'
+            f'<div class="scenario-bar"><div class="scenario-fill" style="width:{pct}%;background:{color}"></div></div>'
+            f'</div>'
+            f'{"<div class=\"scenario-price\">" + html.escape(price_label) + "</div>" if price_label else ""}'
+            f'<p class="scenario-path">{html.escape(path)}</p>'
+            f'</div>'
+        )
+    parts.append('</div>')
+
+    metrics: list[str] = []
+    if rr is not None:
+        metrics.append(f'Risk/Reward: <strong>{rr}</strong>')
+    if asymmetric is not None:
+        metrics.append(f'Asymmetric payoff: <strong>{"Yes" if asymmetric else "No"}</strong>')
+    if dominant_risk:
+        metrics.append(f'Dominant risk: {html.escape(dominant_risk)}')
+    if metrics:
+        parts.append('<div class="scenario-summary">' + " · ".join(metrics) + '</div>')
+
+    return "\n".join(parts)
+
+
+def _render_execution_plan_structured(data: dict) -> str | None:
+    action = data.get("recommended_action", "—")
+    intent = data.get("recommended_execution_intent", "—")
+    confidence = data.get("confidence", "—")
+    action_cls = action.lower() if action in ("BUY", "SELL", "HOLD") else "hold"
+
+    parts: list[str] = [
+        f'<div class="exec-header">'
+        f'<span class="action-badge action-badge--{action_cls}">{html.escape(action)}</span>'
+        f'<span class="exec-intent">{html.escape(intent.replace("_", " "))}</span>'
+        f'<span class="confidence-badge confidence-badge--{confidence.lower()}">'
+        f'{html.escape(confidence)}</span>'
+        f'</div>',
+    ]
+
+    params = [
+        ("Version", data.get("recommended_decision_version")),
+        ("Order type", data.get("order_type")),
+        ("Time in force", data.get("time_in_force")),
+        ("Stop-loss", data.get("stop_loss")),
+        ("Take-profit", data.get("take_profit")),
+        ("Position size", data.get("position_size_pct")),
+    ]
+    param_cells = [
+        f'<div class="param-cell"><span class="param-label">{lbl}</span>'
+        f'<span class="param-value">{html.escape(str(val))}</span></div>'
+        for lbl, val in params if val is not None
+    ]
+    if param_cells:
+        parts.append('<div class="exec-params">' + "".join(param_cells) + '</div>')
+
+    contract = data.get("canonical_json_contract", {})
+    branches = contract.get("execution_plan", [])
+    if branches:
+        parts.append('<div class="exec-section"><h4>Execution Branches</h4>')
+        for branch in branches:
+            branch_id = branch.get("branch_id", "unnamed")
+            priority = branch.get("priority", "—")
+            conditions = branch.get("conditions", {})
+            action_tmpl = branch.get("action_template", {})
+
+            price_cond = conditions.get("price", {})
+            cond_parts: list[str] = []
+            if price_cond.get("close_above"):
+                cond_parts.append(f'Close above {price_cond["close_above"]}')
+            if price_cond.get("close_below"):
+                cond_parts.append(f'Close below {price_cond["close_below"]}')
+
+            tmpl_action = action_tmpl.get("action", "—")
+            tmpl_cls = tmpl_action.lower() if tmpl_action in ("BUY", "SELL", "HOLD") else "hold"
+            size = action_tmpl.get("position_size_pct")
+
+            parts.append(
+                f'<div class="exec-branch">'
+                f'<div class="branch-header">'
+                f'<code>{html.escape(branch_id)}</code>'
+                f'<span class="text-muted">Priority {priority}</span>'
+                f'</div>'
+                + (
+                    '<div class="branch-conditions">Conditions: '
+                    + ", ".join(html.escape(c) for c in cond_parts)
+                    + '</div>' if cond_parts else ''
+                )
+                + f'<div class="branch-action">'
+                f'→ <span class="action-badge action-badge--{tmpl_cls} action-badge--sm">'
+                f'{html.escape(tmpl_action)}</span>'
+                + (f' · {size*100:.0f}% size' if size else '')
+                + (f' · Stop {action_tmpl["stop_loss"]}' if action_tmpl.get("stop_loss") else '')
+                + (f' · TP {action_tmpl["take_profit"]}' if action_tmpl.get("take_profit") else '')
+                + f'</div></div>'
+            )
+        parts.append('</div>')
+
+    checks = data.get("compiler_checks", [])
+    if checks:
+        parts.append('<div class="exec-section"><h4>Compiler Checks</h4><ul class="check-list">')
+        for check in checks:
+            parts.append(f'<li class="check-item"><span class="check-icon">✓</span> {html.escape(check)}</li>')
+        parts.append('</ul></div>')
+
+    return "\n".join(parts)
+
+
+def _render_self_audit_structured(data: dict) -> str | None:
+    passed = data.get("passed", False)
+    violations = data.get("violations", [])
+    repairs = data.get("repairs_applied", [])
+    consistent = data.get("final_action_consistent", False)
+
+    status_cls = "pass" if passed else "fail"
+    status_icon = "✓" if passed else "✗"
+
+    parts = [
+        f'<div class="audit-status audit-status--{status_cls}">'
+        f'<span class="audit-status-icon">{status_icon}</span>'
+        f'<div class="audit-status-details">'
+        f'<span class="audit-status-label">{"PASSED" if passed else "FAILED"}</span>'
+        f'<span class="audit-status-meta">'
+        f'{len(violations)} violation{"s" if len(violations) != 1 else ""} · '
+        f'{len(repairs)} repair{"s" if len(repairs) != 1 else ""} · '
+        f'Action consistent: {"yes" if consistent else "no"}'
+        f'</span></div></div>',
+    ]
+
+    if violations:
+        parts.append('<div class="audit-violations"><h4>Violations</h4><ul>')
+        for v in violations:
+            parts.append(f'<li>{html.escape(str(v))}</li>')
+        parts.append('</ul></div>')
+
+    if repairs:
+        parts.append('<div class="audit-repairs"><h4>Repairs Applied</h4><ul>')
+        for r in repairs:
+            parts.append(f'<li>{html.escape(str(r))}</li>')
+        parts.append('</ul></div>')
+
+    return "\n".join(parts)
+
+
+_JSON_PANEL_RENDERERS: dict[str, object] = {
+    "Decision Trace JSON": _render_decision_trace_structured,
+    "Trader Decision Brief": _render_decision_brief_structured,
+    "Trade Setup Diagnosis": _render_setup_diagnosis_structured,
+    "Scenario Analysis": _render_scenario_analysis_structured,
+    "Execution Plan Compiler": _render_execution_plan_structured,
+    "Trader Self Audit": _render_self_audit_structured,
+}
+
+
+def _try_structured_render(title: str, body: str) -> str | None:
+    if title == "Agent Reasoning Trace":
+        return _render_reasoning_trace_structured(body)
+
+    renderer = _JSON_PANEL_RENDERERS.get(title)
+    if renderer is None:
+        return None
+    data = _extract_json_from_body(body)
+    if data is None:
+        return None
+    return renderer(data)
 
 
 def _language_switch_script() -> str:
@@ -1307,12 +1843,158 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
       font-size: 14px;
     }}
     body.has-empty-search .empty-search {{ display: block; }}
+
+    /* ── Pipeline trace timeline ── */
+    .pipeline-trace {{ padding: 8px 0; }}
+    .trace-step {{ display: grid; grid-template-columns: 28px 1fr; gap: 0 14px; }}
+    .trace-connector {{ display: flex; flex-direction: column; align-items: center; padding-top: 2px; }}
+    .trace-dot {{ width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }}
+    .trace-dot--available {{ background: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.18); }}
+    .trace-dot--missing {{ background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,0.18); }}
+    .trace-line {{ width: 2px; flex: 1; background: var(--line); margin: 4px 0; }}
+    .trace-card {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: #fafbfc; }}
+    .trace-header {{ display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }}
+    .trace-stage {{ font-weight: 700; font-size: 14px; }}
+    .trace-status {{ font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; }}
+    .trace-status--available {{ color: #065f46; background: #d1fae5; }}
+    .trace-status--missing {{ color: #991b1b; background: #fee2e2; }}
+    .trace-meta {{ display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }}
+    .trace-badge {{ font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }}
+    .trace-badge--agent {{ background: #e0e7ff; color: #3730a3; }}
+    .trace-badge--kind {{ background: #f3f4f6; color: #4b5563; }}
+    .trace-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
+    .trace-chip {{ display: inline-flex; gap: 4px; font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #fff; border: 1px solid var(--line); }}
+    .trace-chip-label {{ color: var(--muted); }}
+    .trace-chip-value {{ font-weight: 600; }}
+
+    /* ── Decision trace / action badges ── */
+    .decision-header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }}
+    .action-badge {{ display: inline-block; font-weight: 800; font-size: 14px; letter-spacing: 0.06em; padding: 6px 16px; border-radius: 6px; text-transform: uppercase; }}
+    .action-badge--sm {{ font-size: 12px; padding: 2px 10px; }}
+    .action-badge--buy {{ background: #d1fae5; color: #065f46; }}
+    .action-badge--sell {{ background: #fee2e2; color: #991b1b; }}
+    .action-badge--hold {{ background: #fef3c7; color: #92400e; }}
+    .decision-ticker {{ font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }}
+    .decision-thesis {{ padding: 14px 16px; border-left: 4px solid var(--accent); background: #f0fdfa; border-radius: 0 8px 8px 0; margin-bottom: 16px; }}
+    .decision-thesis h4 {{ margin: 0 0 6px; }}
+    .decision-thesis p {{ margin: 0; max-width: var(--measure); }}
+    .decision-section {{ margin-bottom: 16px; }}
+    .decision-section h4 {{ margin: 0 0 8px; }}
+    .chip-grid {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .chip-grid code {{ font-size: 11px; }}
+    .text-muted {{ color: var(--muted); }}
+
+    /* ── Audit groups ── */
+    .audit-groups {{ display: grid; gap: 6px; }}
+    .audit-group summary {{ cursor: pointer; padding: 6px 0; }}
+    .audit-list {{ margin: 4px 0 8px 16px; padding: 0; list-style: none; }}
+    .audit-item {{ padding: 4px 0; font-size: 13px; border-bottom: 1px solid #f3f4f6; }}
+    .audit-sev {{ display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; margin-right: 6px; }}
+    .audit-sev--high {{ background: #fee2e2; color: #991b1b; }}
+    .audit-sev--medium {{ background: #fef3c7; color: #92400e; }}
+    .audit-sev--low {{ background: #f3f4f6; color: #4b5563; }}
+
+    /* ── Evidence dashboard ── */
+    .brief-overview {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }}
+    .brief-stat {{ padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fafbfc; }}
+    .brief-stat-label {{ display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }}
+    .brief-stat-value {{ font-size: 18px; font-weight: 700; }}
+    .evidence-domains {{ margin-bottom: 16px; }}
+    .evidence-domain {{ margin-bottom: 12px; }}
+    .domain-label {{ font-weight: 700; font-size: 14px; margin: 0 0 8px; text-transform: capitalize; color: var(--text); }}
+    .evidence-card {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 6px 0; }}
+    .evidence-card--bullish {{ border-left: 4px solid #059669; }}
+    .evidence-card--bearish {{ border-left: 4px solid #dc2626; }}
+    .evidence-card--risk {{ border-left: 4px solid #d97706; }}
+    .evidence-meta {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }}
+    .direction-badge {{ font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }}
+    .direction-badge--bullish {{ background: #d1fae5; color: #065f46; }}
+    .direction-badge--bearish {{ background: #fee2e2; color: #991b1b; }}
+    .direction-badge--risk {{ background: #fef3c7; color: #92400e; }}
+    .strength-bar {{ display: inline-flex; align-items: center; gap: 6px; }}
+    .strength-track {{ width: 50px; height: 5px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }}
+    .strength-fill {{ height: 100%; border-radius: 3px; background: var(--accent); }}
+    .strength-label {{ font-size: 12px; font-weight: 600; color: var(--muted); }}
+    .relevance-tag, .domain-tag {{ font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #f3f4f6; color: #4b5563; }}
+    .evidence-claim {{ margin: 0; font-size: 13px; max-width: var(--measure); }}
+    .constraints-section {{ margin-top: 16px; }}
+    .constraint-list {{ margin: 4px 0; padding-left: 20px; }}
+    .constraint-list li {{ font-size: 13px; margin: 6px 0; }}
+    .missing-data-banner {{ padding: 12px 14px; border: 1px solid #fbbf24; border-radius: 8px; background: #fffbeb; margin-top: 16px; }}
+    .missing-data-banner h4 {{ color: #92400e; margin: 0 0 6px; }}
+    .missing-data-banner ul {{ margin: 0; padding-left: 18px; }}
+    .missing-data-banner li {{ font-size: 13px; color: #78350f; }}
+
+    /* ── Setup diagnosis ── */
+    .setup-header {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); margin-bottom: 14px; }}
+    .setup-type {{ font-size: 16px; font-weight: 800; letter-spacing: -0.01em; color: var(--accent); }}
+    .setup-metrics {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }}
+    .quality-badge {{ font-size: 13px; font-weight: 800; padding: 4px 12px; border-radius: 6px; }}
+    .quality-badge--a {{ background: #d1fae5; color: #065f46; }}
+    .quality-badge--b {{ background: #dbeafe; color: #1e40af; }}
+    .quality-badge--c {{ background: #fef3c7; color: #92400e; }}
+    .quality-badge--d, .quality-badge--f {{ background: #fee2e2; color: #991b1b; }}
+    .quality-badge--default {{ background: #f3f4f6; color: #4b5563; }}
+    .setup-detail {{ font-size: 13px; color: var(--muted); }}
+    .setup-section {{ margin-bottom: 14px; }}
+    .setup-section h4 {{ margin: 0 0 6px; }}
+    .setup-section--warn {{ padding: 12px 14px; border: 1px solid #fbbf24; border-radius: 8px; background: #fffbeb; }}
+    .setup-reasons {{ margin: 0; padding-left: 18px; }}
+    .setup-reasons li {{ font-size: 13px; margin: 4px 0; }}
+
+    /* ── Scenario analysis ── */
+    .scenario-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }}
+    .scenario-card {{ border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fafbfc; }}
+    .scenario-label {{ font-weight: 800; font-size: 14px; margin-bottom: 8px; }}
+    .scenario-prob {{ margin-bottom: 8px; }}
+    .scenario-pct {{ font-size: 24px; font-weight: 800; }}
+    .scenario-bar {{ height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; margin-top: 4px; }}
+    .scenario-fill {{ height: 100%; border-radius: 3px; }}
+    .scenario-price {{ font-size: 13px; font-weight: 600; margin-bottom: 6px; }}
+    .scenario-path {{ font-size: 13px; margin: 0; color: var(--muted); }}
+    .scenario-summary {{ font-size: 13px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--line); }}
+
+    /* ── Execution plan ── */
+    .exec-header {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }}
+    .exec-intent {{ font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }}
+    .confidence-badge {{ font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }}
+    .confidence-badge--low {{ background: #fef3c7; color: #92400e; }}
+    .confidence-badge--medium {{ background: #dbeafe; color: #1e40af; }}
+    .confidence-badge--high {{ background: #d1fae5; color: #065f46; }}
+    .exec-params {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 14px; }}
+    .param-cell {{ padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fafbfc; }}
+    .param-label {{ display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }}
+    .param-value {{ font-size: 15px; font-weight: 700; }}
+    .exec-section {{ margin-bottom: 14px; }}
+    .exec-section h4 {{ margin: 0 0 8px; }}
+    .exec-branch {{ padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; background: #fafbfc; }}
+    .branch-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }}
+    .branch-conditions {{ font-size: 13px; margin-bottom: 4px; color: var(--muted); }}
+    .branch-action {{ font-size: 13px; font-weight: 600; }}
+    .check-list {{ list-style: none; margin: 0; padding: 0; }}
+    .check-item {{ padding: 4px 0; font-size: 13px; }}
+    .check-icon {{ color: #059669; margin-right: 6px; }}
+
+    /* ── Self audit status ── */
+    .audit-status {{ display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 8px; }}
+    .audit-status--pass {{ background: #ecfdf5; border: 1px solid #a7f3d0; }}
+    .audit-status--fail {{ background: #fef2f2; border: 1px solid #fecaca; }}
+    .audit-status-icon {{ font-size: 24px; }}
+    .audit-status-label {{ font-weight: 800; font-size: 16px; }}
+    .audit-status--pass .audit-status-label {{ color: #065f46; }}
+    .audit-status--fail .audit-status-label {{ color: #991b1b; }}
+    .audit-status-meta {{ font-size: 13px; color: var(--muted); display: block; }}
+
     @media (max-width: 900px) {{
       .app-header {{ align-items: stretch; flex-direction: column; }}
       .toolbar {{ flex-wrap: wrap; }}
       .toolbar input {{ width: 100%; min-width: 0; }}
       .report-layout {{ grid-template-columns: 1fr; padding: 14px; }}
       .side-nav {{ position: static; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }}
+      .scenario-grid {{ grid-template-columns: 1fr; }}
+      .brief-overview {{ grid-template-columns: 1fr; }}
+      .exec-params {{ grid-template-columns: 1fr; }}
+      .setup-header {{ flex-direction: column; align-items: flex-start; }}
     }}
   </style>
 </head>

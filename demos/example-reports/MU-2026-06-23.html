@@ -232,12 +232,158 @@
       font-size: 14px;
     }
     body.has-empty-search .empty-search { display: block; }
+
+    /* ── Pipeline trace timeline ── */
+    .pipeline-trace { padding: 8px 0; }
+    .trace-step { display: grid; grid-template-columns: 28px 1fr; gap: 0 14px; }
+    .trace-connector { display: flex; flex-direction: column; align-items: center; padding-top: 2px; }
+    .trace-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .trace-dot--available { background: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.18); }
+    .trace-dot--missing { background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,0.18); }
+    .trace-line { width: 2px; flex: 1; background: var(--line); margin: 4px 0; }
+    .trace-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: #fafbfc; }
+    .trace-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .trace-stage { font-weight: 700; font-size: 14px; }
+    .trace-status { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; }
+    .trace-status--available { color: #065f46; background: #d1fae5; }
+    .trace-status--missing { color: #991b1b; background: #fee2e2; }
+    .trace-meta { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .trace-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .trace-badge--agent { background: #e0e7ff; color: #3730a3; }
+    .trace-badge--kind { background: #f3f4f6; color: #4b5563; }
+    .trace-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .trace-chip { display: inline-flex; gap: 4px; font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #fff; border: 1px solid var(--line); }
+    .trace-chip-label { color: var(--muted); }
+    .trace-chip-value { font-weight: 600; }
+
+    /* ── Decision trace / action badges ── */
+    .decision-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .action-badge { display: inline-block; font-weight: 800; font-size: 14px; letter-spacing: 0.06em; padding: 6px 16px; border-radius: 6px; text-transform: uppercase; }
+    .action-badge--sm { font-size: 12px; padding: 2px 10px; }
+    .action-badge--buy { background: #d1fae5; color: #065f46; }
+    .action-badge--sell { background: #fee2e2; color: #991b1b; }
+    .action-badge--hold { background: #fef3c7; color: #92400e; }
+    .decision-ticker { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .decision-thesis { padding: 14px 16px; border-left: 4px solid var(--accent); background: #f0fdfa; border-radius: 0 8px 8px 0; margin-bottom: 16px; }
+    .decision-thesis h4 { margin: 0 0 6px; }
+    .decision-thesis p { margin: 0; max-width: var(--measure); }
+    .decision-section { margin-bottom: 16px; }
+    .decision-section h4 { margin: 0 0 8px; }
+    .chip-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip-grid code { font-size: 11px; }
+    .text-muted { color: var(--muted); }
+
+    /* ── Audit groups ── */
+    .audit-groups { display: grid; gap: 6px; }
+    .audit-group summary { cursor: pointer; padding: 6px 0; }
+    .audit-list { margin: 4px 0 8px 16px; padding: 0; list-style: none; }
+    .audit-item { padding: 4px 0; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
+    .audit-sev { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; margin-right: 6px; }
+    .audit-sev--high { background: #fee2e2; color: #991b1b; }
+    .audit-sev--medium { background: #fef3c7; color: #92400e; }
+    .audit-sev--low { background: #f3f4f6; color: #4b5563; }
+
+    /* ── Evidence dashboard ── */
+    .brief-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .brief-stat { padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fafbfc; }
+    .brief-stat-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+    .brief-stat-value { font-size: 18px; font-weight: 700; }
+    .evidence-domains { margin-bottom: 16px; }
+    .evidence-domain { margin-bottom: 12px; }
+    .domain-label { font-weight: 700; font-size: 14px; margin: 0 0 8px; text-transform: capitalize; color: var(--text); }
+    .evidence-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 6px 0; }
+    .evidence-card--bullish { border-left: 4px solid #059669; }
+    .evidence-card--bearish { border-left: 4px solid #dc2626; }
+    .evidence-card--risk { border-left: 4px solid #d97706; }
+    .evidence-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+    .direction-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .direction-badge--bullish { background: #d1fae5; color: #065f46; }
+    .direction-badge--bearish { background: #fee2e2; color: #991b1b; }
+    .direction-badge--risk { background: #fef3c7; color: #92400e; }
+    .strength-bar { display: inline-flex; align-items: center; gap: 6px; }
+    .strength-track { width: 50px; height: 5px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+    .strength-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+    .strength-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .relevance-tag, .domain-tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #f3f4f6; color: #4b5563; }
+    .evidence-claim { margin: 0; font-size: 13px; max-width: var(--measure); }
+    .constraints-section { margin-top: 16px; }
+    .constraint-list { margin: 4px 0; padding-left: 20px; }
+    .constraint-list li { font-size: 13px; margin: 6px 0; }
+    .missing-data-banner { padding: 12px 14px; border: 1px solid #fbbf24; border-radius: 8px; background: #fffbeb; margin-top: 16px; }
+    .missing-data-banner h4 { color: #92400e; margin: 0 0 6px; }
+    .missing-data-banner ul { margin: 0; padding-left: 18px; }
+    .missing-data-banner li { font-size: 13px; color: #78350f; }
+
+    /* ── Setup diagnosis ── */
+    .setup-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+    .setup-type { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; color: var(--accent); }
+    .setup-metrics { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .quality-badge { font-size: 13px; font-weight: 800; padding: 4px 12px; border-radius: 6px; }
+    .quality-badge--a { background: #d1fae5; color: #065f46; }
+    .quality-badge--b { background: #dbeafe; color: #1e40af; }
+    .quality-badge--c { background: #fef3c7; color: #92400e; }
+    .quality-badge--d, .quality-badge--f { background: #fee2e2; color: #991b1b; }
+    .quality-badge--default { background: #f3f4f6; color: #4b5563; }
+    .setup-detail { font-size: 13px; color: var(--muted); }
+    .setup-section { margin-bottom: 14px; }
+    .setup-section h4 { margin: 0 0 6px; }
+    .setup-section--warn { padding: 12px 14px; border: 1px solid #fbbf24; border-radius: 8px; background: #fffbeb; }
+    .setup-reasons { margin: 0; padding-left: 18px; }
+    .setup-reasons li { font-size: 13px; margin: 4px 0; }
+
+    /* ── Scenario analysis ── */
+    .scenario-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+    .scenario-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fafbfc; }
+    .scenario-label { font-weight: 800; font-size: 14px; margin-bottom: 8px; }
+    .scenario-prob { margin-bottom: 8px; }
+    .scenario-pct { font-size: 24px; font-weight: 800; }
+    .scenario-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; margin-top: 4px; }
+    .scenario-fill { height: 100%; border-radius: 3px; }
+    .scenario-price { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .scenario-path { font-size: 13px; margin: 0; color: var(--muted); }
+    .scenario-summary { font-size: 13px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--line); }
+
+    /* ── Execution plan ── */
+    .exec-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .exec-intent { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+    .confidence-badge { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+    .confidence-badge--low { background: #fef3c7; color: #92400e; }
+    .confidence-badge--medium { background: #dbeafe; color: #1e40af; }
+    .confidence-badge--high { background: #d1fae5; color: #065f46; }
+    .exec-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .param-cell { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fafbfc; }
+    .param-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+    .param-value { font-size: 15px; font-weight: 700; }
+    .exec-section { margin-bottom: 14px; }
+    .exec-section h4 { margin: 0 0 8px; }
+    .exec-branch { padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; background: #fafbfc; }
+    .branch-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .branch-conditions { font-size: 13px; margin-bottom: 4px; color: var(--muted); }
+    .branch-action { font-size: 13px; font-weight: 600; }
+    .check-list { list-style: none; margin: 0; padding: 0; }
+    .check-item { padding: 4px 0; font-size: 13px; }
+    .check-icon { color: #059669; margin-right: 6px; }
+
+    /* ── Self audit status ── */
+    .audit-status { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 8px; }
+    .audit-status--pass { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .audit-status--fail { background: #fef2f2; border: 1px solid #fecaca; }
+    .audit-status-icon { font-size: 24px; }
+    .audit-status-label { font-weight: 800; font-size: 16px; }
+    .audit-status--pass .audit-status-label { color: #065f46; }
+    .audit-status--fail .audit-status-label { color: #991b1b; }
+    .audit-status-meta { font-size: 13px; color: var(--muted); display: block; }
+
     @media (max-width: 900px) {
       .app-header { align-items: stretch; flex-direction: column; }
       .toolbar { flex-wrap: wrap; }
       .toolbar input { width: 100%; min-width: 0; }
       .report-layout { grid-template-columns: 1fr; padding: 14px; }
       .side-nav { position: static; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .scenario-grid { grid-template-columns: 1fr; }
+      .brief-overview { grid-template-columns: 1fr; }
+      .exec-params { grid-template-columns: 1fr; }
+      .setup-header { flex-direction: column; align-items: flex-start; }
     }
   </style>
 </head>
@@ -2604,366 +2750,89 @@
 }</code></pre></div></article>
 <article class="report-panel" data-panel-title="Evidence Graph Audit"><button class="panel-toggle" type="button" aria-expanded="false"><span>Evidence Graph Audit</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="table-wrap"><table><thead><tr><th>Severity</th><th>Code</th><th>Message</th></tr></thead><tbody><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_001 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_002 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_003 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_004 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_005 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_006 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_catalyst_007 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>h_active_2 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_003 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_006 had no valid vendor fact references; recovery fact created.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH3 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH3 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH1 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH1 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH2 support entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>unsupported_hypothesis_evidence</td><td>AH2 against entry lacked an observation or vendor fact ID.</td></tr><tr><td>high</td><td>missing_source_fact_id</td><td>obs_007 cites missing vendor fact macro_regulatory_narrative_2026-06-23.</td></tr><tr><td>high</td><td>unsupported_ledger_observation</td><td>obs_007 had no valid vendor fact references; recovery fact created.</td></tr></tbody></table></div>
 <p>_Showing 25 of 44 audit entries._</p></div></article>
-<article class="report-panel is-open" data-panel-title="Agent Reasoning Trace"><button class="panel-toggle" type="button" aria-expanded="true"><span>Agent Reasoning Trace</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="table-wrap"><table><thead><tr><th>Stage</th><th>Agent</th><th>Kind</th><th>Status</th><th>Summary</th></tr></thead><tbody><tr><td>Trader Decision Brief</td><td>Trader</td><td>structured_input</td><td>available</td><td>ticker: MU · reference price: — · supporting evidence count: 4 · opposing evidence count: 5 · hard constraints count: 7</td></tr><tr><td>Trade Setup Diagnosis</td><td>Trader</td><td>structured_reasoning</td><td>available</td><td>primary setup: SQUEEZE_OR_FLOW_TRADE · setup quality: C · entry status: unclear · setup requires trigger: yes · trigger type: event</td></tr><tr><td>Scenario Analysis</td><td>Trader</td><td>structured_reasoning</td><td>available</td><td>dominant risk: Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys. · risk reward estimate: 1.87 · asymmetric payoff: yes · bull probability: 0.45 · bear probability: 0.46</td></tr><tr><td>Execution Plan Compiler</td><td>Trader</td><td>structured_reasoning</td><td>available</td><td>recommended execution intent: WAIT_FOR_TRIGGER · recommended action: HOLD · order type: MARKET · confidence: LOW · compiler checks count: 3</td></tr><tr><td>Trader Self-Audit</td><td>Trader</td><td>structured_validation</td><td>available</td><td>passed: yes · violations count: 0 · repairs count: 0 · final action consistent: yes</td></tr><tr><td>Trader Final Plan</td><td>Trader</td><td>narrative_output</td><td>available</td><td>has reasoning summary: yes · has final transaction proposal: yes · length: 3681</td></tr><tr><td>Risk Judge</td><td>Risk Management</td><td>debate_state</td><td>available</td><td>judge decision present: yes · latest speaker: Judge · round count: 9</td></tr><tr><td>Decision Guard</td><td>Execution Guard</td><td>structured_validation</td><td>missing</td><td>{}</td></tr></tbody></table></div></div></article>
-<article class="report-panel" data-panel-title="Decision Trace JSON"><button class="panel-toggle" type="button" aria-expanded="false"><span>Decision Trace JSON</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;decision&quot;: {
-    &quot;action&quot;: &quot;SELL&quot;,
-    &quot;ticker&quot;: &quot;MU&quot;,
-    &quot;summary&quot;: &quot;Narrative and decision rationale\n\nSummary of the debate (key points)\n- Risky: Push for a larger, front-loaded entry on a confirmed 20-day-high breakout because options/gamma-driven squeezes pay off front-loaded; supports a 6% initial tranche (scale to 10% conditional on follow-through). Key evidence cited: E-MKT-002 (20D high as real trigger), peer strength and company guidance signals (E-SEN-002, E-SEN-006, E-SEN-004), and improving fundamentals.\n- Neutral: Middle ground — recognize asymmetric &quot;
-  },
-  &quot;thesis&quot;: {
-    &quot;claim&quot;: &quot;Momentum-first thesis: the current MU rally is largely flow-driven and therefore has elevated short-term pullback risk; absent verified company data, do not add size.&quot;,
-    &quot;inference_ids&quot;: [
-      &quot;inf_news_001&quot;,
-      &quot;inf_market_002&quot;,
-      &quot;inf_fundamentals_001&quot;,
-      &quot;inf_sentiment_002&quot;
-    ]
-  },
-  &quot;inference_ids&quot;: [
-    &quot;inf_news_001&quot;,
-    &quot;inf_market_002&quot;,
-    &quot;inf_fundamentals_001&quot;,
-    &quot;inf_sentiment_002&quot;
-  ],
-  &quot;fact_ids&quot;: [
-    &quot;fact_fundamentals_h_active_2_against_001_recovery&quot;,
-    &quot;fact_fundamentals_h_active_2_support_001_recovery&quot;,
-    &quot;fact_fundamentals_h_active_2_support_002_recovery&quot;,
-    &quot;fact_market_h_active_2_against_001_recovery&quot;,
-    &quot;fact_market_h_active_2_support_001_recovery&quot;,
-    &quot;fact_market_h_active_2_support_002_recovery&quot;,
-    &quot;fact_market_h_active_2_support_003_recovery&quot;,
-    &quot;fact_news_h_01_against_001_recovery&quot;,
-    &quot;fact_news_h_01_against_002_recovery&quot;,
-    &quot;fact_news_h_01_support_001_recovery&quot;,
-    &quot;fact_news_h_01_support_002_recovery&quot;,
-    &quot;fact_news_h_01_support_003_recovery&quot;,
-    &quot;fact_news_h_01_support_004_recovery&quot;,
-    &quot;fact_sentiment_ah1_against_001_recovery&quot;,
-    &quot;fact_sentiment_ah1_support_001_recovery&quot;
-  ],
-  &quot;source_labels&quot;: [
-    &quot;ledger:fundamentals:h_active_2:against_recovery&quot;,
-    &quot;ledger:fundamentals:h_active_2:support_recovery&quot;,
-    &quot;ledger:market:h_active_2:against_recovery&quot;,
-    &quot;ledger:market:h_active_2:support_recovery&quot;,
-    &quot;ledger:news:h_01:against_recovery&quot;,
-    &quot;ledger:news:h_01:support_recovery&quot;,
-    &quot;ledger:sentiment:AH1:against_recovery&quot;,
-    &quot;ledger:sentiment:AH1:support_recovery&quot;
-  ],
-  &quot;audit_issues&quot;: [
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_001 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_001&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_002 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_002&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_003 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_003&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_004 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_004&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_005 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_005&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_006 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_006&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_catalyst_007 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;catalyst&quot;,
-      &quot;node_id&quot;: &quot;obs_catalyst_007&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;market&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_003 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;obs_003&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_006 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;obs_006&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH3 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH3&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH3 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH3&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH1 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH1 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;AH2 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;sentiment&quot;,
-      &quot;node_id&quot;: &quot;AH2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;missing_source_fact_id&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_007 cites missing vendor fact macro_regulatory_narrative_2026-06-23.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;obs_007&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_007 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;obs_007&quot;
-    },
-    {
-      &quot;code&quot;: &quot;missing_source_fact_id&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_008 cites missing vendor fact market_regime_001.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;obs_008&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_008 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;obs_008&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_01 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_01&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_03 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_03&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_03 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;news&quot;,
-      &quot;node_id&quot;: &quot;h_03&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_4 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;obs_4&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_ledger_observation&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;obs_5 had no valid vendor fact references; recovery fact created.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;obs_5&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_2 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_2&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 support entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    },
-    {
-      &quot;code&quot;: &quot;unsupported_hypothesis_evidence&quot;,
-      &quot;severity&quot;: &quot;high&quot;,
-      &quot;message&quot;: &quot;h_active_1 against entry lacked an observation or vendor fact ID.&quot;,
-      &quot;domain&quot;: &quot;fundamentals&quot;,
-      &quot;node_id&quot;: &quot;h_active_1&quot;
-    }
-  ]
-}</code></pre></div></article>
+<article class="report-panel is-open" data-panel-title="Agent Reasoning Trace"><button class="panel-toggle" type="button" aria-expanded="true"><span>Agent Reasoning Trace</span><span class="chevron">⌄</span></button><div class="panel-body"><div class="pipeline-trace">
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trader Decision Brief</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured input</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">ticker</span><span class="trace-chip-value">MU</span></span><span class="trace-chip"><span class="trace-chip-label">reference price</span><span class="trace-chip-value">—</span></span><span class="trace-chip"><span class="trace-chip-label">supporting evidence count</span><span class="trace-chip-value">4</span></span><span class="trace-chip"><span class="trace-chip-label">opposing evidence count</span><span class="trace-chip-value">5</span></span><span class="trace-chip"><span class="trace-chip-label">hard constraints count</span><span class="trace-chip-value">7</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trade Setup Diagnosis</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured reasoning</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">primary setup</span><span class="trace-chip-value">SQUEEZE_OR_FLOW_TRADE</span></span><span class="trace-chip"><span class="trace-chip-label">setup quality</span><span class="trace-chip-value">C</span></span><span class="trace-chip"><span class="trace-chip-label">entry status</span><span class="trace-chip-value">unclear</span></span><span class="trace-chip"><span class="trace-chip-label">setup requires trigger</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">trigger type</span><span class="trace-chip-value">event</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Scenario Analysis</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured reasoning</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">dominant risk</span><span class="trace-chip-value">Catalyst/event risk is MEDIUM; recommended action is free...</span></span><span class="trace-chip"><span class="trace-chip-label">risk reward estimate</span><span class="trace-chip-value">1.87</span></span><span class="trace-chip"><span class="trace-chip-label">asymmetric payoff</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">bull probability</span><span class="trace-chip-value">0.45</span></span><span class="trace-chip"><span class="trace-chip-label">bear probability</span><span class="trace-chip-value">0.46</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Execution Plan Compiler</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured reasoning</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">recommended execution intent</span><span class="trace-chip-value">WAIT_FOR_TRIGGER</span></span><span class="trace-chip"><span class="trace-chip-label">recommended action</span><span class="trace-chip-value">HOLD</span></span><span class="trace-chip"><span class="trace-chip-label">order type</span><span class="trace-chip-value">MARKET</span></span><span class="trace-chip"><span class="trace-chip-label">confidence</span><span class="trace-chip-value">LOW</span></span><span class="trace-chip"><span class="trace-chip-label">compiler checks count</span><span class="trace-chip-value">3</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trader Self-Audit</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">structured validation</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">passed</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">violations count</span><span class="trace-chip-value">0</span></span><span class="trace-chip"><span class="trace-chip-label">repairs count</span><span class="trace-chip-value">0</span></span><span class="trace-chip"><span class="trace-chip-label">final action consistent</span><span class="trace-chip-value">yes</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Trader Final Plan</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Trader</span><span class="trace-badge trace-badge--kind">narrative output</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">has reasoning summary</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">has final transaction proposal</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">length</span><span class="trace-chip-value">3681</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--available"></span><span class="trace-line"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Risk Judge</span><span class="trace-status trace-status--available">✓ available</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Risk Management</span><span class="trace-badge trace-badge--kind">debate state</span></div><div class="trace-chips"><span class="trace-chip"><span class="trace-chip-label">judge decision present</span><span class="trace-chip-value">yes</span></span><span class="trace-chip"><span class="trace-chip-label">latest speaker</span><span class="trace-chip-value">Judge</span></span><span class="trace-chip"><span class="trace-chip-label">round count</span><span class="trace-chip-value">9</span></span></div></div></div>
+<div class="trace-step"><div class="trace-connector"><span class="trace-dot trace-dot--missing"></span></div><div class="trace-card"><div class="trace-header"><span class="trace-stage">Decision Guard</span><span class="trace-status trace-status--missing">✗ missing</span></div><div class="trace-meta"><span class="trace-badge trace-badge--agent">Execution Guard</span><span class="trace-badge trace-badge--kind">structured validation</span></div></div></div>
+</div></div></article>
+<article class="report-panel" data-panel-title="Decision Trace JSON"><button class="panel-toggle" type="button" aria-expanded="false"><span>Decision Trace JSON</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="decision-header"><span class="action-badge action-badge--sell">SELL</span><span class="decision-ticker">MU</span></div>
+<div class="decision-thesis"><h4>Thesis</h4><p>Momentum-first thesis: the current MU rally is largely flow-driven and therefore has elevated short-term pullback risk; absent verified company data, do not add size.</p></div>
+<div class="decision-section"><h4>Inferences (4)</h4><div class="chip-grid"><code>inf_news_001</code><code>inf_market_002</code><code>inf_fundamentals_001</code><code>inf_sentiment_002</code></div></div>
+<div class="decision-section"><h4>Source Labels (8)</h4><div class="chip-grid"><code>ledger:fundamentals:h_active_2:against_recovery</code><code>ledger:fundamentals:h_active_2:support_recovery</code><code>ledger:market:h_active_2:against_recovery</code><code>ledger:market:h_active_2:support_recovery</code><code>ledger:news:h_01:against_recovery</code><code>ledger:news:h_01:support_recovery</code><code>ledger:sentiment:AH1:against_recovery</code><code>ledger:sentiment:AH1:support_recovery</code></div></div>
+<div class="decision-section"><h4>Fact References</h4><p class="text-muted">15 facts linked to this decision</p></div>
+<div class="decision-section">
+<h4>Audit Issues (44)</h4>
+<div class="audit-groups">
+<details class="audit-group">
+<summary><strong>catalyst</strong> <span class="text-muted">(7 issues)</span></summary>
+<ul class="audit-list">
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_001 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_001</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_002 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_002</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_003 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_003</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_004 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_004</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_005 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_005</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_006 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_006</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_catalyst_007 had no valid vendor fact references; recovery fact created. <code>obs_catalyst_007</code></li>
+</ul></details>
+<details class="audit-group">
+<summary><strong>fundamentals</strong> <span class="text-muted">(9 issues)</span></summary>
+<ul class="audit-list">
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_4 had no valid vendor fact references; recovery fact created. <code>obs_4</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_5 had no valid vendor fact references; recovery fact created. <code>obs_5</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 support entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 support entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 against entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 support entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 support entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 against entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 against entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+</ul></details>
+<details class="audit-group">
+<summary><strong>market</strong> <span class="text-muted">(8 issues)</span></summary>
+<ul class="audit-list">
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 support entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 support entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 against entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_1 against entry lacked an observation or vendor fact ID. <code>h_active_1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 support entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 support entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 support entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_active_2 against entry lacked an observation or vendor fact ID. <code>h_active_2</code></li>
+</ul></details>
+<details class="audit-group">
+<summary><strong>news</strong> <span class="text-muted">(12 issues)</span></summary>
+<ul class="audit-list">
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_007 cites missing vendor fact macro_regulatory_narrative_2026-06-23. <code>obs_007</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_007 had no valid vendor fact references; recovery fact created. <code>obs_007</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_008 cites missing vendor fact market_regime_001. <code>obs_008</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_008 had no valid vendor fact references; recovery fact created. <code>obs_008</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 support entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 support entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 support entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 support entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 against entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_01 against entry lacked an observation or vendor fact ID. <code>h_01</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_03 support entry lacked an observation or vendor fact ID. <code>h_03</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>h_03 support entry lacked an observation or vendor fact ID. <code>h_03</code></li>
+</ul></details>
+<details class="audit-group">
+<summary><strong>sentiment</strong> <span class="text-muted">(8 issues)</span></summary>
+<ul class="audit-list">
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_003 had no valid vendor fact references; recovery fact created. <code>obs_003</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>obs_006 had no valid vendor fact references; recovery fact created. <code>obs_006</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH3 support entry lacked an observation or vendor fact ID. <code>AH3</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH3 against entry lacked an observation or vendor fact ID. <code>AH3</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH1 support entry lacked an observation or vendor fact ID. <code>AH1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH1 against entry lacked an observation or vendor fact ID. <code>AH1</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH2 support entry lacked an observation or vendor fact ID. <code>AH2</code></li>
+<li class="audit-item audit-item--high"><span class="audit-sev audit-sev--high">high</span>AH2 against entry lacked an observation or vendor fact ID. <code>AH2</code></li>
+</ul></details>
+</div></div></div></article>
 <article class="report-panel" data-panel-title="Investment Debate State"><button class="panel-toggle" type="button" aria-expanded="false"><span>Investment Debate State</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
   &quot;judge_decision&quot;: &quot;Summary of the debate (concise)\n\nBull case (most compelling):\n- Company-level fundamentals and guidance point to durable demand from AI-related memory (high-bandwidth memory), which can sustain multi-quarter revenue growth rather than just a momentum pop (E-SEN-002, E-SEN-006; supported by inference inf_sentiment_002).\n- Sector/peer strength (Applied Materials and Lam Research results) reinforces that demand is structural across the supply chain, lowering execution risk for memory suppliers (E-SEN-001, E-SEN-004).\n- Price is approaching a concrete technical trigger (20-day high) that offers a disciplined, low-friction entry if confirmed by above-average volume (E-MKT-002). A breakout with volume would likely reflect real demand translating into market buys (inf_market_001).\n\nBear case (most compelling):\n- Current move has important execution risks: elevated realized volatility (high ATR) and put-heavy options open interest that could cap or amplify flow-driven squeezes, making single-day breakouts fragile (fact_market_price_action_summary_001; inference inf_market_002).\n- Flow- or position-driven moves can fake technical triggers; without several days of follow-through or clear options unwind, entering on a one-day breakout risks buying a transient pop (inf_market_002; inf_fundamentals_001).\n- There is also residual regulatory/event risk that could accelerate reversals (inf_news_002).\n\nDecision (definitive): BUY, with a conditional, risk-managed execution plan.\n\nRationale (why Buy)\n- The preponderance of evidence favors a bullish structural thesis: company guidance and demand commentary for AI/HBM are explicit and persuasive (E-SEN-002, E-SEN-006), and peer revenue/earnings strength supports a durable cycle (E-SEN-001, E-SEN-004). The inference that guidance will sustain a near-term bullish narrative is high-confidence (inf_sentiment_002).\n- However, the bear’s execution risks are real (inf_market_002; fact_market_price_action_summary_001). Rather than rejecting those concerns, the plan accepts them and adapts the execution: Buy, but only after a clearly defined, multi-day confirmation and with conservative sizing and disciplined stops. This combines the bull’s fundamental/technical thesis with the bear’s caution about flow risk.\n\nStrategic Actions (step-by-step actionable plan)\n1) Pre-trade preparation (wait_for_trigger mode)\n   - Monitor price relative to the 20-day high (E-MKT-002). Do not enter preemptively.\n   - Set alerts for:\n     a) Daily close above the 20-day high with above-average volume.\n     b) 1-, 3-, and 5-day cumulative volume and price follow-through thresholds.\n     c) Options OI shifts (notably sustained decrease in put OI or large call-buy flow).\n     d) Any company or peer news that materially revises guidance.\n\n2) Primary entry trigger (initial buy):\n   - Execute an initial tranche (ENTRY_TRANCHE) only after:\n     a) Daily close above the 20-day high with above-average volume (per E-MKT-002), and\n     b) Either same-day clear options unwind signal (large net put OI decline or strong call buying) OR next-day continued price hold above the breakout level (i.e., at least 1 full trading day of follow-through).\n   - If the above conditions are met on day 1 and options OI shows clear unwind, enter INITIAL tranche.\n   - If there is no options-unwind signal, require price to hold above breakout for 3 consecutive trading days with above-average or at least not-declining volume before initiating the initial tranche.\n\n3) Scale-in and confirmation-add:\n   - After INITIAL tranche, add a SECOND tranche only if:\n     a) Price stays above 20D high and volume remains at-or-above avg for a further 2 trading days (i.e., a total of 3–5 days of follow-through), OR\n     b) Company-level confirming news (earnings/guidance) materially supports HBM demand (E-SEN-002/E-SEN-006).\n   - Do not exceed the MAX position size below.\n\n4) Stops and invalidation:\n   - Given missing explicit price anchor in snapshot, use dynamic, volatility-aware rules:\n     a) Hard invalidation: close below the SMA50 or EMA10 on above-average volume within 10 trading days of entry → exit full position (this is the higher-confidence invalidation proposed by the bull and bears).\n     b) Tactical stop: set an initial stop at 1.5–2.0 × ATR below the entry price (ATR-based), or at the EMA10/SMA50 breach — use whichever gives the larger buffer to avoid noise. Because a precise price anchor is unavailable, make this ATR multiple explicit in your execution ticket.\n   - If options/flow signals reverse sharply (large fresh put buying or sudden reappearance of heavy OI), tighten stops and consider partial exit.\n\n5) Risk monitoring and exit discipline:\n   - Monitor options OI daily for evidence of re-accumulation of puts or a shift to put-heavy positioning.\n   - If price stalls into resistance and volume decays over 3–5 days, trim position by one tranche.\n   - If company reports materially negative guidance or earnings (falsifies bullish guidance), exit immediately.\n\nSizing guidance (actionable)\n- Use position_size_pct since capital is unknown:\n  - Initial tranche: POSITION_SIZE_PCT = 3% of available capital.\n  - If confirmation-add criteria met (3–5 days of follow-through + volume OR options unwind + fundamental confirmation): add SECOND tranche to reach TOTAL_POSITION_SIZE_PCT = 6% (i.e., add another 3%).\n  - Hard cap: do not exceed TOTAL_POSITION_SIZE_PCT = 8% even with further positive confirmation; any further allocations require re-underwriting the thesis.\n- Rationale: volatility/put-OI risks warrant modest initial sizing; scale only on clear confirmation to respect the bear’s valid execution concerns.\n\nSizing note: Because the evidence snapshot lacks a reliable price anchor (the analysis price hint exists but last_close is missing), use ATR-based stops (1.5–2× ATR) rather than fixed percent stops until a reliable market price is confirmed.\n\nStop guidance (operational)\n- Place initial stop based on ATR multiplier (1.5–2× ATR) below entry.\n- Secondary / invalidation stop: close below SMA50 or EMA10 on above-average volume → exit full position.\n\nFalsification (clear conditions to reverse thesis)\n- Company issues material negative guidance or reports a clear miss on AI/HBM demand (contradicting E-SEN-002 / E-SEN-006).\n- After a confirmed multi-day breakout, price collapses below SMA50 on above-average volume (invalidates breakout).\n- Options OI re-accumulates heavy put exposure with evidence of fresh large hedging flows that cap upside and increase downside risk.\n\nLearning from past mistakes (applied)\n- Past error: buying single-day breakouts without multi-day confirmation. Applied correction: require multi-day follow-through or options-unwind evidence before scaling.\n- Past error: oversizing into high-ATR names. Applied correction: modest initial tranche + strict max exposure cap.\n\nTHESIS_LEDGER_JSON\n{\n  \&quot;winning_thesis\&quot;: \&quot;Conditional Buy: Micron’s guidance and sector peer strength support a durable AI/HBM demand-driven rally; enter on a confirmed breakout with multi-day follow-through and options-unwind signals (inf_sentiment_002 + E-SEN-002/E-SEN-006/E-MKT-002).\&quot;,\n  \&quot;accepted_claims\&quot;: [\n    {\n      \&quot;claim_id\&quot;: \&quot;C-001\&quot;,\n      \&quot;claim\&quot;: \&quot;Micron&#x27;s published guidance indicating strong AI/HBM demand will sustain a near-term bullish narrative and supports a long bias.\&quot;,\n      \&quot;evidence_ids\&quot;: [\n        \&quot;E-SEN-002\&quot;,\n        \&quot;E-SEN-006\&quot;,\n        \&quot;inf_sentiment_002\&quot;\n      ],\n      \&quot;effect\&quot;: \&quot;execution_mode=wait_for_trigger\&quot;\n    },\n    {\n      \&quot;claim_id\&quot;: \&quot;C-002\&quot;,\n      \&quot;claim\&quot;: \&quot;Near-term technical setup (approaching 20-day high breakout) can provide a disciplined entry if confirmed by volume.\&quot;,\n      \&quot;evidence_ids\&quot;: [\n        \&quot;E-MKT-002\&quot;,\n        \&quot;inf_market_001\&quot;\n      ],\n      \&quot;effect\&quot;: \&quot;execution_mode=wait_for_trigger\&quot;\n    },\n    {\n      \&quot;claim_id\&quot;: \&quot;C-003\&quot;,\n      \&quot;claim\&quot;: \&quot;Sector and peer strength (Applied Materials, Lam Research) increase the probability that demand is structural rather than ephemeral.\&quot;,\n      \&quot;evidence_ids\&quot;: [\n        \&quot;E-SEN-001\&quot;,\n        \&quot;E-SEN-004\&quot;\n      ],\n      \&quot;effect\&quot;: \&quot;execution_mode=wait_for_trigger\&quot;\n    }\n  ],\n  \&quot;rejected_claims\&quot;: [\n    {\n      \&quot;claim_id\&quot;: \&quot;C-004\&quot;,\n      \&quot;claim\&quot;: \&quot;Avoid any entry on a single daily close above the 20-day high until put-heavy open interest completely unwinds and 5 consecutive days of follow-through occur.\&quot;,\n      \&quot;reason\&quot;: \&quot;Overly conservative. The evidence for durable demand and a tradable breakout (E-SEN-002/E-MKT-002 + inf_sentiment_002) justifies a conditional, phased entry that requires either swift options-unwind or multi-day price/volume follow-through (3 days), not an absolute &#x27;no entry until 5 days and full unwind&#x27;.\&quot;,\n      \&quot;evidence_ids\&quot;: [\n        \&quot;inf_market_002\&quot;,\n        \&quot;E-MKT-002\&quot;,\n        \&quot;E-SEN-002\&quot;\n      ]\n    }\n  ],\n  \&quot;unresolved_uncertainties\&quot;: [\n    {\n      \&quot;uncertainty\&quot;: \&quot;Exact current market reference price and ATR anchoring are missing from the snapshot, which prevents precise stop/size calculations.\&quot;,\n      \&quot;decision_effect\&quot;: \&quot;may widen stop_loss\&quot;\n    },\n    {\n      \&quot;uncertainty\&quot;: \&quot;Speed and magnitude of options open-interest dynamics (will puts unwind quickly or will new put demand re-appear?).\&quot;,\n      \&quot;decision_effect\&quot;: \&quot;may delay scaling or require earlier stop tightening\&quot;\n    },\n    {\n      \&quot;uncertainty\&quot;: \&quot;Potential for rapid regulatory/news shock (policy/regulatory tail risk).\&quot;,\n      \&quot;decision_effect\&quot;: \&quot;may widen stop_loss and reduce max position_size_pct until clarity\&quot;\n    }\n  ],\n  \&quot;recommended_plan_constraints\&quot;: {\n    \&quot;execution_mode\&quot;: \&quot;wait_for_trigger\&quot;,\n    \&quot;initial_position_size_pct\&quot;: \&quot;3\&quot;,\n    \&quot;scale_to_pct_on_confirmation\&quot;: \&quot;6\&quot;,\n    \&quot;hard_cap_pct\&quot;: \&quot;8\&quot;,\n    \&quot;confirmation_required\&quot;: \&quot;daily_close_above_20d_high_with_above-average_volume_plus_options_unwind_or_3_consecutive_days_of_follow-through\&quot;\n  }\n}\n\nFinal, actionable summary (one paragraph)\nBuy but proceed with strict, conditional execution: prepare to enter an initial 3% tranche only after a daily close above the 20-day high with above-average volume and either a visible options-unwind signal or subsequent 3-day price/volume follow-through; add up to a total of ~6% on confirmation, cap exposure at 8%, use ATR-based stops and a hard invalidation on a close below SMA50/EMA10 on above-average volume, and continuously monitor options OI and company/peer news. This plan respects the bull evidence for durable AI/HBM demand (inf_sentiment_002; E-SEN-002/E-SEN-006) while treating the bear’s flow/volatility risks (inf_market_002; fact_market_price_action_summary_001) as operational constraints rather than reasons to forgo the trade.&quot;,
   &quot;history&quot;: &quot;\nBull Analyst: I’ll keep this direct and evidence-led: the bull case is that this name sits squarely in an accelerating, AI-driven semiconductor cycle, it has clear near-term technical momentum, and we can execute a disciplined, low-friction entry that respects the bear risks (volatility and options positioning). Decision field affected (for every material claim below): entry_condition.\n\n1) Growth potential — demand tailwinds from AI memory\n- Claim: Company revenue and guidance are being driven by outsized demand for AI-related memory (high-bandwidth memory), implying more durable top-line growth ahead. (Decision field: entry_condition)\n- Evidence: Micron is explicitly guided by strong AI-related memory demand (E-SEN-002, E-SEN-006).\n- Why it matters for entry_condition: This fundamental upside reduces the risk of buying a purely momentum pop — it makes a breakout more likely to lead to multi-quarter revenue growth rather than a short squeeze.\n- Plan implication (prelude to the formal plan object below): wait for a clean technical trigger that confirms the fundamentals are translating into market buys.\n- Falsification sign (short prose): If company guidance or results materially disappoint (NO_ADMISSIBLE_EVIDENCE for a specific miss unless reported), the premise collapses — but right now the evidence is one-way positive (E-SEN-002).\n\n2) Competitive advantages — sector leaders point to structural positioning that benefits the company\n- Claim: The broader supply chain (chipmakers and equipment suppliers) is showing record revenues and huge market share gains, signaling a favorable operating environment for memory/equipment players and lowering execution risk for companies in this group. (Decision field: entry_condition)\n- Evidence: Applied Materials reported record fiscal Q2 revenue and high gross margins (E-SEN-001 / E-NEW-001), and Lam Research’s massive outperformance (139% surge in 2026) underscores strong, persistent demand for advanced manufacturing equipment (E-SEN-004).\n- Why it matters for entry_condition: These peer signals increase the probability that company-level demand is structural and justify waiting for a breakout confirmation rather than buying an isolated pop.\n\n3) Positive market/technical indicator — price action favors a breakout entry with confirmation\n- Claim: Price is approaching a 20-day high breakout trigger and momentum continuation is favored while price remains above short-term dynamic support (EMA10 / SMA50). This gives a concrete actionable entry condition: buy after a confirmed daily close above the 20-day high with volume support. (Decision field: entry_condition)\n- Evidence: The specific near-term resistance / breakout trigger is the 20D high (E-MKT-002). Market momentum continuation observation supports waiting for the breakout while acknowledging fragility (inf_market_001).\n- Why it matters: Combining the fundamental tailwinds cited above with a technical confirmation reduces false-entry risk.\n\n4) Addressing the bear’s volatility and options-positioning concerns\n- Bear points: High ATR -&gt; larger stop distances and pullback risk (fact_market_price_action_summary_001); put-heavy open interest could cap moves (fact_market_options_sentiment_summary_004); lack of retail/social buzz or price anchoring complicates sizing (fact_sentiment_ah1_against_001_recovery).\n- Bull rebuttal (Decision field: entry_condition): Those are valid execution cautions — which is exactly why our entry_condition must be conservative: require a daily close above the 20-day high with above-average volume and only then scale in. This respects volatility and lets us see whether put-heavy OI is being squeezed or simply serving as a cap.\n  - Evidence for the cautions: fact_market_price_action_summary_001 (high ATR) and fact_market_options_sentiment_summary_004 (put-heavy OI) are documented risks.\n  - Evidence that company guidance can differentiate outcomes: fact_sentiment_ah2_against_001_recovery notes company-specific guidance could differentiate MU from peers. That argues for requiring confirmation rather than ignoring the bears.\n- Practical implication: entry requires confirmation; if the breakout fails and price closes below SMA50 or EMA10 on above-average volume within the next ~10 trading days, we invalidate and step back. This uses the same falsifier the market evidence proposes (inf_market_001 falsifier / recovery).\n\n5) Execution clarity — single, testable entry_condition to align bull conviction with risk management\n- Claim: Adopt a single entry_condition to capture upside while controlling drawdown risk: wait for a confirmed daily close above the 20-day high with higher-than-average volume before initiating a phased position. (Decision field: entry_condition)\n- Evidence: Breakout trigger and continuation thesis (E-MKT-002; inf_market_001).\n- Why: It coherently marries the fundamental AI-tailwinds (E-SEN-002/E-SEN-006) and sector strength (E-SEN-001/E-SEN-004) to price action — reducing the chance of being burned by volatility or option-implied caps.\n\nConcrete rebuttal summary to the bear: Yes, volatility and put-heavy OI are real constraints (fact_market_price_action_summary_001; fact_market_options_sentiment_summary_004). But the company-specific guidance (E-SEN-002), sector-level revenue strength (E-SEN-001, E-SEN-004), and clear technical trigger (E-MKT-002; inf_market_001) give us a disciplined way to participate. We’re not “buying the top” — we’re buying a proven breakout that’s validated by both fundamentals and price, and we will invalidate the trade quickly if the market proves the bears right.\n\nConcrete plan implication and falsification (formal object required by the debate contract)\n- Plan implication (object): this affects the single decision field entry_condition.\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 1,\n  \&quot;speaker\&quot;: \&quot;Bull Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bull\&quot;,\n  \&quot;claim\&quot;: \&quot;Initiate a phased long only after a confirmed daily close above the 20-day high with above-average volume (entry_condition), using a tight invalidation if price closes below SMA50/EMA10 on above-average volume within the next 10 trading days.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;E-SEN-002\&quot;, \&quot;E-SEN-006\&quot;, \&quot;E-MKT-002\&quot;, \&quot;inf_market_001\&quot;, \&quot;E-SEN-001\&quot;, \&quot;E-SEN-004\&quot;, \&quot;fact_market_price_action_summary_001\&quot;, \&quot;fact_market_options_sentiment_summary_004\&quot;, \&quot;fact_sentiment_ah2_against_001_recovery\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;bear_last_arg_about_high_volatility_and_put_oi_capping_the_move\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;wait_for_daily_close_above_20d_high_with_volume_confirmation\&quot;,\&quot;rationale\&quot;:\&quot;Combine AI-driven fundamental tailwinds with technical confirmation to avoid false breakouts and respect high ATR / option positioning risk.\&quot;},\n  \&quot;falsification_condition\&quot;: \&quot;Daily close below SMA50 or EMA10 on above-average volume within 10 trading days after the breakout attempt (per inf_market_001 falsifier).\&quot;,\n  \&quot;confidence\&quot;: 0.72\n}\nBear Analyst: Short version up front: I agree there’s a near-term narrative (AI demand, sector strength, technical momentum) — but those are exactly the conditions that make this a higher-risk trade, not a safe one. The technical breakout the bull wants to buy could easily be an options-driven squeeze or a short-lived momentum fade, and important downside catalysts (policy/regulatory, inventory cycles, and noisy evidence) are under-emphasized. Because the bull’s plan focuses on an entry_condition, my counter-argument will also center on entry_condition: don’t treat a single daily close above the 20-day high as a green light unless several structural risks are explicitly cleared first.\n\n1) Claim — AI demand thesis is real but fragile and exposed to policy/regulatory risk.\n- Decision field affected: entry_condition.\n- Evidence: Micron’s guidance cites AI/HBM demand (E-SEN-002 / E-SEN-006), but the evidence graph explicitly flags policy/regulatory tail risk that could “materially and rapidly re-rate memory vendors including Micron” (inf_news_002).\n- Why this matters: The bull treats Micron’s AI guidance as a durable fundamental underwriting for buying a breakout. That’s optimistic. Even if demand exists, an escalation in export controls, tariffs, or probes can re-rate the stock independent of demand — wiping out any breakout move. You shouldn’t accept a simple technical close above 20D high as sufficient until the policy tail risk is demonstrably lower.\n\n2) Claim — the apparent “technical” breakout is vulnerable to flow-driven and options dynamics, not just fundamentals.\n- Decision field affected: entry_condition.\n- Evidence: The market inference that rallies can be amplified by option flows and short-covering is present in the ledger (inf_market_002). The market’s high ATR (fact_market_price_action_summary_001) and documented put-heavy open interest (fact_market_options_sentiment_summary_004) increase the chance this move is a squeeze or gamma-driven extension rather than clean fundamental rotation. E-MKT-002 labels the 20D as near-term resistance — precisely where option strikes and puts can make moves fragile.\n- Why this matters: If the breakout is catalyzed by options/short-covering, volume and a single daily close are poor filters. Those flows can stop abruptly and leave late buyers holding large gaps down. The bull’s proposed entry_condition (one daily close above 20D with volume) underestimates how quickly flow-driven rallies can reverse, and doesn’t require any evidence that put-heavy OI has unwound.\n\n3) Claim — sector strength is concentrated in equipment suppliers; that doesn’t guarantee Micron’s margins or sustainable share gains.\n- Decision field affected: entry_condition.\n- Evidence: Equipment names show strong results (Applied’s record revenue — E-SEN-001/E-NEW-001 and Lam’s 139% surge — E-SEN-004). These are powerful signals, but they reflect capex and equipment cycles rather than guaranteed durable end-demand or margin expansion for memory vendors.\n- Why this matters: The bull leans on equipment/peer strength to justify taking a breakout as durable. That’s a logical leap: equipment order strength can lead or lag customer inventory adjustments. In cycles, equipment and wafer-fab investment can spike even as end-demand for finished memory products normalizes — meaning Micron can still see margin pressure or inventory digestion even while suppliers shine. Don’t let peer equipment strength substitute for company-level confirmation.\n\n4) Claim — the evidence base for clean catalysts and “one-way” guidance is noisier than the bull acknowledges.\n- Decision field affected: entry_condition.\n- Evidence: The debate graph itself includes “thin or low-confidence inferences” about flows and news (inf_market_002 and inf_market_001), and the bull’s reliance on guidance is noted (fact_sentiment_ah2_against_001_recovery) but guidance can be noisy in cyclical sectors.\n- Why this matters: The bull treats guidance as a near-certain falsifier for the bear case. Past lessons: in cyclical names, company guidance can be revised or interpreted differently once a quarter of inventory digestion or policy shocks hits; several of the positive inferences in the ledger are flagged as “thin/low-confidence.” That should increase, not decrease, skepticism around an immediate breakout entry.\n\nConcrete plan implication (one field: entry_condition)\n- Plan implication (entry_condition): Do not initiate new long positions based solely on a single daily close above the 20-day high. Require a two-part confirmation before entering:\n  1) a confirmed daily close above the 20-day high with above-average volume (the bull’s filter), AND\n  2) demonstrable reduction in market structural risk: either a sustained decline in put-heavy open interest (evidence of options unwind) or clear signs that policy/regulatory tail risk has eased (no credible escalation in export controls / tariffs / probes).\n- Rationale: This prevents buying a squeeze or flow-driven pop and forces alignment between price action and structural risk reduction (policy and options). Evidence: E-MKT-002 (20D resistance), fact_market_price_action_summary_001 (high ATR), fact_market_options_sentiment_summary_004 (put-heavy OI), inf_market_002 (options/positioning-driven rally), inf_news_002 (policy tail risk).\n\nFalsification condition (what would make me wrong)\n- Falsification: Within 10 trading days after a daily close above the 20-day high with above-average volume, we observe BOTH (a) the put-heavy open interest materially declines (a clear unwind in put OI consistent with inf_market_002 dynamics) AND (b) no credible/new policy/regulatory actions emerge that could re-rate memory vendors (the risk in inf_news_002 does not materialize). If both occur, the structural risks I highlight are materially reduced and the bull entry becomes much more defensible.\n\nQuick rebuttal to the bull’s core points\n- Bull: “Guidance shows AI demand, so breakout is backed by fundamentals.”\n  Bear reply: Guidance matters — but it’s not immunity. The ledger itself flags policy/regulatory tail risk (inf_news_002). Company guidance will not prevent an export-control shock from re-rating the name, nor will it undo flow-driven volatility in the short run (inf_market_002). For an entry, we need both price confirmation and demonstrable reduction in these structural risks.\n- Bull: “Peer strength (Applied, Lam) validates broad demand.”\n  Bear reply: Equipment makers rallying confirms capex, not guaranteed end-market, margin, or share outcomes for memory vendors. That’s a weaker linkage than the bull implies (E-SEN-001, E-SEN-004).\n- Bull: “A daily close above 20D high with volume plus a tight invalidation is sufficient.”\n  Bear reply: Tight invalidations help risk control, but they don’t prevent being on the wrong side of an abrupt, flow-driven unwind or a policy news shock. You must require more than a single close: require evidence that the put-heavy OI has cleared or that regulatory risk has abated.\n\nFinal practical recommendation (entry_condition)\n- If you’re long-biased and insist on participation, make your entry conditional — don’t buy a single breakout candle. Require both the bull’s technical signal and explicit structural signs of reduced options/regulatory risk first. Otherwise: stay on the sidelines or drastically reduce position size until those second-order risks are resolved. Evidence summary used in this turn: E-SEN-002, E-SEN-006, E-MKT-002, inf_market_002, inf_market_001, inf_news_002, fact_market_price_action_summary_001, fact_market_options_sentiment_summary_004, E-SEN-001, E-SEN-004, fact_sentiment_ah2_against_001_recovery.\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 2,\n  \&quot;speaker\&quot;: \&quot;Bear Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bear\&quot;,\n  \&quot;claim\&quot;: \&quot;Do not treat a single daily close above the 20-day high as sufficient entry_condition; require both the breakout (daily close above 20D high with above-average volume) and demonstrable reduction in structural risks (put OI unwind or regulatory clarity) before initiating longs.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;E-SEN-002\&quot;, \&quot;E-SEN-006\&quot;, \&quot;E-MKT-002\&quot;, \&quot;inf_market_002\&quot;, \&quot;inf_market_001\&quot;, \&quot;inf_news_002\&quot;, \&quot;fact_market_price_action_summary_001\&quot;, \&quot;fact_market_options_sentiment_summary_004\&quot;, \&quot;E-SEN-001\&quot;, \&quot;E-SEN-004\&quot;, \&quot;fact_sentiment_ah2_against_001_recovery\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;bull_last_arg_about_AI_tailwinds_plus_single-day_breakout_entry\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;require_breakout_plus_structural_risk_unwind\&quot;,\&quot;rationale\&quot;:\&quot;Avoid buying flow-driven/option-squeeze breakouts or entering ahead of policy/regulatory shocks; demand/sector signals alone are insufficient to validate a clean breakout.\&quot;},\n  \&quot;falsification_condition\&quot;: \&quot;Within 10 trading days after the breakout (daily close above 20D high with above-average volume), observe both a material decline in put-heavy open interest (options unwind) and no credible/new policy/regulatory escalation affecting memory vendors; if both occur, the entry_condition is falsified and a phased long can be considered.\&quot;,\n  \&quot;confidence\&quot;: 0.68\n}\nBull Analyst: Decision field affected: entry_condition\n\nI’ll be direct — the bull case is not “buy the first candle and pray.” It’s a disciplined, evidence-led entry that recognizes the bear’s execution cautions but concludes the breakout + fundamentals overwhelmingly favor taking a phased long once a clean technical signal appears.\n\nGrowth thesis (why this isn’t a pure momentum squeeze)\n- Micron’s near-term guidance is explicitly driven by AI-related memory demand, especially HBM — that’s a structural, multi-quarter revenue tailwind, not a one-day headline (E-SEN-002, E-SEN-006). This materially lowers the risk that a breakout is merely a transitory short-covering spike: demand is real and persistent.\n\nCompetitive / market validation (why peers strengthen the thesis)\n- This is not an isolated name popping in a vacuum. Equipment and capex suppliers are delivering record revenue and profit signals — Applied Materials reported record fiscal Q2 revenue and high gross margins (E-SEN-001), and Lam Research’s huge 2026 outperformance underscores broad, durable investment in advanced manufacturing (E-SEN-004). Those peer signals increase the probability that Micron’s AI-driven demand is structural and sustainable.\n\nTechnical / timing edge (how to execute logically)\n- Price is approaching a 20-day high breakout trigger and momentum continuation is the higher-probability path while price remains above short-term dynamic support (EMA10 / SMA50) (E-MKT-002, inf_market_001). That gives a concrete, actionable trigger: require a daily close above the 20D high with above-average volume before initiating. This marries the fundamental tailwind to a clean technical confirmation.\n\nAddressing the bear’s options/volatility concerns (practical rebuttal)\n- The bear is right that high ATR and put-heavy OI make execution trickier (fact_market_price_action_summary_001, fact_market_options_sentiment_summary_004). I don’t dismiss those risks — I incorporate them. But they are execution variables, not fundamental disproofs. In practice:\n  - Require the breakout (daily close &gt; 20D high) on above-average volume (E-MKT-002, inf_market_001).\n  - Start with a modest initial position and scale in only if momentum holds (volume, price above EMA10/SMA50) — this lets us see whether put OI is being squeezed/unwound (inf_market_002) or acting as a durable cap.\n  - Use a clear stop/invalidation to protect capital (see falsification below). Together, these steps neutralize the majority of short-lived, flow-driven risk while leaving upside exposure to the structural AI demand.\n\nWhy the bear’s “require options unwind + regulatory clarity before any entry” is too conservative\n- Requiring full OI unwinds or absolute regulatory certainty before any participation effectively guarantees missing the move or only buying after most gains have occurred. The ledger shows both (a) real AI demand guidance (E-SEN-002) and (b) price momentum poised for continuation (E-MKT-002, inf_market_001). A balanced entry that requires a volume-confirmed breakout plus a small, staged initial position respects the bear’s fears while keeping participation aligned with fundamentals — it’s a superior middle path.\n\nReflections / lessons learned\n- I’ve been burned before by buying single-candle breakouts without volume/structure; that mistake is why this plan explicitly ties the entry to a volume-confirmed daily close, dynamic-support alignment, and staged sizing (fact_market_price_action_summary_001). This time the signal is paired with durable demand visibility, which is the key difference.\n\nConcrete plan implication (single-field object required)\n{\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;buy_after_confirmed_breakout_and_scale_in\&quot;,\&quot;rationale\&quot;:\&quot;Require a daily close above the 20-day high with above-average volume and start with a modest initial size; scale into the position only if price stays above short-term dynamic support (EMA10/SMA50) and momentum indicators confirm continuation. This balances AI-driven fundamental upside (E-SEN-002/E-SEN-006) with execution-risk controls (E-MKT-002, inf_market_001, fact_market_options_sentiment_summary_004).\&quot;}\n\nFalsification condition\n- If within 10 trading days after the volume-confirmed daily close above the 20D high we observe any of the following: (a) Micron materially cuts guidance or reports revenue/earnings notably below the AI/HBM-driven forecast (negating E-SEN-002), (b) the stock posts a decisive daily close below SMA50 on above-average volume (invalidating the technical continuation, see inf_market_001), (c) put OI materially increases or fails to unwind (fact_market_options_sentiment_summary_004), or (d) a credible policy/regulatory escalation specifically targets memory exports (inf_news_002) — then the entry thesis is falsified and the position should be reduced/closed.\n\nQuick, direct rebuttals to the bear’s main points\n- “Options-heavy flows can cap or reverse moves”: yes — that’s why we require above-average volume on the breakout and start small so an unwind is manageable (E-MKT-002, inf_market_002, fact_market_options_sentiment_summary_004).\n- “Peer rallies are capex-only and don’t guarantee memory upside”: peer capex strength materially raises the odds for end-market AI demand to translate into memory demand — Applied’s record revenues and Lam’s surge are strong corroboration, not proof by proxy (E-SEN-001, E-SEN-004).\n- “Regulatory risk can re-rate the sector instantly”: true and respected — it’s explicitly in my falsification clause (inf_news_002). But policy shocks are binary and time-limited; they don’t negate the multi-quarter structural demand if they don’t materialize.\n\nEvidence IDs used in this turn\n[E-SEN-002, E-SEN-006, E-SEN-001, E-SEN-004, E-MKT-002, inf_market_001, inf_market_002, fact_market_price_action_summary_001, fact_market_options_sentiment_summary_004, inf_news_002]\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 3,\n  \&quot;speaker\&quot;: \&quot;Bull Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bull\&quot;,\n  \&quot;claim\&quot;: \&quot;A disciplined entry after a volume-confirmed daily close above the 20-day high (with staged sizing) is justified because AI/HBM-driven fundamental demand and peer capex signals materially increase the probability the breakout leads to multi-quarter growth rather than a short-lived squeeze.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;E-SEN-002\&quot;,\&quot;E-SEN-006\&quot;,\&quot;E-SEN-001\&quot;,\&quot;E-SEN-004\&quot;,\&quot;E-MKT-002\&quot;,\&quot;inf_market_001\&quot;,\&quot;inf_market_002\&quot;,\&quot;fact_market_price_action_summary_001\&quot;,\&quot;fact_market_options_sentiment_summary_004\&quot;,\&quot;inf_news_002\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;bear_last_arg_about_requiring_options_unwind_and_regulatory_clarity_before_any_entry\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;buy_after_confirmed_breakout_and_scale_in\&quot;,\&quot;rationale\&quot;:\&quot;Require a daily close above the 20-day high with above-average volume and start with a modest initial size; scale into the position only if price stays above short-term dynamic support (EMA10/SMA50) and momentum indicators confirm continuation. This balances AI-driven fundamental upside (E-SEN-002/E-SEN-006) with execution-risk controls (E-MKT-002, inf_market_001, fact_market_options_sentiment_summary_004).\&quot;},\n  \&quot;falsification_condition\&quot;: \&quot;Within 10 trading days after the volume-confirmed daily close above the 20D high, observe either (a) a material guidance/revenue miss from Micron that contradicts the AI/HBM demand thesis (negating E-SEN-002), (b) a decisive daily close below SMA50 on above-average volume, (c) a material increase or failure to unwind put-heavy OI (fact_market_options_sentiment_summary_004), or (d) a credible policy/regulatory escalation affecting memory vendors (inf_news_002); if any occur, close or materially reduce the position.\&quot;,\n  \&quot;confidence\&quot;: 0.72\n}\nBear Analyst: I’ll keep this direct and evidence-led: don’t buy the breakout as the bull suggests — the setup looks too risky right now. You’re asking to enter into a market that has clear short-term technical triggers (E-MKT-002), but those triggers are precisely the sort of thing that can be driven or distorted by positioning and volatility — not durable fundamental demand. Let me walk through why the prudent entry condition should be much stricter than “volume-confirmed close above the 20-day high.”\n\n1) Entry_condition — Market/flow risk is dominant right now (decision field: entry_condition)\n- Claim: The immediate breakout path is plausibly being driven or amplified by options/positioning rather than clean, broad-based buying, so a breakout can reverse quickly. Evidence: the low-confidence inference that the recent advance may be an options/positioning-driven rally (inf_market_002) directly undermines the assumption that a price breakout equals sustainable demand. Combine that with documented put-heavy open interest that can act as a cap or create violent unwinds (fact_market_options_sentiment_summary_004) and you have a fragile technical setup, not a clear buy signal.\n- Plan implication:\n  {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;do_not_enter_on_simple_20D_breakout; require_put_OI_unwind_and_persistent_volume_after_breakout\&quot;,\&quot;rationale\&quot;:\&quot;Avoid buying into a potential options-driven squeeze; wait until put-heavy OI materially declines and breakout is followed by sustained, broad-volume continuation before entering.\&quot;}\n- Falsification condition: If within 10 trading days after a volume-confirmed close above the 20D high we observe (a) put-heavy open interest materially and persistently declines (observable reversal of fact_market_options_sentiment_summary_004), and (b) the breakout is followed by repeated daily closes above the 20D high on above-average, diversified volume (contradicting inf_market_002), then the entry_condition objection is falsified and a phased entry can be reconsidered.\n- Evidence cited: inf_market_002, fact_market_options_sentiment_summary_004, E-MKT-002.\n\n2) Entry_condition — Volatility and execution risk make stop placement and sizing problematic (decision field: entry_condition)\n- Claim: High realized/expected volatility means any breakout requires much larger stops and increases the chance of being stopped out in short-term chop. Evidence: documented high ATR and price-action cautions (fact_market_price_action_summary_001) show you’re trading in a wide-noise environment where “clean” technical triggers are less reliable.\n- Plan implication: (same field as above; see plan_implication object) — practically, that means even if you consider entry later you must reduce position size and widen stops materially to account for the high ATR documented (fact_market_price_action_summary_001).\n- Falsification condition: If ATR normalizes (lower realized volatility) while the breakout holds and put OI declines, then the execution-cost objection weakens.\n- Evidence cited: fact_market_price_action_summary_001.\n\n3) Entry_condition — Regulatory/policy tail risk is non-trivial and can re-rate the stock instantly (decision field: entry_condition)\n- Claim: Even with bullish guidance, a policy shock (export controls, tariffs, official probes) can rapidly and materially re-rate memory vendors independent of demand fundamentals. Evidence: the inference that policy/regulatory escalation could re-rate memory vendors (inf_news_002) means the retail technical entry plan is exposed to outsized binary risk.\n- Plan implication: (same field) don’t front-run the fundamental clarity; require clearer signs that policy risk has not suddenly increased (e.g., official statements, absence of new restrictions) before treating technical breakouts as reliable entry signals.\n- Falsification condition: If regulatory tail risk dissipates meaningfully — documented by a lack of new controls and no credible escalation — and the breakout is supported by other confirmations (put OI unwind / sustained volume), then the regulatory objection is mitigated.\n- Evidence cited: inf_news_002.\n\n4) Counter to the bull’s peer-validation argument — capex/peer rallies don’t guarantee memory revenue conversion (decision field: entry_condition)\n- Claim: Yes, peers like Applied and Lam show strong industry flows (E-SEN-001, E-SEN-004), but that’s not a direct, guaranteed read-through to company-level memory revenue growth for Micron. Peer equipment/capex strength can reflect OEM preparation or cyclical inventory replenishment that doesn’t translate one-to-one into sustainable memory demand.\n- Plan implication: (same field) do not let peer capex beats alone lower your bar for entry — require company-level confirmations beyond guidance-sounding language. Specifically, for entry require visible demand persistence in Micron’s next reported metrics or clear market data showing sustained orders for HBM rather than just upstream capex signals.\n- Falsification condition: If Micron’s next results materially and clearly confirm AI/HBM demand (consistent with the guidance evidence E-SEN-002) and market flows (put OI, volatility) normalize, then peer skepticism is less relevant.\n- Evidence cited: E-SEN-001, E-SEN-004, E-SEN-002.\n\nQuick rebuttals to the bull’s core points (conversational)\n- Bull: “Micron’s guidance is driven by AI/HBM demand so the breakout likely reflects durable demand.” My reply: guidance matters, but it’s not proof against market-structure risk. The evidence itself (E-SEN-002) is one data point — when you combine it with the real market microstructure signals (inf_market_002, fact_market_options_sentiment_summary_004, fact_market_price_action_summary_001) the prudent response is to require those microstructure risks to clear before accepting a breakout as durable.\n- Bull: “Peers validate the thematic.” My reply: peers validate sector activity but not company-level execution or demand conversion. Applied’s record revenue and Lam’s surge (E-SEN-001, E-SEN-004) can coexist with company-specific risks and positioning-driven rallies — they don’t eliminate the put-heavy/volatility/regulatory tail risks I’ve flagged.\n- Bull: “We can manage risk with staggered sizing after the breakout.” My reply: staggered sizing is fine only if the underlying breakout isn’t being held up by precarious flows. Staggering after a potentially options-driven pop just guarantees you’ll pay a higher average price into a fragile structure unless put OI and regulatory risks are demonstrably receding (fact_market_options_sentiment_summary_004, inf_news_002, inf_market_002).\n\nBottom line recommendation (entry_condition):\n- Do not enter on a single technical breakout even with volume confirmation. Require three things before treating a 20-day-high breakout as a valid entry signal: (1) clear, persistent decline in put-heavy OI (fact_market_options_sentiment_summary_004), (2) normalization of realized volatility (fact_market_price_action_summary_001), and (3) no new or escalating regulatory signals to the sector (inf_news_002). Only after those are satisfied should a phased long be considered.\n- This is conservative, but given the asymmetric risk from positioning and policy, it’s the appropriate entry_condition.\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 4,\n  \&quot;speaker\&quot;: \&quot;Bear Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bear\&quot;,\n  \&quot;claim\&quot;: \&quot;Do not treat a volume-confirmed close above the 20-day high as a reliable entry; require put-OI unwind, volatility normalization, and regulatory clarity before entering.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;inf_market_002\&quot;,\&quot;fact_market_options_sentiment_summary_004\&quot;,\&quot;fact_market_price_action_summary_001\&quot;,\&quot;inf_news_002\&quot;,\&quot;E-MKT-002\&quot;,\&quot;E-SEN-002\&quot;,\&quot;E-SEN-001\&quot;,\&quot;E-SEN-004\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;Bull Analyst: buy_after_confirmed_breakout_and_scale_in (turn_id 3)\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;do_not_enter_on_simple_20D_breakout; require_put_OI_unwind_and_persistent_volume_after_breakout\&quot;,\&quot;rationale\&quot;:\&quot;Avoid buying into a potential options-driven squeeze and policy shock; wait until put-heavy open interest materially declines, realized volatility normalizes, and the breakout is followed by sustained, broad-based volume before entering.\&quot;},\n  \&quot;falsification_condition\&quot;: \&quot;Within 10 trading days after a volume-confirmed daily close above the 20D high: (a) Micron reports results that materially and clearly confirm AI/HBM-driven demand (consistent with E-SEN-002), (b) put-heavy open interest materially and persistently declines (opposite of fact_market_options_sentiment_summary_004), and (c) realized volatility (ATR) meaningfully normalizes (contradicting fact_market_price_action_summary_001). If all occur, the bear entry_condition objection is falsified.\&quot;,\n  \&quot;confidence\&quot;: 0.68\n}\nBull Analyst: You’re right to flag flow and volatility risks — those are real and actionable. That said, the bull case still wins on a risk-adjusted basis if we combine the improving fundamentals with a disciplined, evidence-driven entry rule that neutralizes the bear’s flow concerns. Below I engage point-by-point and lay out a single, concrete entry_condition plan.\n\n1) Growth potential: AI/HBM demand is not rumor — it’s company-guided and materializing (decision field affected: entry_condition).\n- Claim: Micron’s near-term revenue trajectory is being driven by strong AI-related memory demand, which makes any breakout more likely to be a start of multi-quarter revenue growth rather than a pure positioning pop. Evidence: Micron’s FY Q3 guidance and commentary explicitly cite strong AI/HBM demand (E-SEN-002, E-SEN-006).\n- Why that matters for entry_condition: If orders/backlog reflect genuine HBM demand, the breakout is supported by cash flows and OEM demand, reducing the chance of a short-lived squeeze.\n\n2) Competitive / sector validation: peers show structural tailwinds that lower execution risk (decision field affected: entry_condition).\n- Claim: Equipment and broader semiconductor supply-chain leaders are posting record demand and revenues, signaling durable industry expansion that should lift memory makers too. Evidence: Applied Materials reported record fiscal Q2 revenue and high gross margins (E-SEN-001 / E-NEW-001); Lam Research surged ~139% in 2026 on the same cycle dynamics (E-SEN-004).\n- Why that matters for entry_condition: Peer strength increases the a priori probability that Micron’s guidance translates into sustained end-market orders rather than a transient positioning trade.\n\n3) Technical + executionable entry: require confirmation but don’t sit out entirely (decision field affected: entry_condition).\n- Claim: The chart is actionable — price is near a 20-day high breakout trigger and momentum continuation is favored while price stays above short-term dynamic support — so we should buy a confirmed breakout with strict conditions. Evidence: 20D near-term resistance / breakout trigger (E-MKT-002); momentum-continuation inference supports buying a confirmation while acknowledging fragility (inf_market_001).\n- Plan implication (entry_condition): Only enter after a daily close above the 20-day high accompanied by above-average volume, then scale in (e.g., 50% size on trigger, 50% on follow-through day) while using tight, ATR-aware stops. Rationale: blends fundamental confirmation (E-SEN-002) with price+flow verification (E-MKT-002, inf_market_001) to avoid chasing an options-driven pop.\n\n4) Directs-to-bear concerns: options/volatility/regulatory — acknowledge, quantify, and mitigate (decision field affected: entry_condition).\n- Bear point: Put-heavy OI and high ATR can cap or reverse moves (fact_market_options_sentiment_summary_004; fact_market_price_action_summary_001). I agree — these are why the entry is conditional, not permissive.\n- Bull rebuttal: Requiring both a volume-confirmed close above the 20D high and watching for immediate follow-through (next 1–3 trading days) lets us observe whether put-OI is being squeezed or acting as a cap. If follow-through shows persistent, broad volume and realized volatility does not spike higher, that’s evidence the move is demand-driven rather than solely positioning (inf_market_001, E-MKT-002). Regulatory headlines are a separate, low-probability tail — we monitor news flow and treat any adverse development as an invalidation trigger (inf_news_002).\n\nConcrete plan implication (single field object; entry_condition):\n{\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;enter_on_volume_confirmed_daily_close_above_20D_high_and_scale_in\&quot;,\&quot;rationale\&quot;:\&quot;Combine Micron’s AI/HBM-driven guidance (E-SEN-002) and sector tailwinds (E-SEN-001, E-SEN-004) with a technical confirmation (E-MKT-002, inf_market_001). This minimizes paying up into a pure positioning move while still capturing genuine breakout-driven trend.\&quot;}\n\nFalsification condition (what would invalidate this bull entry_condition):\n- If, within 10 trading days after a volume-confirmed daily close above the 20D high: (a) Micron issues results or guidance that materially fails to confirm AI/HBM demand (contradicting E-SEN-002 / E-SEN-006), AND (b) put-heavy open interest remains persistently elevated or increases (fact_market_options_sentiment_summary_004), AND (c) realized volatility (ATR) expands and price closes back below short-term dynamic support (e.g., SMA50/EMA10) on above-average volume (fact_market_price_action_summary_001), then the entry_condition is falsified and we exit / avoid scaling further.\n\nQuick, evidence-led retorts to the bear’s main assertions (conversational):\n- “Options flows cap the move” — Yes, put-heavy OI is a risk (fact_market_options_sentiment_summary_004). That’s precisely why we demand a volume-confirmed breakout and immediate follow-through: a genuine demand-led breakout will show absorption and volume breadth (E-MKT-002, inf_market_001), whereas an options-only squeeze typically fails to sustain above the breakout level.\n- “High ATR makes stop placement difficult” — True (fact_market_price_action_summary_001). We account for that by using ATR-aware stops and by scaling in (entry_condition above) so initial position size is conservative and stop distances are sized to realized volatility.\n- “Peers don’t prove Micron’s orders” — Agreed peers aren’t definitive company proof, but peer strength materially raises the odds we’re in a durable cycle rather than an isolated pop (E-SEN-001, E-SEN-004). Coupled with Micron’s own guidance (E-SEN-002), the prior probability moves meaningfully toward a sustained demand case.\n\nBottom line (entry_condition): Don’t buy blind — but also don’t sit behind the curve. Use a disciplined, conditional entry: wait for a daily close above the 20D high with above-average volume, confirm short-term follow-through, scale in, and use ATR-aware stops. That approach respects the bear’s flow/volatility concerns while capturing a high-probability move driven by real AI/HBM demand and robust sector fundamentals (E-SEN-002; E-SEN-001; E-SEN-004; E-MKT-002; inf_market_001). If the falsification triad above occurs, abort the trade.\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 5,\n  \&quot;speaker\&quot;: \&quot;Bull Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bull\&quot;,\n  \&quot;claim\&quot;: \&quot;Enter on a volume-confirmed daily close above the 20-day high and scale in, because Micron’s AI/HBM-driven guidance and sector tailwinds make a confirmed breakout more likely to become durable; use ATR-aware stops and immediate follow-through to filter positioning-driven moves.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;E-SEN-002\&quot;,\&quot;E-SEN-006\&quot;,\&quot;E-SEN-001\&quot;,\&quot;E-SEN-004\&quot;,\&quot;E-MKT-002\&quot;,\&quot;inf_market_001\&quot;,\&quot;fact_market_options_sentiment_summary_004\&quot;,\&quot;fact_market_price_action_summary_001\&quot;,\&quot;inf_news_002\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;Bear Analyst: do_not_enter_on_simple_20D_breakout; require_put_OI_unwind_and_persistent_volume_after_breakout (turn_id 4)\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;enter_on_volume_confirmed_daily_close_above_20D_high_and_scale_in\&quot;,\&quot;rationale\&quot;:\&quot;Combine Micron’s AI/HBM-driven guidance (E-SEN-002) and sector tailwinds (E-SEN-001, E-SEN-004) with a technical confirmation (E-MKT-002, inf_market_001). This minimizes paying up into a pure positioning move while still capturing genuine breakout-driven trend.\&quot;},\n  \&quot;falsification_condition\&quot;: \&quot;If within 10 trading days after a volume-confirmed daily close above the 20D high: (a) Micron reports results/guidance that materially contradicts AI/HBM demand (contradicting E-SEN-002/E-SEN-006), AND (b) put-heavy open interest remains elevated or increases (fact_market_options_sentiment_summary_004), AND (c) realized volatility (ATR) expands and price closes back below short-term dynamic support on above-average volume (fact_market_price_action_summary_001), then the entry_condition is falsified.\&quot;,\n  \&quot;confidence\&quot;: 0.72\n}\nBear Analyst: I’ll be blunt: the setup the bull is asking us to buy into is far too fragile right now. Yes, AI demand is a plausible upside—but the market structure, positioning, and macro/regulatory risks make a simple breakout-based entry (even a volume-confirmed one) much higher-risk than the bull admits. I’ll walk through the concrete reasons to avoid entering now, engage each of the bull’s points, and finish with a single, actionable entry_condition plan and a clear falsification test.\n\n1) Primary problem — this advance looks at least partly positioning-driven, not purely demand-driven (decision field affected: entry_condition).\n- Evidence: options and positioning signals are explicitly a cap risk (fact_market_options_sentiment_summary_004) and there’s a documented inference that current moves can be amplified by options flows and short-covering (inf_market_002). That combination raises the chance that a daily close above the 20-day high is an options/flow event that quickly unwinds once flows fade.\n- Why this matters: A breakout that’s primarily an options squeeze or short-cover will often fail to sustain; buying that breakout exposes you to a fast, painful reversion even if company fundamentals are improving. The bull’s “volume-confirmed close” rule doesn’t neutralize this—large option/retail-driven moves can produce high volume too, then reverse. (Cites: fact_market_options_sentiment_summary_004; inf_market_002.)\n\n2) Volatility and stop-placement are non-trivial execution risks (decision field affected: entry_condition).\n- Evidence: realized volatility is elevated (fact_market_price_action_summary_001). High ATR means you either (a) place very wide stops and take oversized exposure risk, or (b) place tight stops and invite stop-chases from intraday noise. Neither is attractive for a breakout trade in a name with heavy option positioning. (Cites: fact_market_price_action_summary_001.)\n\n3) Peer strength is supportive but non-deterministic for company-level durability (decision field affected: entry_condition).\n- Evidence: bulls lean on Applied Materials and Lam Research results to argue cycle durability (E-SEN-001; E-SEN-004). That’s a valid context signal, but peers don’t prove Micron’s order flow or margin trajectory—correlation ≠ guarantee. The bull admits peers aren’t definitive; this should be a strong caution, not a reason to ignore positioning and volatility risks. (Cites: E-SEN-001; E-SEN-004.)\n\n4) Guidance can be one-off or revised; don’t overweight a single-quarter voice (decision field affected: entry_condition).\n- Evidence: Micron’s guidance explicitly cites AI/HBM demand (E-SEN-002; E-SEN-006), and bulls treat that as a near-term green light. But guidance is forward-looking and can be revised if macro or customer spending changes. Given the other structural risks (options cap, high ATR, and possible policy shocks), leaning heavily on guidance to justify buying a breakout is over-confident. Treat guidance as necessary but not sufficient. (Cites: E-SEN-002; E-SEN-006.)\n\n5) Policy/regulatory tail risk is asymmetric and could re-rate the group quickly (decision field affected: entry_condition).\n- Evidence: there’s a documented inference that escalation in export controls, tariffs, or probes could rapidly re-rate memory vendors independent of fundamentals (inf_news_002). That’s the classic “black swan” for semiconductor supply/technology: an announcement can remove multiple quarters of expected AI-related demand overnight. Bulls are underweighting this single-event risk. (Cites: inf_news_002.)\n\nQuick rebuttals to the bull’s points (conversational):\n- “A volume-confirmed close above the 20D high will separate real demand from squeezes.” Not reliably. Option-driven squeezes and high implied-volatility regimes regularly produce heavy volume during the squeeze and then reverse. The presence of put-heavy OI (fact_market_options_sentiment_summary_004) and inferred option-driven amplitude (inf_market_002) means a volume spike alone is a poor discriminator.\n- “We can use ATR-aware stops and scale in.” That’s mitigation, not a solution. High ATR (fact_market_price_action_summary_001) forces either tiny starter sizes or excessively wide stops; both reduce the attractiveness of the trade relative to its risk. Scaling into a position that’s sized small enough to fit realistic stops often loses the payoff-to-risk math that justified the trade.\n\nConcrete plan implication (decision field affected: entry_condition)\n- Plan implication (object):\n  {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;avoid_entry_on_simple_20D_breakout_until_put_OI_unwinds_and_sustained_volume_follow_through_for_5_consecutive_days\&quot;,\&quot;rationale\&quot;:\&quot;Given evidence of put-heavy open interest and inferred options/short-cover flow amplification (fact_market_options_sentiment_summary_004; inf_market_002), plus elevated realized volatility (fact_market_price_action_summary_001) and regulatory tail-risk (inf_news_002), require stronger and persistent confirmation before entering to avoid buying a positioning-driven pop.\&quot;}\n\nFalsification condition — what would clearly invalidate this bear stance\n- Falsification condition (object):\n  {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;if_within_10_trading_days_after_a_daily_close_above_20D_high_MICRON_reports_materially_confirming_AI_HBM_demand_and_price_sustains_above_the_breakout_with_multi-day_volume_confirm\&quot;,\&quot;rationale\&quot;:\&quot;If company-level results/guidance materially and publicly confirm durable AI/HBM demand (E-SEN-002/E-SEN-006) and the breakout is followed by persistent multi-day above-average volume and price staying above the 20D level (E-MKT-002), that would indicate real demand rather than a transient options squeeze and falsify the need for a stricter no-entry posture.\&quot;}\n\nNotes on evidence and prudence\n- I’m not arguing \&quot;never own the stock.\&quot; I’m saying the current combination—put-heavy OI, elevated ATR, risk of policy shocks, and only peer- and guidance-based evidence for durable demand—does not justify buying a breakout without stronger, persistent confirmation (fact_market_options_sentiment_summary_004; inf_market_002; fact_market_price_action_summary_001; inf_news_002; E-SEN-002).\n- The bull’s disciplined entry rule is directionally reasonable, but it underestimates how often those precise technical triggers get “faked” by flow-driven moves. Conditioning on multiple days of follow-through and clearer options-unwind evidence materially lowers the probability of a false breakout.\n\nRESEARCH_DEBATE_TURN_JSON\n{\n  \&quot;turn_id\&quot;: 6,\n  \&quot;speaker\&quot;: \&quot;Bear Analyst\&quot;,\n  \&quot;issue_id\&quot;: \&quot;MU_entry_vs_bear_objections\&quot;,\n  \&quot;position\&quot;: \&quot;bear\&quot;,\n  \&quot;claim\&quot;: \&quot;Avoid entering on a single volume-confirmed daily close above the 20-day high; instead require that put-heavy open interest meaningfully unwinds and that price/volume follow-through persists for multiple days before considering entry.\&quot;,\n  \&quot;evidence_ids\&quot;: [\&quot;fact_market_options_sentiment_summary_004\&quot;,\&quot;inf_market_002\&quot;,\&quot;fact_market_price_action_summary_001\&quot;,\&quot;inf_news_002\&quot;,\&quot;E-SEN-002\&quot;,\&quot;E-SEN-006\&quot;,\&quot;E-SEN-001\&quot;,\&quot;E-SEN-004\&quot;,\&quot;E-MKT-002\&quot;],\n  \&quot;rebuttal_to\&quot;: \&quot;Bull Analyst: enter_on_volume_confirmed_daily_close_above_20D_high_and_scale_in\&quot;,\n  \&quot;plan_implication\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;avoid_entry_on_simple_20D_breakout_until_put_OI_unwinds_and_sustained_volume_follow_through_for_5_consecutive_days\&quot;,\&quot;rationale\&quot;:\&quot;Given evidence of put-heavy open interest and inferred options/short-cover flow amplification (fact_market_options_sentiment_summary_004; inf_market_002), elevated realized volatility (fact_market_price_action_summary_001), and regulatory tail-risk (inf_news_002), require stronger and persistent confirmation before entering to avoid buying a positioning-driven pop.\&quot;},\n  \&quot;falsification_condition\&quot;: {\&quot;field\&quot;:\&quot;entry_condition\&quot;,\&quot;proposed_value\&quot;:\&quot;if_within_10_trading_days_after_a_daily_close_above_20D_high_MICRON_reports_materially_confirming_AI_HBM_demand_and_price_sustains_above_the_breakout_with_multi-day_volume_confirm\&quot;,\&quot;rationale\&quot;:\&quot;If company-level results/guidance materially and publicly confirm durable AI/HBM demand (E-SEN-002/E-SEN-006) and the breakout is followed by persistent multi-day above-average volume and price staying above the 20D level (E-MKT-002), that would indicate real demand rather than a transient options squeeze and falsify the need for a stricter no-entry posture.\&quot;},\n  \&quot;confidence\&quot;: 0.68\n}&quot;,
@@ -3038,537 +2907,93 @@
 <li>CONFIDENCE: LOW</li>
 <li>RATIONALE: Conditional, evidence-weighted plan: do not add new buys until defined breakout/volume follow-through or options unwind confirms the squeeze/flow setup; HOLD now per catalyst freeze and unclear entry status.</li>
 </ul></div></article>
-<article class="report-panel" data-panel-title="Trader Decision Brief"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Decision Brief</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;ticker&quot;: &quot;MU&quot;,
-  &quot;as_of&quot;: &quot;2026-06-23&quot;,
-  &quot;reference_price&quot;: null,
-  &quot;time_horizon&quot;: &quot;2-3 months&quot;,
-  &quot;current_position&quot;: {
-    &quot;has_position&quot;: false,
-    &quot;shares&quot;: null,
-    &quot;cost_basis&quot;: null,
-    &quot;unrealized_pnl_pct&quot;: null,
-    &quot;portfolio_weight_pct&quot;: null,
-    &quot;available_buying_power&quot;: null,
-    &quot;concentration_flags&quot;: []
-  },
-  &quot;evidence_by_domain&quot;: {
-    &quot;market&quot;: [
-      {
-        &quot;claim&quot;: &quot;Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.&quot;,
-        &quot;direction&quot;: &quot;bullish&quot;,
-        &quot;strength&quot;: 0.55,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;entry&quot;,
-        &quot;source_domain&quot;: &quot;market&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_market_001&quot;,
-          &quot;fact_market_h_active_1_support_001_recovery&quot;,
-          &quot;fact_market_h_active_1_support_002_recovery&quot;,
-          &quot;fact_market_h_active_1_against_001_recovery&quot;,
-          &quot;fact_market_h_active_1_against_002_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.&quot;,
-        &quot;direction&quot;: &quot;bearish&quot;,
-        &quot;strength&quot;: 0.5,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;risk&quot;,
-        &quot;source_domain&quot;: &quot;market&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_market_002&quot;,
-          &quot;fact_market_h_active_2_support_001_recovery&quot;,
-          &quot;fact_market_h_active_2_support_002_recovery&quot;,
-          &quot;fact_market_h_active_2_support_003_recovery&quot;,
-          &quot;fact_market_h_active_2_against_001_recovery&quot;
-        ]
-      }
-    ],
-    &quot;fundamentals&quot;: [
-      {
-        &quot;claim&quot;: &quot;The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.&quot;,
-        &quot;direction&quot;: &quot;bearish&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;entry&quot;,
-        &quot;source_domain&quot;: &quot;fundamentals&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_fundamentals_001&quot;,
-          &quot;fact_fundamentals_h_active_2_support_001_recovery&quot;,
-          &quot;fact_fundamentals_h_active_2_support_002_recovery&quot;,
-          &quot;fact_fundamentals_h_active_2_against_001_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.&quot;,
-        &quot;direction&quot;: &quot;bullish&quot;,
-        &quot;strength&quot;: 0.6,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;entry&quot;,
-        &quot;source_domain&quot;: &quot;fundamentals&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_fundamentals_002&quot;,
-          &quot;fact_fundamentals_h_active_1_support_001_recovery&quot;,
-          &quot;fact_fundamentals_h_active_1_support_002_recovery&quot;,
-          &quot;fact_fundamentals_h_active_1_against_001_recovery&quot;,
-          &quot;fact_fundamentals_h_active_1_against_002_recovery&quot;
-        ]
-      }
-    ],
-    &quot;news&quot;: [
-      {
-        &quot;claim&quot;: &quot;Momentum-first thesis: the current MU rally is largely flow-driven and therefore has elevated short-term pullback risk; absent verified company data, do not add size.&quot;,
-        &quot;direction&quot;: &quot;bearish&quot;,
-        &quot;strength&quot;: 0.65,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;entry&quot;,
-        &quot;source_domain&quot;: &quot;news&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_news_001&quot;,
-          &quot;fact_news_h_01_support_001_recovery&quot;,
-          &quot;fact_news_h_01_support_002_recovery&quot;,
-          &quot;fact_news_h_01_support_003_recovery&quot;,
-          &quot;fact_news_h_01_support_004_recovery&quot;,
-          &quot;fact_news_h_01_against_001_recovery&quot;,
-          &quot;fact_news_h_01_against_002_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;Policy/regulatory tail risk: an escalation in export controls, tariffs, or official probes could materially and rapidly re-rate memory vendors including Micron independent of company fundamentals.&quot;,
-        &quot;direction&quot;: &quot;bearish&quot;,
-        &quot;strength&quot;: 0.5,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;risk&quot;,
-        &quot;source_domain&quot;: &quot;news&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_news_002&quot;,
-          &quot;fact_news_h_03_support_001_recovery&quot;,
-          &quot;fact_news_h_03_support_002_recovery&quot;
-        ]
-      }
-    ],
-    &quot;sentiment&quot;: [
-      {
-        &quot;claim&quot;: &quot;The reference market price appears erroneous; validating market-price will change stop/size calculations and is necessary before any execution (data-integrity anomaly).&quot;,
-        &quot;direction&quot;: &quot;bullish&quot;,
-        &quot;strength&quot;: 0.9,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;sizing&quot;,
-        &quot;source_domain&quot;: &quot;sentiment&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_sentiment_001&quot;,
-          &quot;fact_sentiment_ah3_support_001_recovery&quot;,
-          &quot;fact_sentiment_ah3_against_001_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;Micron&#x27;s published guidance citing strong HBM demand will sustain a near-term bullish narrative that can drive price momentum over the next 8–12 weeks (attention acceleration).&quot;,
-        &quot;direction&quot;: &quot;bullish&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;thesis&quot;,
-        &quot;source_domain&quot;: &quot;sentiment&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_sentiment_002&quot;,
-          &quot;fact_sentiment_ah1_support_001_recovery&quot;,
-          &quot;fact_sentiment_ah1_against_001_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;The current positive sentiment is largely analyst/institution-driven (sector upgrades), making the setup vulnerable to a crowded-trade unwind if MU fails to beat or if the broader semicap narrative cools (crowded trade / fade risk).&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.6,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;risk&quot;,
-        &quot;source_domain&quot;: &quot;sentiment&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_sentiment_003&quot;,
-          &quot;fact_sentiment_ah2_support_001_recovery&quot;,
-          &quot;fact_sentiment_ah2_against_001_recovery&quot;
-        ]
-      }
-    ],
-    &quot;catalyst&quot;: [
-      {
-        &quot;claim&quot;: &quot;Catalyst risk is MEDIUM&quot;,
-        &quot;direction&quot;: &quot;bearish&quot;,
-        &quot;strength&quot;: 0.6,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;risk&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;inf_catalyst_001&quot;,
-          &quot;fact_catalyst_obs_catalyst_001_recovery&quot;,
-          &quot;fact_catalyst_obs_catalyst_002_recovery&quot;,
-          &quot;fact_catalyst_obs_catalyst_003_recovery&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.85,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;risk&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;catalyst_event_report_structured&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;2026-06-23: Rapid multi-week rally: last close 1211.38; 5D +23.4%, 1M +65.5%, 2M +169.6% — leadership move in crowded momentum factor.&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;timing&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;near_term_catalyst_001&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;2026-06-23: ATR(14): 91.92 (~7.6% of price); realized vol (20D) ~118.8% annualized.&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;timing&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;near_term_catalyst_002&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;2026-08-03: AMD reports 2026-08-03 (after close). Peer guidance/print can re-rate the whole semiconductor/memory basket — dated timing risk (~6 weeks).&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;timing&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;near_term_catalyst_003&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;2026-06-23: Quarantined source claims strong upcoming Micron fiscal Q3 guidance driven by AI/HBM demand (contaminated / mixed-source — requires verification).&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;timing&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;near_term_catalyst_004&quot;
-        ]
-      },
-      {
-        &quot;claim&quot;: &quot;2026-06-23: Regulatory / policy narrative flagged around export controls / tariffs / probes affecting semiconductors. If escalates, could be a material re-rating trigger.&quot;,
-        &quot;direction&quot;: &quot;risk_only&quot;,
-        &quot;strength&quot;: 0.7,
-        &quot;freshness&quot;: &quot;fresh&quot;,
-        &quot;decision_relevance&quot;: &quot;timing&quot;,
-        &quot;source_domain&quot;: &quot;catalyst&quot;,
-        &quot;source_ids&quot;: [
-          &quot;near_term_catalyst_005&quot;
-        ]
-      }
-    ]
-  },
-  &quot;top_supporting_evidence&quot;: [
-    {
-      &quot;claim&quot;: &quot;The reference market price appears erroneous; validating market-price will change stop/size calculations and is necessary before any execution (data-integrity anomaly).&quot;,
-      &quot;direction&quot;: &quot;bullish&quot;,
-      &quot;strength&quot;: 0.9,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;sizing&quot;,
-      &quot;source_domain&quot;: &quot;sentiment&quot;,
-      &quot;source_ids&quot;: [
-        &quot;inf_sentiment_001&quot;,
-        &quot;fact_sentiment_ah3_support_001_recovery&quot;,
-        &quot;fact_sentiment_ah3_against_001_recovery&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;Micron&#x27;s published guidance citing strong HBM demand will sustain a near-term bullish narrative that can drive price momentum over the next 8–12 weeks (attention acceleration).&quot;,
-      &quot;direction&quot;: &quot;bullish&quot;,
-      &quot;strength&quot;: 0.7,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;thesis&quot;,
-      &quot;source_domain&quot;: &quot;sentiment&quot;,
-      &quot;source_ids&quot;: [
-        &quot;inf_sentiment_002&quot;,
-        &quot;fact_sentiment_ah1_support_001_recovery&quot;,
-        &quot;fact_sentiment_ah1_against_001_recovery&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.&quot;,
-      &quot;direction&quot;: &quot;bullish&quot;,
-      &quot;strength&quot;: 0.6,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;entry&quot;,
-      &quot;source_domain&quot;: &quot;fundamentals&quot;,
-      &quot;source_ids&quot;: [
-        &quot;inf_fundamentals_002&quot;,
-        &quot;fact_fundamentals_h_active_1_support_001_recovery&quot;,
-        &quot;fact_fundamentals_h_active_1_support_002_recovery&quot;,
-        &quot;fact_fundamentals_h_active_1_against_001_recovery&quot;,
-        &quot;fact_fundamentals_h_active_1_against_002_recovery&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.&quot;,
-      &quot;direction&quot;: &quot;bullish&quot;,
-      &quot;strength&quot;: 0.55,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;entry&quot;,
-      &quot;source_domain&quot;: &quot;market&quot;,
-      &quot;source_ids&quot;: [
-        &quot;inf_market_001&quot;,
-        &quot;fact_market_h_active_1_support_001_recovery&quot;,
-        &quot;fact_market_h_active_1_support_002_recovery&quot;,
-        &quot;fact_market_h_active_1_against_001_recovery&quot;,
-        &quot;fact_market_h_active_1_against_002_recovery&quot;
-      ]
-    }
-  ],
-  &quot;top_opposing_evidence&quot;: [
-    {
-      &quot;claim&quot;: &quot;Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.&quot;,
-      &quot;direction&quot;: &quot;risk_only&quot;,
-      &quot;strength&quot;: 0.85,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;risk&quot;,
-      &quot;source_domain&quot;: &quot;catalyst&quot;,
-      &quot;source_ids&quot;: [
-        &quot;catalyst_event_report_structured&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.&quot;,
-      &quot;direction&quot;: &quot;bearish&quot;,
-      &quot;strength&quot;: 0.7,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;entry&quot;,
-      &quot;source_domain&quot;: &quot;fundamentals&quot;,
-      &quot;source_ids&quot;: [
-        &quot;inf_fundamentals_001&quot;,
-        &quot;fact_fundamentals_h_active_2_support_001_recovery&quot;,
-        &quot;fact_fundamentals_h_active_2_support_002_recovery&quot;,
-        &quot;fact_fundamentals_h_active_2_against_001_recovery&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;2026-06-23: Rapid multi-week rally: last close 1211.38; 5D +23.4%, 1M +65.5%, 2M +169.6% — leadership move in crowded momentum factor.&quot;,
-      &quot;direction&quot;: &quot;risk_only&quot;,
-      &quot;strength&quot;: 0.7,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;timing&quot;,
-      &quot;source_domain&quot;: &quot;catalyst&quot;,
-      &quot;source_ids&quot;: [
-        &quot;near_term_catalyst_001&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;2026-06-23: ATR(14): 91.92 (~7.6% of price); realized vol (20D) ~118.8% annualized.&quot;,
-      &quot;direction&quot;: &quot;risk_only&quot;,
-      &quot;strength&quot;: 0.7,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;timing&quot;,
-      &quot;source_domain&quot;: &quot;catalyst&quot;,
-      &quot;source_ids&quot;: [
-        &quot;near_term_catalyst_002&quot;
-      ]
-    },
-    {
-      &quot;claim&quot;: &quot;2026-08-03: AMD reports 2026-08-03 (after close). Peer guidance/print can re-rate the whole semiconductor/memory basket — dated timing risk (~6 weeks).&quot;,
-      &quot;direction&quot;: &quot;risk_only&quot;,
-      &quot;strength&quot;: 0.7,
-      &quot;freshness&quot;: &quot;fresh&quot;,
-      &quot;decision_relevance&quot;: &quot;timing&quot;,
-      &quot;source_domain&quot;: &quot;catalyst&quot;,
-      &quot;source_ids&quot;: [
-        &quot;near_term_catalyst_003&quot;
-      ]
-    }
-  ],
-  &quot;missing_or_stale_data&quot;: [
-    &quot;catalyst: unsupported_ledger_observation&quot;,
-    &quot;market: unsupported_hypothesis_evidence&quot;,
-    &quot;sentiment: unsupported_ledger_observation&quot;,
-    &quot;sentiment: unsupported_hypothesis_evidence&quot;,
-    &quot;news: missing_source_fact_id&quot;,
-    &quot;news: unsupported_ledger_observation&quot;,
-    &quot;news: unsupported_hypothesis_evidence&quot;,
-    &quot;fundamentals: unsupported_ledger_observation&quot;,
-    &quot;fundamentals: unsupported_hypothesis_evidence&quot;
-  ],
-  &quot;hard_constraints&quot;: [
-    &quot;catalyst_override:freeze_new_buys&quot;,
-    &quot;Do not add new size until one of: (a) verified company guidance/earnings that justify current price, or (b) meaningful intra-day/close confirmation with above-average volume.&quot;,
-    &quot;If initiating/adding, use smaller-than-normal size given realized vol (~119% ann.) and set wider ATR-based stops (e.g., 1.5–2× ATR = ~140–185 points), avoid fixed tight stops that are smaller than ATR.&quot;,
-    &quot;Reference technical stop anchors: 20D low 747.20 as a medium-term invalidation; consider partial profit-taking / trailing stops above 20D high 1213.56 on weakness.&quot;,
-    &quot;Monitor AMD (peer) earnings on 2026-08-03 — consider re-assessing risk budget 2–3 trading days before and after AMD print.&quot;,
-    &quot;Verify 10-Q contents / company press releases before assuming fundamental support; re-run analysis on receiving clean filings.&quot;,
-    &quot;Monitor regulatory headlines (export controls / tariffs) — escalate to risk-judge review if credible policy moves emerge.&quot;
-  ]
-}</code></pre></div></article>
-<article class="report-panel" data-panel-title="Trade Setup Diagnosis"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trade Setup Diagnosis</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;primary_setup&quot;: &quot;SQUEEZE_OR_FLOW_TRADE&quot;,
-  &quot;secondary_setup&quot;: null,
-  &quot;setup_quality&quot;: &quot;C&quot;,
-  &quot;why_this_setup&quot;: [
-    &quot;Classified as SQUEEZE_OR_FLOW_TRADE with entry_status=unclear.&quot;,
-    &quot;Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.&quot;,
-    &quot;The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.&quot;,
-    &quot;Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.&quot;,
-    &quot;The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.&quot;,
-    &quot;catalyst_override:freeze_new_buys&quot;,
-    &quot;Do not add new size until one of: (a) verified company guidance/earnings that justify current price, or (b) meaningful intra-day/close confirmation with above-average volume.&quot;,
-    &quot;If initiating/adding, use smaller-than-normal size given realized vol (~119% ann.) and set wider ATR-based stops (e.g., 1.5–2× ATR = ~140–185 points), avoid fixed tight stops that are smaller than ATR.&quot;
-  ],
-  &quot;what_would_invalidate_setup&quot;: [
-    &quot;Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.&quot;,
-    &quot;Policy/regulatory tail risk: an escalation in export controls, tariffs, or official probes could materially and rapidly re-rate memory vendors including Micron independent of company fundamentals.&quot;,
-    &quot;The current positive sentiment is largely analyst/institution-driven (sector upgrades), making the setup vulnerable to a crowded-trade unwind if MU fails to beat or if the broader semicap narrative cools (crowded trade / fade risk).&quot;,
-    &quot;Catalyst risk is MEDIUM&quot;
-  ],
-  &quot;setup_requires_trigger&quot;: true,
-  &quot;trigger_type&quot;: &quot;event&quot;,
-  &quot;entry_status&quot;: &quot;unclear&quot;
-}</code></pre></div></article>
-<article class="report-panel" data-panel-title="Scenario Analysis"><button class="panel-toggle" type="button" aria-expanded="false"><span>Scenario Analysis</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;bull_case&quot;: {
-    &quot;path&quot;: &quot;SQUEEZE_OR_FLOW_TRADE confirms and price works toward the next reward zone.&quot;,
-    &quot;probability&quot;: 0.45,
-    &quot;target_price&quot;: 114.0,
-    &quot;evidence&quot;: [
-      &quot;inf_sentiment_001&quot;,
-      &quot;fact_sentiment_ah3_support_001_recovery&quot;,
-      &quot;fact_sentiment_ah3_against_001_recovery&quot;,
-      &quot;inf_sentiment_002&quot;,
-      &quot;fact_sentiment_ah1_support_001_recovery&quot;,
-      &quot;fact_sentiment_ah1_against_001_recovery&quot;,
-      &quot;inf_fundamentals_002&quot;,
-      &quot;fact_fundamentals_h_active_1_support_001_recovery&quot;,
-      &quot;fact_fundamentals_h_active_1_support_002_recovery&quot;,
-      &quot;fact_fundamentals_h_active_1_against_001_recovery&quot;,
-      &quot;fact_fundamentals_h_active_1_against_002_recovery&quot;,
-      &quot;inf_market_001&quot;,
-      &quot;fact_market_h_active_1_support_001_recovery&quot;,
-      &quot;fact_market_h_active_1_support_002_recovery&quot;,
-      &quot;fact_market_h_active_1_against_001_recovery&quot;,
-      &quot;fact_market_h_active_1_against_002_recovery&quot;
-    ]
-  },
-  &quot;base_case&quot;: {
-    &quot;path&quot;: &quot;Setup remains unresolved; preserve optionality until trigger quality improves.&quot;,
-    &quot;probability&quot;: 0.09,
-    &quot;expected_price_zone&quot;: &quot;98.0-104.0&quot;,
-    &quot;evidence&quot;: [
-      &quot;inf_sentiment_001&quot;,
-      &quot;fact_sentiment_ah3_support_001_recovery&quot;,
-      &quot;fact_sentiment_ah3_against_001_recovery&quot;,
-      &quot;inf_sentiment_002&quot;,
-      &quot;fact_sentiment_ah1_support_001_recovery&quot;,
-      &quot;fact_sentiment_ah1_against_001_recovery&quot;,
-      &quot;catalyst_event_report_structured&quot;,
-      &quot;inf_fundamentals_001&quot;,
-      &quot;fact_fundamentals_h_active_2_support_001_recovery&quot;,
-      &quot;fact_fundamentals_h_active_2_support_002_recovery&quot;,
-      &quot;fact_fundamentals_h_active_2_against_001_recovery&quot;
-    ]
-  },
-  &quot;bear_case&quot;: {
-    &quot;path&quot;: &quot;Setup fails or catalyst risk dominates before confirmation.&quot;,
-    &quot;probability&quot;: 0.46,
-    &quot;invalidation_price&quot;: 92.5,
-    &quot;evidence&quot;: [
-      &quot;catalyst_event_report_structured&quot;,
-      &quot;inf_fundamentals_001&quot;,
-      &quot;fact_fundamentals_h_active_2_support_001_recovery&quot;,
-      &quot;fact_fundamentals_h_active_2_support_002_recovery&quot;,
-      &quot;fact_fundamentals_h_active_2_against_001_recovery&quot;,
-      &quot;near_term_catalyst_001&quot;,
-      &quot;near_term_catalyst_002&quot;,
-      &quot;near_term_catalyst_003&quot;
-    ]
-  },
-  &quot;dominant_risk&quot;: &quot;Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.&quot;,
-  &quot;asymmetric_payoff&quot;: true,
-  &quot;risk_reward_estimate&quot;: 1.87
-}</code></pre></div></article>
-<article class="report-panel" data-panel-title="Execution Plan Compiler"><button class="panel-toggle" type="button" aria-expanded="false"><span>Execution Plan Compiler</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;recommended_decision_version&quot;: &quot;v2&quot;,
-  &quot;recommended_execution_intent&quot;: &quot;WAIT_FOR_TRIGGER&quot;,
-  &quot;recommended_action&quot;: &quot;HOLD&quot;,
-  &quot;order_type&quot;: &quot;MARKET&quot;,
-  &quot;time_in_force&quot;: &quot;DAY&quot;,
-  &quot;limit_price&quot;: null,
-  &quot;stop_price&quot;: null,
-  &quot;trail_percent&quot;: null,
-  &quot;trail_price&quot;: null,
-  &quot;stop_loss&quot;: 92.5,
-  &quot;take_profit&quot;: 114.0,
-  &quot;position_size_pct&quot;: null,
-  &quot;confidence&quot;: &quot;LOW&quot;,
-  &quot;compiler_checks&quot;: [
-    &quot;setup quality C prefers HOLD/WAIT_FOR_TRIGGER&quot;,
-    &quot;entry_status unclear is not immediate-actionable&quot;,
-    &quot;catalyst override freeze_new_buys applied&quot;
-  ],
-  &quot;canonical_json_contract&quot;: {
-    &quot;decision_version&quot;: &quot;v2&quot;,
-    &quot;ticker&quot;: &quot;MU&quot;,
-    &quot;plan_mode&quot;: &quot;conditional&quot;,
-    &quot;execution_plan&quot;: [
-      {
-        &quot;branch_id&quot;: &quot;setup_confirmation&quot;,
-        &quot;priority&quot;: 1,
-        &quot;conditions&quot;: {
-          &quot;price&quot;: {
-            &quot;close_above&quot;: 114.0,
-            &quot;last_price&quot;: null,
-            &quot;close_below&quot;: null,
-            &quot;tolerance_pct&quot;: 0.0
-          },
-          &quot;schedule&quot;: {
-            &quot;session_constraint&quot;: &quot;MARKET_HOURS&quot;
-          }
-        },
-        &quot;event_conditions&quot;: [],
-        &quot;action_template&quot;: {
-          &quot;action&quot;: &quot;BUY&quot;,
-          &quot;quantity&quot;: null,
-          &quot;order_type&quot;: &quot;LIMIT&quot;,
-          &quot;time_in_force&quot;: &quot;DAY&quot;,
-          &quot;extended_hours&quot;: false,
-          &quot;limit_price&quot;: 114.0,
-          &quot;stop_price&quot;: null,
-          &quot;trail_percent&quot;: null,
-          &quot;trail_price&quot;: null,
-          &quot;stop_loss&quot;: 92.5,
-          &quot;take_profit&quot;: 114.0,
-          &quot;position_size_pct&quot;: 0.06,
-          &quot;time_horizon&quot;: &quot;2-3 months&quot;,
-          &quot;confidence&quot;: &quot;LOW&quot;,
-          &quot;rationale&quot;: &quot;Conditional entry only after setup confirmation.&quot;
-        }
-      }
-    ],
-    &quot;default_action&quot;: null,
-    &quot;time_horizon&quot;: &quot;2-3 months&quot;,
-    &quot;confidence&quot;: &quot;LOW&quot;,
-    &quot;rationale&quot;: &quot;Wait for trigger because current setup is not immediately actionable.&quot;,
-    &quot;action&quot;: &quot;HOLD&quot;,
-    &quot;execution_intent&quot;: &quot;wait_for_trigger&quot;,
-    &quot;override_reason&quot;: null
-  }
-}</code></pre></div></article>
-<article class="report-panel" data-panel-title="Trader Self Audit"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Self Audit</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><pre><code class="language-json">{
-  &quot;passed&quot;: true,
-  &quot;violations&quot;: [],
-  &quot;repairs_applied&quot;: [],
-  &quot;final_action_consistent&quot;: true
-}</code></pre></div></article></section>
+<article class="report-panel" data-panel-title="Trader Decision Brief"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Decision Brief</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="brief-overview"><div class="brief-stat"><span class="brief-stat-label">Ticker</span><span class="brief-stat-value">MU</span></div><div class="brief-stat"><span class="brief-stat-label">Reference Price</span><span class="brief-stat-value">—</span></div><div class="brief-stat"><span class="brief-stat-label">Time Horizon</span><span class="brief-stat-value">2-3 months</span></div></div>
+<div class="evidence-domains"><h4>Evidence by Domain</h4>
+<div class="evidence-domain"><h5 class="domain-label">market <span class="text-muted">(2)</span></h5>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:55%"></div></div><span class="strength-label">0.55</span></div><span class="relevance-tag">entry</span></div><p class="evidence-claim">Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.</p></div>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:50%"></div></div><span class="strength-label">0.50</span></div><span class="relevance-tag">risk</span></div><p class="evidence-claim">Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.</p></div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">fundamentals <span class="text-muted">(2)</span></h5>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">entry</span></div><p class="evidence-claim">The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.</p></div>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:60%"></div></div><span class="strength-label">0.60</span></div><span class="relevance-tag">entry</span></div><p class="evidence-claim">The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.</p></div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">news <span class="text-muted">(2)</span></h5>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:65%"></div></div><span class="strength-label">0.65</span></div><span class="relevance-tag">entry</span></div><p class="evidence-claim">Momentum-first thesis: the current MU rally is largely flow-driven and therefore has elevated short-term pullback risk; absent verified company data, do not add size.</p></div>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:50%"></div></div><span class="strength-label">0.50</span></div><span class="relevance-tag">risk</span></div><p class="evidence-claim">Policy/regulatory tail risk: an escalation in export controls, tariffs, or official probes could materially and rapidly re-rate memory vendors including Micron independent of company fundamentals.</p></div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">sentiment <span class="text-muted">(3)</span></h5>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:90%"></div></div><span class="strength-label">0.90</span></div><span class="relevance-tag">sizing</span></div><p class="evidence-claim">The reference market price appears erroneous; validating market-price will change stop/size calculations and is necessary before any execution (data-integrity anomaly).</p></div>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">thesis</span></div><p class="evidence-claim">Micron&#x27;s published guidance citing strong HBM demand will sustain a near-term bullish narrative that can drive price momentum over the next 8–12 weeks (attention acceleration).</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:60%"></div></div><span class="strength-label">0.60</span></div><span class="relevance-tag">risk</span></div><p class="evidence-claim">The current positive sentiment is largely analyst/institution-driven (sector upgrades), making the setup vulnerable to a crowded-trade unwind if MU fails to beat or if the broader semicap narrative cools (crowded trade / fade risk).</p></div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">catalyst <span class="text-muted">(7)</span></h5>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:60%"></div></div><span class="strength-label">0.60</span></div><span class="relevance-tag">risk</span></div><p class="evidence-claim">Catalyst risk is MEDIUM</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:85%"></div></div><span class="strength-label">0.85</span></div><span class="relevance-tag">risk</span></div><p class="evidence-claim">Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span></div><p class="evidence-claim">2026-06-23: Rapid multi-week rally: last close 1211.38; 5D +23.4%, 1M +65.5%, 2M +169.6% — leadership move in crowded momentum factor.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span></div><p class="evidence-claim">2026-06-23: ATR(14): 91.92 (~7.6% of price); realized vol (20D) ~118.8% annualized.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span></div><p class="evidence-claim">2026-08-03: AMD reports 2026-08-03 (after close). Peer guidance/print can re-rate the whole semiconductor/memory basket — dated timing risk (~6 weeks).</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span></div><p class="evidence-claim">2026-06-23: Quarantined source claims strong upcoming Micron fiscal Q3 guidance driven by AI/HBM demand (contaminated / mixed-source — requires verification).</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span></div><p class="evidence-claim">2026-06-23: Regulatory / policy narrative flagged around export controls / tariffs / probes affecting semiconductors. If escalates, could be a material re-rating trigger.</p></div>
+</div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">Top Supporting Evidence <span class="text-muted">(4)</span></h5>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:90%"></div></div><span class="strength-label">0.90</span></div><span class="relevance-tag">sizing</span><span class="domain-tag">sentiment</span></div><p class="evidence-claim">The reference market price appears erroneous; validating market-price will change stop/size calculations and is necessary before any execution (data-integrity anomaly).</p></div>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">thesis</span><span class="domain-tag">sentiment</span></div><p class="evidence-claim">Micron&#x27;s published guidance citing strong HBM demand will sustain a near-term bullish narrative that can drive price momentum over the next 8–12 weeks (attention acceleration).</p></div>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:60%"></div></div><span class="strength-label">0.60</span></div><span class="relevance-tag">entry</span><span class="domain-tag">fundamentals</span></div><p class="evidence-claim">The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.</p></div>
+<div class="evidence-card evidence-card--bullish"><div class="evidence-meta"><span class="direction-badge direction-badge--bullish">↑ bullish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:55%"></div></div><span class="strength-label">0.55</span></div><span class="relevance-tag">entry</span><span class="domain-tag">market</span></div><p class="evidence-claim">Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.</p></div>
+</div>
+<div class="evidence-domain"><h5 class="domain-label">Top Opposing Evidence <span class="text-muted">(5)</span></h5>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:85%"></div></div><span class="strength-label">0.85</span></div><span class="relevance-tag">risk</span><span class="domain-tag">catalyst</span></div><p class="evidence-claim">Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.</p></div>
+<div class="evidence-card evidence-card--bearish"><div class="evidence-meta"><span class="direction-badge direction-badge--bearish">↓ bearish</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">entry</span><span class="domain-tag">fundamentals</span></div><p class="evidence-claim">The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span><span class="domain-tag">catalyst</span></div><p class="evidence-claim">2026-06-23: Rapid multi-week rally: last close 1211.38; 5D +23.4%, 1M +65.5%, 2M +169.6% — leadership move in crowded momentum factor.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span><span class="domain-tag">catalyst</span></div><p class="evidence-claim">2026-06-23: ATR(14): 91.92 (~7.6% of price); realized vol (20D) ~118.8% annualized.</p></div>
+<div class="evidence-card evidence-card--risk"><div class="evidence-meta"><span class="direction-badge direction-badge--risk">⚠ risk_only</span><div class="strength-bar"><div class="strength-track"><div class="strength-fill" style="width:70%"></div></div><span class="strength-label">0.70</span></div><span class="relevance-tag">timing</span><span class="domain-tag">catalyst</span></div><p class="evidence-claim">2026-08-03: AMD reports 2026-08-03 (after close). Peer guidance/print can re-rate the whole semiconductor/memory basket — dated timing risk (~6 weeks).</p></div>
+</div>
+<div class="constraints-section"><h4>Hard Constraints (7)</h4>
+<ol class="constraint-list">
+<li>catalyst_override:freeze_new_buys</li>
+<li>Do not add new size until one of: (a) verified company guidance/earnings that justify current price, or (b) meaningful intra-day/close confirmation with above-average volume.</li>
+<li>If initiating/adding, use smaller-than-normal size given realized vol (~119% ann.) and set wider ATR-based stops (e.g., 1.5–2× ATR = ~140–185 points), avoid fixed tight stops that are smaller than ATR.</li>
+<li>Reference technical stop anchors: 20D low 747.20 as a medium-term invalidation; consider partial profit-taking / trailing stops above 20D high 1213.56 on weakness.</li>
+<li>Monitor AMD (peer) earnings on 2026-08-03 — consider re-assessing risk budget 2–3 trading days before and after AMD print.</li>
+<li>Verify 10-Q contents / company press releases before assuming fundamental support; re-run analysis on receiving clean filings.</li>
+<li>Monitor regulatory headlines (export controls / tariffs) — escalate to risk-judge review if credible policy moves emerge.</li>
+</ol></div>
+<div class="missing-data-banner"><h4>Missing / Stale Data (9)</h4><ul><li>catalyst: unsupported_ledger_observation</li><li>market: unsupported_hypothesis_evidence</li><li>sentiment: unsupported_ledger_observation</li><li>sentiment: unsupported_hypothesis_evidence</li><li>news: missing_source_fact_id</li><li>news: unsupported_ledger_observation</li><li>news: unsupported_hypothesis_evidence</li><li>fundamentals: unsupported_ledger_observation</li><li>fundamentals: unsupported_hypothesis_evidence</li></ul></div></div></article>
+<article class="report-panel" data-panel-title="Trade Setup Diagnosis"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trade Setup Diagnosis</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="setup-header"><div class="setup-type">SQUEEZE OR FLOW TRADE</div><div class="setup-metrics"><span class="quality-badge quality-badge--c">Quality C</span><span class="setup-detail">Entry: <strong>unclear</strong></span><span class="setup-detail">Trigger: <strong>required (event)</strong></span></div></div>
+<div class="setup-section"><h4>Why this setup</h4><ul class="setup-reasons">
+<li>Classified as SQUEEZE_OR_FLOW_TRADE with entry_status=unclear.</li>
+<li>Momentum continuation: price breakout near 20-day highs will continue while price stays above short-term dynamic support (EMA10 / SMA50); continuation favored but fragile due to average volume and high realized volatility.</li>
+<li>The company has experienced a structural/operational inflection (large revenue + margin improvement) driven by stronger demand mix (AI/HBM), which — if confirmed by company guidance or Q3 numbers — supports continued outperformance over the next 8–12 weeks.</li>
+<li>Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.</li>
+<li>The current price rally is predominantly momentum-driven and is vulnerable to a significant pullback if corporate verification (guidance/filings) or peer reads (AMD) are neutral/soft.</li>
+<li>catalyst_override:freeze_new_buys</li>
+<li>Do not add new size until one of: (a) verified company guidance/earnings that justify current price, or (b) meaningful intra-day/close confirmation with above-average volume.</li>
+<li>If initiating/adding, use smaller-than-normal size given realized vol (~119% ann.) and set wider ATR-based stops (e.g., 1.5–2× ATR = ~140–185 points), avoid fixed tight stops that are smaller than ATR.</li>
+</ul></div>
+<div class="setup-section setup-section--warn"><h4>What would invalidate</h4><ul>
+<li>Options/positioning-driven rally and potential short-cover/gamma squeeze: the price advance may be amplified by option flows and existing short positions; this increases volatility and the risk of quick unwind when flows stop.</li>
+<li>Policy/regulatory tail risk: an escalation in export controls, tariffs, or official probes could materially and rapidly re-rate memory vendors including Micron independent of company fundamentals.</li>
+<li>The current positive sentiment is largely analyst/institution-driven (sector upgrades), making the setup vulnerable to a crowded-trade unwind if MU fails to beat or if the broader semicap narrative cools (crowded trade / fade risk).</li>
+<li>Catalyst risk is MEDIUM</li>
+</ul></div></div></article>
+<article class="report-panel" data-panel-title="Scenario Analysis"><button class="panel-toggle" type="button" aria-expanded="false"><span>Scenario Analysis</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="scenario-grid">
+<div class="scenario-card"><div class="scenario-label" style="color:#059669">Bull</div><div class="scenario-prob"><span class="scenario-pct">45%</span><div class="scenario-bar"><div class="scenario-fill" style="width:45%;background:#059669"></div></div></div><div class="scenario-price">Target: $114.0</div><p class="scenario-path">SQUEEZE_OR_FLOW_TRADE confirms and price works toward the next reward zone.</p></div>
+<div class="scenario-card"><div class="scenario-label" style="color:#6b7280">Base</div><div class="scenario-prob"><span class="scenario-pct">9%</span><div class="scenario-bar"><div class="scenario-fill" style="width:9%;background:#6b7280"></div></div></div><div class="scenario-price">Range: $98.0-104.0</div><p class="scenario-path">Setup remains unresolved; preserve optionality until trigger quality improves.</p></div>
+<div class="scenario-card"><div class="scenario-label" style="color:#dc2626">Bear</div><div class="scenario-prob"><span class="scenario-pct">46%</span><div class="scenario-bar"><div class="scenario-fill" style="width:46%;background:#dc2626"></div></div></div><div class="scenario-price">Invalidation: $92.5</div><p class="scenario-path">Setup fails or catalyst risk dominates before confirmation.</p></div>
+</div>
+<div class="scenario-summary">Risk/Reward: <strong>1.87</strong> · Asymmetric payoff: <strong>Yes</strong> · Dominant risk: Catalyst/event risk is MEDIUM; recommended action is freeze_new_buys.</div></div></article>
+<article class="report-panel" data-panel-title="Execution Plan Compiler"><button class="panel-toggle" type="button" aria-expanded="false"><span>Execution Plan Compiler</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="exec-header"><span class="action-badge action-badge--hold">HOLD</span><span class="exec-intent">WAIT FOR TRIGGER</span><span class="confidence-badge confidence-badge--low">LOW</span></div>
+<div class="exec-params"><div class="param-cell"><span class="param-label">Version</span><span class="param-value">v2</span></div><div class="param-cell"><span class="param-label">Order type</span><span class="param-value">MARKET</span></div><div class="param-cell"><span class="param-label">Time in force</span><span class="param-value">DAY</span></div><div class="param-cell"><span class="param-label">Stop-loss</span><span class="param-value">92.5</span></div><div class="param-cell"><span class="param-label">Take-profit</span><span class="param-value">114.0</span></div></div>
+<div class="exec-section"><h4>Execution Branches</h4>
+<div class="exec-branch"><div class="branch-header"><code>setup_confirmation</code><span class="text-muted">Priority 1</span></div><div class="branch-conditions">Conditions: Close above 114.0</div><div class="branch-action">→ <span class="action-badge action-badge--buy action-badge--sm">BUY</span> · 6% size · Stop 92.5 · TP 114.0</div></div>
+</div>
+<div class="exec-section"><h4>Compiler Checks</h4><ul class="check-list">
+<li class="check-item"><span class="check-icon">✓</span> setup quality C prefers HOLD/WAIT_FOR_TRIGGER</li>
+<li class="check-item"><span class="check-icon">✓</span> entry_status unclear is not immediate-actionable</li>
+<li class="check-item"><span class="check-icon">✓</span> catalyst override freeze_new_buys applied</li>
+</ul></div></div></article>
+<article class="report-panel" data-panel-title="Trader Self Audit"><button class="panel-toggle" type="button" aria-expanded="false"><span>Trader Self Audit</span><span class="chevron">⌄</span></button><div class="panel-body" hidden><div class="audit-status audit-status--pass"><span class="audit-status-icon">✓</span><div class="audit-status-details"><span class="audit-status-label">PASSED</span><span class="audit-status-meta">0 violations · 0 repairs · Action consistent: yes</span></div></div></div></article></section>
 <section class="report-section" id="final-verdict" data-section-id="final-verdict"><div class="section-heading"><h2>Final Verdict</h2></div><article class="report-panel is-open" data-panel-title="Final Trade Decision"><button class="panel-toggle" type="button" aria-expanded="true"><span>Final Trade Decision</span><span class="chevron">⌄</span></button><div class="panel-body"><p>Narrative and decision rationale</p>
 <p>Summary of the debate (key points)</p>
 <ul>

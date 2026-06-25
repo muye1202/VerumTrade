@@ -13,34 +13,37 @@
   <rect width="1280" height="640" fill="url(#bg)"/>
   <rect x="0" y="0" width="1280" height="6" fill="url(#accent)"/>
 
-  <!-- Wordmark -->
-  <text x="80" y="190" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="700" fill="#fdfbf6">
-    Verum<tspan fill="#f5a623">Trade</tspan>
-  </text>
+  <!-- Main content block, shifted right to sit centered horizontally -->
+  <g transform="translate(100, 0)">
+    <!-- Wordmark -->
+    <text x="80" y="190" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="700" fill="#fdfbf6">
+      Verum<tspan fill="#f5a623">Trade</tspan>
+    </text>
 
-  <!-- Latin motto -->
-  <text x="84" y="238" font-size="26" font-style="italic" fill="#b9b29f">
-    verum &#8212; &#8220;truth&#8221;: a verifiable, evidence-first path to every trade.
-  </text>
+    <!-- Latin motto -->
+    <text x="84" y="238" font-size="26" font-style="italic" fill="#b9b29f">
+      verum &#8212; &#8220;truth&#8221;: a verifiable, evidence-first path to every trade.
+    </text>
 
-  <!-- Tagline -->
-  <text x="80" y="330" font-size="40" font-weight="600" fill="#fdfbf6">An open-source multi-agent LLM</text>
-  <text x="80" y="384" font-size="40" font-weight="600" fill="#fdfbf6">trading framework with <tspan fill="#f5a623">visible</tspan></text>
-  <text x="80" y="438" font-size="40" font-weight="600" fill="#fdfbf6"><tspan fill="#f5a623">reasoning &amp; decision traces</tspan>.</text>
+    <!-- Tagline -->
+    <text x="80" y="330" font-size="40" font-weight="600" fill="#fdfbf6">An open-source multi-agent LLM</text>
+    <text x="80" y="384" font-size="40" font-weight="600" fill="#fdfbf6">trading framework with <tspan fill="#f5a623">visible</tspan></text>
+    <text x="80" y="438" font-size="40" font-weight="600" fill="#fdfbf6"><tspan fill="#f5a623">reasoning &amp; decision traces</tspan>.</text>
 
-  <!-- Pipeline chips -->
-  <g font-size="22" fill="#e9e3d3">
-    <rect x="80"  y="492" width="232" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
-    <text x="196" y="525" text-anchor="middle">Evidence Graph</text>
-    <rect x="328" y="492" width="232" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
-    <text x="444" y="525" text-anchor="middle">Bull / Bear Debate</text>
-    <rect x="576" y="492" width="196" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
-    <text x="674" y="525" text-anchor="middle">Risk Review</text>
-    <rect x="788" y="492" width="252" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
-    <text x="914" y="525" text-anchor="middle">Alpaca Execution</text>
+    <!-- Pipeline chips -->
+    <g font-size="22" fill="#e9e3d3">
+      <rect x="80"  y="492" width="232" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
+      <text x="196" y="525" text-anchor="middle">Evidence Graph</text>
+      <rect x="328" y="492" width="218" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
+      <text x="437" y="525" text-anchor="middle">Multi-Analysts</text>
+      <rect x="562" y="492" width="232" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
+      <text x="678" y="525" text-anchor="middle">Bull / Bear Debate</text>
+      <rect x="810" y="492" width="196" height="52" rx="26" fill="#2c2920" stroke="#48422f"/>
+      <text x="908" y="525" text-anchor="middle">Risk Review</text>
+    </g>
   </g>
 
   <!-- Footer -->
-  <text x="80" y="600" font-size="22" font-weight="500" fill="#9b937e">github.com/muye1202/VerumTrade</text>
+  <text x="180" y="600" font-size="22" font-weight="500" fill="#9b937e">github.com/muye1202/VerumTrade</text>
   <text x="1200" y="600" text-anchor="end" font-size="22" fill="#9b937e">Apache-2.0 &#183; LangGraph</text>
 </svg>
