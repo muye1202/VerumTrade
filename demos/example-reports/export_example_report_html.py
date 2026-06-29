@@ -15,6 +15,17 @@ DETAILS_RE = re.compile(
     re.DOTALL,
 )
 
+MACHINE_OUTPUT_PANEL_TITLES = {
+    "Full Evidence Graph JSON",
+    "Investment Debate State",
+    "Risk Debate State",
+    "Market Snapshot",
+    "Decision Guard",
+    "Tool Cache Metrics",
+    "Vendor Telemetry",
+    "Analyst Workbench Metrics",
+}
+
 
 # Curated glossary of the finance terms and symbols that recur in Verumtrade
 # reports. Every entry whose aliases appear in the report is listed in the
@@ -739,7 +750,117 @@ def _render_table(lines: list[str]) -> str:
     return "".join(parts)
 
 
+def _extract_markdown_table(markdown: str) -> tuple[list[str], list[list[str]]] | None:
+    table_lines = [
+        line.strip()
+        for line in markdown.strip().splitlines()
+        if line.strip().startswith("|") and line.strip().endswith("|")
+    ]
+    if len(table_lines) < 2 or not _is_table_separator(table_lines[1]):
+        return None
+
+    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in table_lines]
+    return rows[0], rows[2:]
+
+
+def _value_badge(label: str, value: str) -> str:
+    value_html = html.escape(value or "—").replace("_", "_<wbr>")
+    normalized = value.strip().lower()
+    label_key = label.strip().lower()
+
+    if label_key == "recommended action":
+        action_cls = normalized if normalized in ("buy", "sell", "hold") else "hold"
+        return f'<span class="metric-badge metric-badge--{action_cls}">{value_html}</span>'
+    if label_key == "setup quality":
+        grade_cls = normalized if normalized in ("a", "b", "c", "d", "f") else "default"
+        return f'<span class="metric-badge metric-badge--grade-{grade_cls}">{value_html}</span>'
+    if label_key in ("primary setup", "execution intent"):
+        return f'<span class="metric-badge metric-badge--neutral">{value_html}</span>'
+    return value_html
+
+
+def _render_run_snapshot_cards(body: str) -> str | None:
+    parsed = _extract_markdown_table(body)
+    if parsed is None:
+        return None
+
+    headers, rows = parsed
+    if [h.lower() for h in headers[:2]] != ["field", "value"]:
+        return None
+
+    cards: list[str] = ['<div class="snapshot-grid">']
+    primary_labels = {"ticker", "recommended action", "setup quality", "execution intent"}
+    for label, value, *_ in rows:
+        modifier = " snapshot-card--primary" if label.strip().lower() in primary_labels else ""
+        cards.append(
+            f'<div class="snapshot-card{modifier}">'
+            f'<span class="snapshot-label">{html.escape(label)}</span>'
+            f'<span class="snapshot-value">{_value_badge(label, value)}</span>'
+            f'</div>'
+        )
+    cards.append("</div>")
+    return "".join(cards)
+
+
+def _render_scenario_snapshot_cards(body: str) -> str | None:
+    parsed = _extract_markdown_table(body)
+    if parsed is None:
+        return None
+
+    headers, rows = parsed
+    if [h.lower() for h in headers[:4]] != ["scenario", "probability", "target / risk", "path"]:
+        return None
+
+    parts: list[str] = ['<div class="scenario-readout">']
+    for scenario, probability, target, path, *_ in rows:
+        scenario_key = scenario.strip().lower()
+        scenario_cls = scenario_key if scenario_key in ("bull", "base", "bear") else "base"
+        try:
+            pct = max(0, min(100, round(float(probability) * 100)))
+        except ValueError:
+            pct = 0
+        target_text = target.strip() or "No target"
+        parts.append(
+            f'<article class="scenario-card scenario-card--{scenario_cls}">'
+            f'<div class="scenario-card-header">'
+            f'<span class="scenario-label">{html.escape(scenario)}</span>'
+            f'<span class="scenario-pct">{pct}%</span>'
+            f'</div>'
+            f'<div class="scenario-bar" aria-label="{html.escape(scenario)} probability {pct}%">'
+            f'<div class="scenario-fill" style="width:{pct}%"></div>'
+            f'</div>'
+            f'<div class="scenario-price">{html.escape(target_text)}</div>'
+            f'<p class="scenario-path">{html.escape(path)}</p>'
+            f'</article>'
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _render_section_body(title: str, body: str) -> str:
+    if title == "Run Snapshot":
+        structured = _render_run_snapshot_cards(body)
+        if structured is not None:
+            return structured
+    if title == "Scenario Snapshot":
+        structured = _render_scenario_snapshot_cards(body)
+        if structured is not None:
+            return structured
+    return _render_panels(body)
+
+
+def _strip_embedded_machine_json(markdown: str) -> str:
+    markdown = re.sub(
+        r"BEGIN_DECISION_JSON\s*.*?\s*END_DECISION_JSON",
+        "",
+        markdown,
+        flags=re.DOTALL,
+    )
+    return markdown
+
+
 def render_markdown_fragment(markdown: str) -> str:
+    markdown = _strip_embedded_machine_json(markdown)
     lines = markdown.strip("\n").splitlines()
     parts: list[str] = []
     paragraph: list[str] = []
@@ -775,10 +896,11 @@ def render_markdown_fragment(markdown: str) -> str:
         stripped = line.strip()
         if stripped.startswith("```"):
             if in_fence:
-                parts.append(
-                    f"<pre><code class=\"language-{html.escape(fence_lang)}\">"
-                    f"{html.escape(chr(10).join(fence_lines))}</code></pre>"
-                )
+                if fence_lang.lower() != "json":
+                    parts.append(
+                        f"<pre><code class=\"language-{html.escape(fence_lang)}\">"
+                        f"{html.escape(chr(10).join(fence_lines))}</code></pre>"
+                    )
                 in_fence = False
                 fence_lang = ""
                 fence_lines = []
@@ -832,7 +954,7 @@ def render_markdown_fragment(markdown: str) -> str:
         flush_list()
         paragraph.append(stripped)
 
-    if in_fence:
+    if in_fence and fence_lang.lower() != "json":
         parts.append(f"<pre><code>{html.escape(chr(10).join(fence_lines))}</code></pre>")
     flush_paragraph()
     flush_list()
@@ -849,12 +971,17 @@ def _render_panels(section_markdown: str) -> str:
             output.append(render_markdown_fragment(before))
 
         title = html.unescape(match.group("title")).strip()
-        is_open = bool(match.group("open"))
         structured = _try_structured_render(title, match.group("body"))
+        if structured is None and (
+            title in MACHINE_OUTPUT_PANEL_TITLES
+            or (title.endswith("JSON") and "```json" in match.group("body"))
+        ):
+            cursor = match.end()
+            continue
         body = structured if structured is not None else render_markdown_fragment(match.group("body"))
-        expanded = "true" if is_open else "false"
-        hidden = "" if is_open else " hidden"
-        open_class = " is-open" if is_open else ""
+        expanded = "false"
+        hidden = " hidden"
+        open_class = ""
         output.append(
             f'<article class="report-panel{open_class}" data-panel-title="{html.escape(title)}">'
             f'<button class="panel-toggle" type="button" aria-expanded="{expanded}">'
@@ -1522,6 +1649,7 @@ def _render_evidence_graph_structured(body: str) -> str | None:
         parts.append('</div>')
 
     if footer_text:
+        footer_text = footer_text.replace(" Full evidence graph JSON is included below.", "")
         parts.append(f'<div class="evgraph-footer">{html.escape(footer_text)}</div>')
 
     parts.append('</div>')
@@ -1690,7 +1818,7 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
         rendered_sections.append(
             f'<section class="report-section" id="{section_id}" data-section-id="{section_id}">'
             f'<div class="section-heading"><h2>{html.escape(title)}</h2></div>'
-            f'{_render_panels(body)}</section>'
+            f'{_render_section_body(title, body)}</section>'
         )
 
     _SECTION_SEEN.clear()
@@ -1702,12 +1830,13 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     _ANNOTATE = True
 
     if glossary_html:
-        nav_items.insert(
-            0, '<a href="#key-terms" data-nav-target="key-terms">Key terms &amp; symbols</a>'
-        )
+        glossary_nav = '<a href="#key-terms" data-nav-target="key-terms">Key terms &amp; symbols</a>'
+        nav_items.append(glossary_nav)
 
     nav_html = "\n".join(nav_items)
-    sections_html = glossary_html + "\n" + "\n".join(rendered_sections)
+    if glossary_html:
+        rendered_sections.append(glossary_html)
+    sections_html = "\n".join(rendered_sections)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -1718,57 +1847,71 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f6f7f9;
+      --bg: #f3f5f8;
       --surface: #ffffff;
-      --surface-2: #eef2f5;
-      --text: #1f2933;
+      --surface-2: #f7f9fc;
+      --ink: #0f172a;
+      --text: #243142;
       --muted: #667085;
-      --line: #d9e0e7;
+      --line: #d8e0ea;
+      --line-strong: #bdc8d6;
       --accent: #0f766e;
       --accent-2: #2563eb;
+      --accent-3: #7c3aed;
+      --good: #047857;
+      --bad: #b42318;
       --warn: #b45309;
-      --shadow: 0 12px 32px rgba(31, 41, 51, 0.08);
+      --shadow: 0 18px 48px rgba(15, 23, 42, 0.09);
+      --shadow-soft: 0 8px 22px rgba(15, 23, 42, 0.06);
       --measure: 74ch;
     }}
     * {{ box-sizing: border-box; }}
     html {{ scroll-behavior: smooth; }}
     body {{
       margin: 0;
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34rem),
+        linear-gradient(180deg, #ffffff 0, var(--bg) 19rem);
       color: var(--text);
       font: 15px/1.62 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
     }}
     .app-header {{
-      position: sticky;
-      top: 0;
-      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 24px 18px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .brand {{ display: grid; gap: 5px; min-width: 0; }}
+    .brand strong {{ color: var(--ink); font-size: clamp(24px, 3vw, 38px); line-height: 1.08; font-weight: 850; }}
+    .brand span {{ color: var(--muted); font-size: 13px; }}
+    .toolbar {{
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 14px 24px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.92);
-      backdrop-filter: blur(10px);
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: 620px;
     }}
-    .brand {{ display: grid; gap: 2px; min-width: 0; }}
-    .brand strong {{ font-size: 16px; }}
-    .brand span {{ color: var(--muted); font-size: 12px; }}
-    .toolbar {{ display: flex; align-items: center; gap: 8px; }}
     .language-switcher {{
       display: inline-flex;
       gap: 3px;
       padding: 3px;
       border: 1px solid var(--line);
-      border-radius: 999px;
+      border-radius: 7px;
       background: #fff;
+      box-shadow: var(--shadow-soft);
     }}
     .language-switcher button {{
       height: 28px;
       min-width: 44px;
       border: 0;
-      border-radius: 999px;
+      border-radius: 5px;
       padding: 0 10px;
       color: var(--muted);
       background: transparent;
@@ -1788,39 +1931,38 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
       min-width: 180px;
       height: 36px;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 7px;
       padding: 0 10px;
       background: #fff;
       color: var(--text);
+      box-shadow: var(--shadow-soft);
     }}
     .toolbar button, .panel-toggle {{
       border: 1px solid var(--line);
       background: #fff;
       color: var(--text);
-      border-radius: 6px;
+      border-radius: 7px;
       cursor: pointer;
     }}
-    .toolbar button {{ height: 36px; padding: 0 12px; }}
-    .toolbar button:hover, .panel-toggle:hover {{ border-color: var(--accent); }}
+    .toolbar button {{ height: 36px; padding: 0 12px; font-weight: 750; box-shadow: var(--shadow-soft); }}
+    .toolbar button:hover, .panel-toggle:hover {{ border-color: var(--accent); color: var(--accent); }}
     .report-layout {{
       display: grid;
-      grid-template-columns: 260px minmax(0, 1fr);
+      grid-template-columns: 250px minmax(0, 1fr);
       gap: 24px;
       max-width: 1440px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 22px 24px 44px;
     }}
     .side-nav {{
-      position: sticky;
-      top: 78px;
       align-self: start;
       display: grid;
       gap: 6px;
-      padding: 12px;
+      padding: 14px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: var(--surface);
-      box-shadow: var(--shadow);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--shadow-soft);
     }}
     .side-nav a {{
       display: block;
@@ -1828,30 +1970,36 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
       border-radius: 6px;
       color: var(--muted);
       text-decoration: none;
-      font-weight: 600;
+      font-weight: 720;
+      font-size: 13px;
+      overflow-wrap: anywhere;
     }}
-    .side-nav a:hover, .side-nav a.is-active {{ color: var(--accent); background: #e7f5f2; }}
-    main {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }}
+    .side-nav a:hover, .side-nav a.is-active {{ color: var(--ink); background: #ecfdf5; }}
+    main {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }}
     /* Let sections shrink so wide tables/code scroll inside their own box
        instead of stretching the whole page when panels are expanded. */
     main > * {{ min-width: 0; }}
     .intro, .report-section {{
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: var(--surface);
+      background: rgba(255, 255, 255, 0.96);
       box-shadow: var(--shadow);
+      overflow: hidden;
     }}
-    .intro {{ padding: 20px 22px; }}
+    .intro {{
+      padding: 22px 24px;
+      border-color: #c7d2fe;
+      background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+    }}
     .section-heading {{
-      padding: 16px 18px;
+      padding: 15px 18px;
       border-bottom: 1px solid var(--line);
-      background: var(--surface-2);
-      border-radius: 8px 8px 0 0;
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface-2) 100%);
     }}
-    .report-section {{ scroll-margin-top: 92px; }}
-    h1, h2, h3, h4 {{ margin: 0 0 10px; line-height: 1.25; letter-spacing: -0.01em; }}
+    .report-section {{ scroll-margin-top: 20px; }}
+    h1, h2, h3, h4 {{ margin: 0 0 10px; line-height: 1.25; letter-spacing: 0; }}
     h1 {{ font-size: 26px; }}
-    h2 {{ font-size: 20px; }}
+    h2 {{ color: var(--ink); font-size: 20px; }}
     h3 {{ font-size: 17px; margin-top: 24px; color: var(--accent); }}
     h4 {{ font-size: 14px; margin-top: 18px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }}
     p {{ margin: 0 0 12px; }}
@@ -1860,9 +2008,9 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .intro p, .intro ul, blockquote {{ max-width: var(--measure); }}
     blockquote {{
       margin: 0;
-      padding: 12px 14px;
+      padding: 14px 16px;
       border-left: 4px solid var(--warn);
-      border-radius: 0 6px 6px 0;
+      border-radius: 0 7px 7px 0;
       background: #fff7ed;
       color: #7c2d12;
     }}
@@ -1915,7 +2063,7 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .table-wrap {{ width: 100%; overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 8px; }}
     table {{ width: 100%; border-collapse: collapse; min-width: 680px; background: #fff; }}
     th, td {{ padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }}
-    th {{ position: sticky; top: 0; background: #eef2f7; font-size: 11.5px; letter-spacing: 0.03em; color: #475467; text-transform: uppercase; }}
+    th {{ background: #eef2f7; font-size: 11.5px; letter-spacing: 0.03em; color: #475467; text-transform: uppercase; }}
     tbody tr:nth-child(even) td {{ background: #fafbfc; }}
     tbody tr:hover td {{ background: #f1f7f6; }}
     td code {{ font-size: 0.85em; color: #475467; }}
@@ -1994,6 +2142,62 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .audit-sev--medium {{ background: #fef3c7; color: #92400e; }}
     .audit-sev--low {{ background: #f3f4f6; color: #4b5563; }}
 
+    .snapshot-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      padding: 18px;
+    }}
+    .snapshot-card {{
+      min-width: 0;
+      display: grid;
+      align-content: space-between;
+      min-height: 96px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: var(--shadow-soft);
+    }}
+    .snapshot-card--primary {{
+      border-color: #b8d7d3;
+      background: linear-gradient(180deg, #ffffff 0%, #edfafa 100%);
+    }}
+    .snapshot-label {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }}
+    .snapshot-value {{
+      display: block;
+      margin-top: 10px;
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }}
+    .metric-badge {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      max-width: 100%;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      overflow-wrap: anywhere;
+    }}
+    .metric-badge--buy, .metric-badge--grade-a, .metric-badge--grade-b {{ background: #d1fae5; color: #065f46; }}
+    .metric-badge--sell, .metric-badge--grade-d, .metric-badge--grade-f {{ background: #fee2e2; color: #991b1b; }}
+    .metric-badge--hold, .metric-badge--grade-c {{ background: #fef3c7; color: #92400e; }}
+    .metric-badge--neutral, .metric-badge--grade-default {{ background: #e0e7ff; color: #3730a3; }}
+
     /* ── Evidence dashboard ── */
     .brief-overview {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }}
     .brief-stat {{ padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fafbfc; }}
@@ -2043,14 +2247,32 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .setup-reasons li {{ font-size: 13px; margin: 4px 0; }}
 
     /* ── Scenario analysis ── */
-    .scenario-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }}
-    .scenario-card {{ border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fafbfc; }}
-    .scenario-label {{ font-weight: 800; font-size: 14px; margin-bottom: 8px; }}
+    .scenario-readout, .scenario-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 18px;
+    }}
+    .scenario-grid {{ padding: 0; margin-bottom: 14px; }}
+    .scenario-card {{
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--scenario-accent, var(--accent-2));
+      border-radius: 8px;
+      padding: 15px;
+      background: #ffffff;
+      box-shadow: var(--shadow-soft);
+    }}
+    .scenario-card--bull {{ --scenario-accent: var(--good); }}
+    .scenario-card--base {{ --scenario-accent: #64748b; }}
+    .scenario-card--bear {{ --scenario-accent: var(--bad); }}
+    .scenario-card-header {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }}
+    .scenario-label {{ color: var(--scenario-accent, var(--accent-2)); font-weight: 850; font-size: 14px; margin-bottom: 8px; }}
     .scenario-prob {{ margin-bottom: 8px; }}
-    .scenario-pct {{ font-size: 24px; font-weight: 800; }}
+    .scenario-pct {{ color: var(--ink); font-size: 26px; line-height: 1; font-weight: 850; }}
     .scenario-bar {{ height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; margin-top: 4px; }}
-    .scenario-fill {{ height: 100%; border-radius: 3px; }}
-    .scenario-price {{ font-size: 13px; font-weight: 600; margin-bottom: 6px; }}
+    .scenario-fill {{ height: 100%; border-radius: 3px; background: var(--scenario-accent, var(--accent-2)); }}
+    .scenario-price {{ color: var(--ink); font-size: 13px; font-weight: 800; margin: 10px 0 6px; }}
     .scenario-path {{ font-size: 13px; margin: 0; color: var(--muted); }}
     .scenario-summary {{ font-size: 13px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--line); }}
 
@@ -2107,12 +2329,23 @@ def render_example_report_html(markdown: str, source_path: Path) -> str:
     .evgraph-footer {{ font-size: 12px; color: var(--muted); font-style: italic; padding: 10px 0 0; text-align: center; }}
 
     @media (max-width: 900px) {{
-      .app-header {{ align-items: stretch; flex-direction: column; }}
-      .toolbar {{ flex-wrap: wrap; }}
+      body {{ overflow-x: hidden; }}
+      .app-header {{ width: 100%; max-width: 100%; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 14px; padding: 28px 14px 18px; }}
+      .brand strong {{ max-width: 12ch; }}
+      .brand span, h1, h2, h3, h4 {{ overflow-wrap: anywhere; }}
+      .toolbar {{ justify-content: flex-start; max-width: none; width: 100%; min-width: 0; flex-wrap: wrap; }}
       .toolbar input {{ width: 100%; min-width: 0; }}
-      .report-layout {{ grid-template-columns: 1fr; padding: 14px; }}
-      .side-nav {{ position: static; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }}
-      .scenario-grid {{ grid-template-columns: 1fr; }}
+      .toolbar button {{ flex: 1 1 130px; min-width: 0; }}
+      .report-layout {{ width: 100%; max-width: 100%; min-width: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr); padding: 14px; }}
+      main, .side-nav, .intro, .report-section, .section-heading, .glossary, .panel-body, .table-wrap {{
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+      }}
+      .side-nav {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .intro, .report-section {{ max-width: 100%; }}
+      .snapshot-grid {{ grid-template-columns: 1fr; padding: 14px; }}
+      .scenario-readout, .scenario-grid {{ grid-template-columns: 1fr; padding: 14px; }}
       .brief-overview {{ grid-template-columns: 1fr; }}
       .exec-params {{ grid-template-columns: 1fr; }}
       .setup-header {{ flex-direction: column; align-items: flex-start; }}

@@ -1,0 +1,95 @@
+<svg width="1360" height="572" viewBox="0 0 680 286" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>VerumTrade cover banner</title>
+  <desc>An open-source multi-agent trading framework. A horizontal pipeline runs analysts, evidence graph, bull-bear debate, trade plan, risk gate, and decision. Three badges highlight that every decision cites evidence IDs, the trade is schema-validated, and a self-audit gate checks it.</desc>
+
+  <!-- background -->
+  <rect x="0" y="0" width="680" height="286" rx="18" fill="#F7F6FE" stroke="#E4E1F7" stroke-width="1"/>
+
+  <!-- eyebrow -->
+  <text x="40" y="40" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="500" letter-spacing="0.6" fill="#7F77DD">open-source · multi-agent · apache-2.0</text>
+
+  <!-- wordmark -->
+  <text x="39" y="84" font-family="ui-sans-serif, system-ui, sans-serif" font-size="37" font-weight="500" fill="#26215C">Verum<tspan fill="#0F6E56">Trade</tspan></text>
+
+  <!-- tagline -->
+  <text x="40" y="114" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="400" fill="#3A3550">The multi-agent trading committee where every decision cites its evidence.</text>
+
+  <!-- pipeline chips -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <!-- analysts -->
+    <g>
+      <rect x="40" y="140" width="86" height="64" rx="12" fill="#FFFFFF" stroke="#D9D5F2" stroke-width="1.2"/>
+      <circle cx="79" cy="161" r="5" fill="none" stroke="#534AB7" stroke-width="1.6"/>
+      <circle cx="89" cy="161" r="5" fill="none" stroke="#534AB7" stroke-width="1.6"/>
+      <text x="83" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#3C3489">analysts</text>
+    </g>
+    <!-- evidence (accent) -->
+    <g>
+      <rect x="142" y="140" width="86" height="64" rx="12" fill="#E9F6F0" stroke="#1D9E75" stroke-width="1.4"/>
+      <circle cx="176" cy="156" r="2.6" fill="#0F6E56"/>
+      <circle cx="190" cy="164" r="2.6" fill="#0F6E56"/>
+      <circle cx="176" cy="170" r="2.6" fill="#0F6E56"/>
+      <path d="M176 156 L190 164 M176 170 L190 164" stroke="#58C0A0" stroke-width="1.3"/>
+      <text x="185" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#0F6E56">evidence</text>
+    </g>
+    <!-- debate -->
+    <g>
+      <rect x="244" y="140" width="86" height="64" rx="12" fill="#FFFFFF" stroke="#D9D5F2" stroke-width="1.2"/>
+      <path d="M281 158 L275 168 L287 168 Z" fill="none" stroke="#534AB7" stroke-width="1.5"/>
+      <path d="M291 158 L285 168 L297 168 Z" fill="none" stroke="#D4537E" stroke-width="1.5"/>
+      <text x="287" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#3C3489">debate</text>
+    </g>
+    <!-- plan -->
+    <g>
+      <rect x="346" y="140" width="86" height="64" rx="12" fill="#FFFFFF" stroke="#D9D5F2" stroke-width="1.2"/>
+      <rect x="383" y="153" width="12" height="15" rx="2" fill="none" stroke="#534AB7" stroke-width="1.5"/>
+      <path d="M386 159 L393 159 M386 163 L393 163" stroke="#534AB7" stroke-width="1.3"/>
+      <text x="389" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#3C3489">plan</text>
+    </g>
+    <!-- risk -->
+    <g>
+      <rect x="448" y="140" width="86" height="64" rx="12" fill="#FFFFFF" stroke="#D9D5F2" stroke-width="1.2"/>
+      <path d="M491 152 L499 155 L499 163 Q499 169 491 172 Q483 169 483 163 L483 155 Z" fill="none" stroke="#534AB7" stroke-width="1.5"/>
+      <text x="491" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#3C3489">risk gate</text>
+    </g>
+    <!-- decision (accent) -->
+    <g>
+      <rect x="550" y="140" width="86" height="64" rx="12" fill="#E9F6F0" stroke="#1D9E75" stroke-width="1.4"/>
+      <circle cx="593" cy="162" r="8" fill="none" stroke="#0F6E56" stroke-width="1.5"/>
+      <circle cx="593" cy="162" r="3" fill="#0F6E56"/>
+      <text x="593" y="192" text-anchor="middle" font-size="12" font-weight="500" fill="#0F6E56">decision</text>
+    </g>
+
+    <!-- flow chevrons -->
+    <g stroke="#A9A2DC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M130 168 L137 172 L130 176"/>
+      <path d="M232 168 L239 172 L232 176"/>
+      <path d="M334 168 L341 172 L334 176"/>
+      <path d="M436 168 L443 172 L436 176"/>
+      <path d="M538 168 L545 172 L538 176"/>
+    </g>
+  </g>
+
+  <!-- differentiator badges -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <g>
+      <rect x="40" y="218" width="188" height="26" rx="13" fill="#FFFFFF" stroke="#58C0A0" stroke-width="1.2"/>
+      <path d="M55 231 l3 3 l6 -7" fill="none" stroke="#0F6E56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="72" y="235" font-size="11" font-weight="500" fill="#0F6E56">cites evidence IDs</text>
+    </g>
+    <g>
+      <rect x="246" y="218" width="188" height="26" rx="13" fill="#FFFFFF" stroke="#58C0A0" stroke-width="1.2"/>
+      <path d="M261 231 l3 3 l6 -7" fill="none" stroke="#0F6E56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="278" y="235" font-size="11" font-weight="500" fill="#0F6E56">schema-validated trade</text>
+    </g>
+    <g>
+      <rect x="452" y="218" width="188" height="26" rx="13" fill="#FFFFFF" stroke="#58C0A0" stroke-width="1.2"/>
+      <path d="M467 231 l3 3 l6 -7" fill="none" stroke="#0F6E56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="484" y="235" font-size="11" font-weight="500" fill="#0F6E56">self-audit gate</text>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="40" y="268" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="400" fill="#6E6A85">github.com/muye1202/VerumTrade</text>
+  <text x="640" y="268" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="400" fill="#9A96B5">verum — truth in every trade</text>
+</svg>
