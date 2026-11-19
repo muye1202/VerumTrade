@@ -8,18 +8,33 @@ from verumtrade.agents.trader.decision_brief import (
     build_trade_setup_diagnosis,
     build_trader_decision_brief,
     build_trader_plan_v1,
+    incomplete_scenario_analysis,
 )
 from verumtrade.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from verumtrade.agents.utils.agent_runtime.time_horizon import get_time_horizon_spec
 from verumtrade.dataflows.config import get_config
 from verumtrade.execution.decision_guard import build_market_snapshot
 from verumtrade.graph.debate_schema import (
+    citable_evidence_ids_from_state,
     degrade_or_raise,
     intermediate_gates_hard,
     validate_trader_plan,
 )
 from verumtrade.graph.evidence_ledger_schema import build_evidence_ledger
 from verumtrade.graph.reasoning_trace import build_agent_reasoning_trace
+from verumtrade.research.thesis import scenario_mode
+
+
+def select_scenario_analysis(state, decision_brief, setup_diagnosis):
+    """Valid swing thesis first; the setup-template heuristic only when explicitly configured."""
+    validation = state.get("swing_thesis_validation") or {}
+    thesis_scenarios = state.get("thesis_scenario_analysis") or {}
+    if validation.get("valid") and thesis_scenarios:
+        return thesis_scenarios, (state.get("swing_thesis") or {}).get("conditional_decision")
+    if scenario_mode() == "legacy_heuristic":
+        return build_scenario_analysis(decision_brief, setup_diagnosis), None
+    reason = "swing_thesis" if not validation else "valid swing_thesis"
+    return incomplete_scenario_analysis([reason]), None
 
 
 def create_trader(llm, memory):
@@ -38,9 +53,9 @@ def create_trader(llm, memory):
         )
 
         evidence_projection = format_evidence_projection(state, "trader")
-        decision_brief = build_trader_decision_brief(state)
+        decision_brief = build_trader_decision_brief({**state, "market_snapshot": market_snapshot})
         setup_diagnosis = build_trade_setup_diagnosis(decision_brief)
-        scenario_analysis = build_scenario_analysis(decision_brief, setup_diagnosis)
+        scenario_analysis, thesis_decision = select_scenario_analysis(state, decision_brief, setup_diagnosis)
         execution_plan_compiler = build_execution_plan_compiler(
             decision_brief=decision_brief,
             setup_diagnosis=setup_diagnosis,
@@ -49,6 +64,7 @@ def create_trader(llm, memory):
             market_session_context=market_session_context,
             portfolio_context=portfolio_context,
             catalyst_event_report_structured=state.get("catalyst_event_report_structured", {}),
+            thesis_decision=thesis_decision,
         )
         trader_self_audit, execution_plan_compiler = apply_trader_self_audit(
             decision_brief=decision_brief,
@@ -71,11 +87,7 @@ def create_trader(llm, memory):
             evidence_ledger = build_evidence_ledger(state)
         trader_plan_validation = validate_trader_plan(
             trader_plan_v1,
-            evidence_ids=[
-                str(item.get("evidence_id"))
-                for item in evidence_ledger or []
-                if isinstance(item, dict) and item.get("evidence_id")
-            ],
+            evidence_ids=citable_evidence_ids_from_state(state, evidence_ledger),
             thesis_ids=[
                 str(item.get("claim_id"))
                 for item in (state.get("thesis_ledger") or {}).get("accepted_claims", [])
@@ -139,8 +151,14 @@ TRADER DECISION BRIEF JSON:
 TRADE SETUP DIAGNOSIS JSON:
 {json.dumps(setup_diagnosis, ensure_ascii=False, indent=2)}
 
-SCENARIO ANALYSIS JSON:
-{json.dumps(scenario_analysis, ensure_ascii=False, indent=2)}
+SWING THESIS JSON (validated; status {json.dumps((state.get("swing_thesis_validation") or {}).get("valid"))}):
+{json.dumps(state.get("swing_thesis") or {}, ensure_ascii=False, indent=2)}
+
+SCENARIO ANALYSIS JSON (levels computed from identified operands; probabilities are null unless subjective):
+{json.dumps({k: v for k, v in scenario_analysis.items() if k not in ("scenarios", "calculations")}, ensure_ascii=False, indent=2)}
+
+THESIS CALCULATIONS JSON:
+{json.dumps(scenario_analysis.get("calculations") or [], ensure_ascii=False, indent=2)}
 
 EXECUTION PLAN COMPILER JSON:
 {json.dumps(execution_plan_compiler, ensure_ascii=False, indent=2)}
@@ -177,7 +195,7 @@ Follow this sequence exactly:
 1. Diagnose setup type.
 2. Separate supporting, opposing, timing, and risk-only evidence.
 3. Decide whether the setup is tradable now, conditional, invalid, or no-trade.
-4. Build bull/base/bear scenarios.
+4. Use the SWING THESIS scenarios as given; do not invent scenario probabilities or price targets.
 5. Select action and position size from risk budget.
 6. Compile the final transaction proposal.
 7. Run the self-audit checklist.
@@ -188,8 +206,10 @@ Hard rules:
 - If catalyst action is freeze_new_buys, risk_judge_review, reduce_position, or exit_review, it overrides normal bullish reasoning.
 - If the market is closed, do not use MARKET orders.
 - All prices must be anchored to market_snapshot.reference_price.
+- If market_snapshot.source is "verified_close", the reference is the last close on reference_price_date, not a live quote: use LIMIT orders only, never MARKET.
 - Stop loss represents thesis invalidation, not an arbitrary percentage distance.
 - Take profit must be tied to scenario target, resistance, or reward/risk logic.
+- If SCENARIO ANALYSIS status is incomplete, do not supply price levels it withheld: keep ACTION HOLD and state what is missing.
 - Position size must be reduced when evidence quality is weak, event risk is high, or reward/risk is poor.
 
 Use EXECUTION PLAN COMPILER JSON as the final proposal scaffold. Do not override compiler checks unless the reason is explicit in TRADER_REASONING_SUMMARY.
@@ -219,7 +239,7 @@ Self-audit checklist before final proposal:
 - BUY is supported by A/B setup quality and confirmed entry status.
 - SELL is only used when current_position.has_position is true.
 - MARKET is not used for BUY/SELL when market session is closed.
-- STOP_LOSS and TAKE_PROFIT are numeric and anchored to scenario analysis.
+- STOP_LOSS and TAKE_PROFIT come from the compiler (numeric, or N/A for HOLD when withheld).
 - catalyst overrides are reflected in execution mode, sizing, or action.
 
 The strict transaction proposal remains the final machine-readable section. End with exactly this format:
@@ -236,8 +256,8 @@ FINAL TRANSACTION PROPOSAL:
 - STOP_PRICE: [required for STOP and STOP_LIMIT; otherwise "N/A"]
 - TRAIL_PERCENT: [for TRAILING_STOP, percent like 3 for 3%; otherwise "N/A"]
 - TRAIL_PRICE: [for TRAILING_STOP, dollars like 1.25; otherwise "N/A"]
-- STOP_LOSS: [REQUIRED numeric price for BUY/SELL/HOLD]
-- TAKE_PROFIT: [REQUIRED numeric price for BUY/SELL/HOLD]
+- STOP_LOSS: [REQUIRED numeric price for BUY/SELL; for HOLD use the compiler value, or "N/A" when the compiler withheld it]
+- TAKE_PROFIT: [REQUIRED numeric price for BUY/SELL; for HOLD use the compiler value, or "N/A" when the compiler withheld it]
 - POSITION_SIZE_PCT: [for BUY only: percent of available capital/effective buying power; otherwise "N/A"]
 - TIME_HORIZON: [e.g., "1-3 days", "1-2 weeks", "swing trade"]
 - CONFIDENCE: HIGH / MEDIUM / LOW

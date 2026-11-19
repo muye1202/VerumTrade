@@ -156,6 +156,55 @@ def build_market_snapshot(
     }
 
 
+VERIFIED_CLOSE_SOURCE = "verified_close"
+
+
+def verified_close_from_state(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Last close on or before the analysis date from the thesis compiler's price history."""
+    context = state.get("price_context") or {}
+    close = _to_float(context.get("last_close"))
+    if close is None or close <= 0:
+        return None
+    return {"value": close, "date": str(context.get("last_close_date") or ""), "source": str(context.get("source") or "")}
+
+
+def apply_verified_close_fallback(
+    snapshot: Optional[Dict[str, Any]],
+    verified_close: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Fill a missing reference price with a verified historical close.
+
+    Never overrides a quote or an existing anchor. The filled snapshot is labelled so
+    reports and execution can tell a close-based anchor from a live quote.
+    """
+    snap = dict(snapshot or {})
+    if _to_float(snap.get("reference_price")) or not verified_close:
+        return snap
+    close = _to_float(verified_close.get("value"))
+    if close is None or close <= 0:
+        return snap
+    snap.update(
+        {
+            "reference_price": close,
+            "source": VERIFIED_CLOSE_SOURCE,
+            "reference_price_date": verified_close.get("date") or None,
+            "reference_price_origin": f"{verified_close.get('source') or 'price_history'} close",
+            "price_anchor_missing": False,
+        }
+    )
+    if snap.get("last_close") is None:
+        snap["last_close"] = close
+    hint = _to_float(snap.get("analysis_price_hint"))
+    if hint and hint > 0:
+        gap = abs(close - hint) / close
+        if gap > 0.35:
+            snap["price_anchor_conflict"] = True
+            snap["price_anchor_conflict_reason"] = (
+                f"reference_price ({close:.4f}) and analysis_price_hint ({hint:.4f}) diverge by {gap:.1%}"
+            )
+    return snap
+
+
 def _decision_has_actionable_order(structured_decision: Any) -> bool:
     if not isinstance(structured_decision, dict):
         return False

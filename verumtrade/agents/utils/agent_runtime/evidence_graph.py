@@ -35,6 +35,7 @@ class EvidenceFact(TypedDict, total=False):
     quality: str
     source_type: str
     source_ids: List[str]
+    provenance: Dict[str, Any]
 
 
 class EvidenceInference(TypedDict, total=False):
@@ -171,6 +172,8 @@ def _normalize_fact(raw: Any) -> EvidenceFact | None:
     }
     if raw.get("source_ids"):
         fact["source_ids"] = [str(item) for item in raw.get("source_ids") or [] if str(item)]
+    if isinstance(raw.get("provenance"), dict):
+        fact["provenance"] = dict(raw["provenance"])
     return fact
 
 

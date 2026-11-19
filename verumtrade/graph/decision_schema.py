@@ -145,7 +145,9 @@ def _normalize_action_template(
     norm["take_profit"] = _num(template.get("take_profit"))
     norm["position_size_pct"] = _num(template.get("position_size_pct"))
 
-    if norm["stop_loss"] is None or norm["take_profit"] is None:
+    # HOLD templates place no order, so they may omit levels when no reference price
+    # exists; forcing numbers there is what previously produced placeholder prices.
+    if norm["action"] != "HOLD" and (norm["stop_loss"] is None or norm["take_profit"] is None):
         raise ValueError("stop_loss and take_profit are required numeric fields.")
 
     if norm["position_size_pct"] is not None:

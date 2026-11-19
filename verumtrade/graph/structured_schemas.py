@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
@@ -106,9 +106,16 @@ class TraderPlan(StrictModel):
     order_type: OrderType
     position_size_pct: float | None = Field(default=None, ge=0.0, le=1.0)
     entry_condition: str
-    stop_loss: float | str
-    take_profit: float | str
+    stop_loss: float | str | None = None
+    take_profit: float | str | None = None
     rationale_links: dict[str, list[str]]
+
+    @model_validator(mode="after")
+    def _levels_required_to_trade(self) -> "TraderPlan":
+        # A HOLD places no order, so it may carry no levels when no valid scenario derived them.
+        if self.action != "HOLD" and (self.stop_loss is None or self.take_profit is None):
+            raise ValueError("stop_loss and take_profit are required for BUY/SELL")
+        return self
 
 
 class PlanPatch(StrictModel):

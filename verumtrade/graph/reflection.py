@@ -1,5 +1,6 @@
 # Verumtrade/graph/reflection.py
 
+import json
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 
@@ -18,8 +19,10 @@ class Reflector:
 You are an expert financial analyst tasked with reviewing trading decisions/analysis and providing a comprehensive, step-by-step analysis. 
 Your goal is to deliver detailed insights into investment decisions and highlight opportunities for improvement, adhering strictly to the following guidelines:
 
-1. Reasoning:
-   - For each trading decision, determine whether it was correct or incorrect. A correct decision results in an increase in returns, while an incorrect decision does the opposite.
+1. Reasoning (keep these three judgments separate):
+   - Forecast accuracy: compare the recorded forecasts with how they resolved (see FORECAST RECORD). A forecast is judged against its own resolution rule, not against the trade's profit.
+   - Decision quality: was the decision sound given the evidence available at the time? A profitable outcome does not prove the reasoning was good, and a loss does not prove it was bad; one realization cannot settle a probabilistic judgment.
+   - Outcome and execution: what the returns were, and how much came from entry, sizing, stops, gaps, or the market rather than from the thesis.
    - Analyze the contributing factors to each success or mistake. Consider:
      - Market intelligence.
      - Technical indicators.
@@ -32,8 +35,8 @@ Your goal is to deliver detailed insights into investment decisions and highligh
      - Weight the importance of each factor in the decision-making process.
 
 2. Improvement:
-   - For any incorrect decisions, propose revisions to maximize returns.
-   - Provide a detailed list of corrective actions or improvements, including specific recommendations (e.g., changing a decision from HOLD to BUY on a particular date).
+   - Propose changes only where the reasoning, evidence handling, or forecasts were at fault given what was knowable then; do not fit lessons to a single lucky or unlucky outcome.
+   - Provide a list of corrective actions, each tied to the specific forecast, evidence, or decision step it addresses.
 
 3. Summary:
    - Summarize the lessons learned from the successes and mistakes.
@@ -55,15 +58,37 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
 
         return f"{curr_market_report}\n\n{curr_sentiment_report}\n\n{curr_news_report}\n\n{curr_fundamentals_report}"
 
+    def _forecast_record(self, current_state: Dict[str, Any]) -> str:
+        """Resolved forecasts for this ticker, scored separately from returns."""
+        try:
+            from verumtrade.research.revision import get_thesis_store, thesis_store_enabled
+
+            if not thesis_store_enabled():
+                return "No forecast store configured."
+            store = get_thesis_store()
+            ticker = str(current_state.get("company_of_interest") or "")
+            forecasts = {f["forecast_id"]: f for f in store.forecasts(ticker)}
+            lines = [json.dumps(store.forecast_scorecard(ticker), ensure_ascii=False)]
+            for resolution in store.resolutions(list(forecasts))[-12:]:
+                forecast = forecasts.get(resolution["forecast_id"]) or {}
+                line = f"- [{forecast.get('kind')}] {forecast.get('proposition')} -> {resolution['outcome']}"
+                if resolution.get("brier") is not None:
+                    line += f" (Brier {resolution['brier']})"
+                lines.append(line)
+            return "\n".join(lines)
+        except Exception as exc:  # the record is context, never a reason to skip reflection
+            return f"Forecast record unavailable: {type(exc).__name__}"
+
     def _reflect_on_component(
-        self, component_type: str, report: str, situation: str, returns_losses
+        self, component_type: str, report: str, situation: str, returns_losses, forecast_record: str = ""
     ) -> str:
         """Generate reflection for a component."""
         messages = [
             ("system", self.reflection_system_prompt),
             (
                 "human",
-                f"Returns: {returns_losses}\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}",
+                f"Returns: {returns_losses}\n\nFORECAST RECORD:\n{forecast_record or 'Not available.'}"
+                f"\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}",
             ),
         ]
 
@@ -76,7 +101,8 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         bull_debate_history = current_state["investment_debate_state"]["bull_history"]
 
         result = self._reflect_on_component(
-            "BULL", bull_debate_history, situation, returns_losses
+            "BULL", bull_debate_history, situation, returns_losses,
+            self._forecast_record(current_state),
         )
         bull_memory.add_situations([(situation, result)])
 
@@ -86,7 +112,8 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         bear_debate_history = current_state["investment_debate_state"]["bear_history"]
 
         result = self._reflect_on_component(
-            "BEAR", bear_debate_history, situation, returns_losses
+            "BEAR", bear_debate_history, situation, returns_losses,
+            self._forecast_record(current_state),
         )
         bear_memory.add_situations([(situation, result)])
 
@@ -96,7 +123,8 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         trader_decision = current_state["trader_investment_plan"]
 
         result = self._reflect_on_component(
-            "TRADER", trader_decision, situation, returns_losses
+            "TRADER", trader_decision, situation, returns_losses,
+            self._forecast_record(current_state),
         )
         trader_memory.add_situations([(situation, result)])
 
@@ -106,7 +134,8 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         judge_decision = current_state["investment_debate_state"]["judge_decision"]
 
         result = self._reflect_on_component(
-            "INVEST JUDGE", judge_decision, situation, returns_losses
+            "INVEST JUDGE", judge_decision, situation, returns_losses,
+            self._forecast_record(current_state),
         )
         invest_judge_memory.add_situations([(situation, result)])
 
@@ -116,6 +145,7 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         judge_decision = current_state["risk_debate_state"]["judge_decision"]
 
         result = self._reflect_on_component(
-            "RISK JUDGE", judge_decision, situation, returns_losses
+            "RISK JUDGE", judge_decision, situation, returns_losses,
+            self._forecast_record(current_state),
         )
         risk_manager_memory.add_situations([(situation, result)])

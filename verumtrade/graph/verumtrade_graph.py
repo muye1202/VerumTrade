@@ -2,6 +2,7 @@
 
 import os
 import inspect
+import logging
 import re
 from pathlib import Path
 import json
@@ -23,11 +24,20 @@ from verumtrade.default_config import DEFAULT_CONFIG
 from verumtrade.agents.utils.memory.memory import FinancialSituationMemory
 from verumtrade.execution.portfolio_context import fetch_portfolio_context
 from verumtrade.utils.market_session import now_et
-from verumtrade.execution.decision_guard import build_market_snapshot, evaluate_data_quality_fault
+from verumtrade.execution.decision_guard import (
+    apply_verified_close_fallback,
+    build_market_snapshot,
+    evaluate_data_quality_fault,
+    verified_close_from_state,
+)
 from verumtrade.agents.trader.decision_brief import build_trader_plan_v1
 from verumtrade.agents.utils.agent_runtime.evidence_graph import build_decision_trace
 from verumtrade.graph.debate_schema import DebateWorkflowHardFault
 from verumtrade.graph.decision_diff import build_decision_diff
+from verumtrade.research.controller import research_metrics
+from verumtrade.research.revision import get_thesis_store, persist_thesis_run, thesis_store_enabled
+
+logger = logging.getLogger(__name__)
 from verumtrade.graph.reasoning_trace import build_agent_reasoning_trace
 from verumtrade.dataflows.config import set_config
 from verumtrade.graph.provider_settings import azure_foundry_reasoning_mode, resolve_llm_endpoint
@@ -71,6 +81,11 @@ from verumtrade.agents.utils.market_data.bundle_tools import (
     get_news_data_bundle,
     get_fundamentals_data_bundle,
     get_sentiment_data_bundle,
+)
+from verumtrade.agents.utils.market_data.sec_research_tools import (
+    SEC_RESEARCH_TOOLS,
+    list_sec_filings,
+    read_sec_filing,
 )
 from verumtrade.agents.utils.agent_runtime.tool_cache import create_cache_aware_tool_node
 
@@ -787,6 +802,7 @@ class VerumtradeGraph:
         workbench_metrics = state.get("analyst_workbench_metrics") or {}
         blocked = state.get("analyst_tool_call_blocked_counts") or {}
         links = state.get("analyst_tool_call_links") or {}
+        research = state.get("analyst_research_state") or {}
         cache_metrics = state.get("tool_cache_metrics") or {}
         vendor_events = state.get("vendor_telemetry") or []
         metrics.update(
@@ -798,6 +814,18 @@ class VerumtradeGraph:
                 "analyst_workbench_metrics": dict(workbench_metrics),
                 "analyst_tool_call_blocked_counts": dict(blocked),
                 "analyst_tool_call_links": dict(links),
+                "analyst_research_status": {
+                    key: str((value or {}).get("status") or "")
+                    for key, value in dict(research).items()
+                },
+                "analyst_research_follow_up_rounds": {
+                    key: sum(
+                        1 for attempt in (value or {}).get("attempts") or []
+                        if int(attempt.get("round", 0) or 0) > 0
+                    )
+                    for key, value in dict(research).items()
+                },
+                **research_metrics(state),
                 "tool_cache_metrics": dict(cache_metrics),
                 "vendor_telemetry_event_count": len(vendor_events) if isinstance(vendor_events, list) else 0,
             }
@@ -841,6 +869,8 @@ class VerumtradeGraph:
             get_global_news,
             get_news_sentiment,
             get_recent_sec_filings,
+            list_sec_filings,
+            read_sec_filing,
         ]
         catalyst_tools = [
             get_catalyst_event_bundle,
@@ -858,6 +888,8 @@ class VerumtradeGraph:
             # Insider activity (fundamental catalyst context)
             get_insider_sentiment,
             get_insider_transactions,
+            get_recent_sec_filings,
+            *SEC_RESEARCH_TOOLS,
         ]
 
         if enable_bundle_tools:
@@ -971,6 +1003,7 @@ class VerumtradeGraph:
                 for item in final_state.get("risk_patch_validation", []) or []
                 if isinstance(item, dict) and not item.get("valid")
             ],
+            thesis_change_record=final_state.get("thesis_change_record"),
         )
         final_state["decision_guard"] = {
             "validation_ok": isinstance(structured, dict) and not bool(err),
@@ -1018,6 +1051,8 @@ class VerumtradeGraph:
             structured_decision=structured if isinstance(structured, dict) else None,
             snapshot_source=self.config.get("decision_snapshot_source", "executor_quote_first"),
         )
+        # Without a quote, keep the verified-close anchor the thesis compiler and trader used.
+        market_snapshot = apply_verified_close_fallback(market_snapshot, verified_close_from_state(final_state))
         final_state["market_snapshot"] = market_snapshot
 
         if isinstance(structured, dict):
@@ -1075,6 +1110,7 @@ class VerumtradeGraph:
                 for item in final_state.get("risk_patch_validation", []) or []
                 if isinstance(item, dict) and not item.get("valid")
             ],
+            thesis_change_record=final_state.get("thesis_change_record"),
         )
         guard.update(
             {
@@ -1459,6 +1495,7 @@ class VerumtradeGraph:
             llm_snapshot_before, llm_snapshot_after, final_state
         )
         self._attach_canonical_decision(final_state, expected_ticker=company_name)
+        final_state["thesis_persistence"] = self._persist_thesis(final_state)
 
         # Store current state for reflection
         self.curr_state = final_state
@@ -1502,6 +1539,17 @@ class VerumtradeGraph:
             portfolio_context, 
             time_horizon
         ))
+
+    @staticmethod
+    def _persist_thesis(final_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Version the thesis, freeze its forecasts and watch contract; never fail the run."""
+        if not thesis_store_enabled():
+            return {"persisted": False, "reason": "thesis store disabled"}
+        try:
+            return persist_thesis_run(final_state, get_thesis_store())
+        except Exception as exc:
+            logger.warning("Thesis persistence failed: %s", exc)
+            return {"persisted": False, "reason": f"{type(exc).__name__}: {exc}"}
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""

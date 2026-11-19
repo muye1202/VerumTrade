@@ -7,6 +7,7 @@ Headers: {"User-Agent": "YourApp/1.0 (your-email@example.com)"}
 Rate limit: 10 requests/second (generous).
 """
 
+import json
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -47,11 +48,14 @@ def fetch_recent_filings(
     lookback_days: int = 45,
     lookback_hours: Optional[int] = None,
     limit: int = 50,
-) -> List[Dict[str, Any]]:
+) -> str:
     """
-    Fetch recent SEC filings via EDGAR full-text search.
+    Fetch recent SEC filings as a JSON list.
 
-    Returns structured filing metadata with ticker mapping.
+    With a ticker, filings come from the issuer's own submissions feed (resolved by
+    CIK), limited to those accepted on or before ``curr_date``. EDGAR full-text
+    search is used only for the global (no ticker) scan, because it matches any
+    filing that merely mentions the ticker string.
     """
     if form_types is None:
         form_types = ["10-Q", "10-K", "8-K"]
@@ -70,6 +74,12 @@ def fetch_recent_filings(
     else:
         start_dt = end_dt - timedelta(days=int(lookback_days))
 
+    if ticker:
+        return json.dumps(
+            _issuer_filings(ticker, end_dt, start_dt, form_types, limit),
+            ensure_ascii=False,
+        )
+
     results = []
     for form_type in form_types:
         url = (
@@ -79,8 +89,6 @@ def fetch_recent_filings(
             f"&startdt={start_dt.strftime('%Y-%m-%d')}"
             f"&enddt={end_dt.strftime('%Y-%m-%d')}"
         )
-        if ticker:
-            url += f"&q={ticker}"
         try:
             resp = requests.get(url, headers=SEC_HEADERS, timeout=10)
             resp.raise_for_status()
@@ -93,12 +101,53 @@ def fetch_recent_filings(
                     "company_name": source.get("display_names", [""])[0] if source.get("display_names") else "",
                     "ticker": _resolve_ticker_from_cik(source.get("entity_id")),
                     "filed_at": source.get("file_date"),
+                    "filing_date": source.get("file_date"),
                     "description": source.get("display_description", ""),
                     "url": f"https://www.sec.gov/Archives/edgar/data/{source.get('entity_id')}/{source.get('adsh', '').replace('-', '')}/" if source.get('entity_id') and source.get('adsh') else "",
                 })
         except Exception as e:
             continue
 
+    return json.dumps(results, ensure_ascii=False)
+
+
+def _issuer_filings(
+    ticker: str,
+    end_dt: datetime,
+    start_dt: datetime,
+    form_types: List[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    from verumtrade.research.sec_client import get_sec_client
+
+    client = get_sec_client()
+    filings = client.list_filings(
+        ticker,
+        as_of=end_dt.strftime("%Y-%m-%d"),
+        form_types=form_types,
+        limit=limit,
+    )
+    start = start_dt.strftime("%Y-%m-%d")
+    results = []
+    for filing in filings:
+        if filing["filing_date"] < start:
+            continue
+        results.append({
+            "accession_number": filing["accession_number"],
+            "cik": filing["cik"],
+            "form_type": filing["form_type"],
+            "catalyst_category": CATALYST_FORM_TYPES.get(filing["form_type"], "unknown"),
+            "company_name": filing["company_name"],
+            "ticker": filing["ticker"],
+            "filing_date": filing["filing_date"],
+            "filed_at": filing["filing_date"],
+            "accepted_at": filing.get("accepted_at", ""),
+            "report_date": filing.get("report_date") or None,
+            "items": filing.get("items", ""),
+            "description": filing.get("description", ""),
+            "primary_document_url": filing.get("primary_document_url", ""),
+            "url": filing.get("primary_document_url", ""),
+        })
     return results
 
 
@@ -143,9 +192,12 @@ def fetch_company_filings(
 
 
 def _resolve_ticker_from_cik(cik: str) -> str:
-    """Look up ticker from CIK using SEC company tickers JSON."""
-    # SEC provides a complete CIK-to-ticker mapping, cached daily:
-    # https://www.sec.gov/files/company_tickers.json
-    # In production, cache this file and look up from the cache.
-    # For now, this is a placeholder
-    return ""
+    """Look up ticker from CIK using SEC's cached company_tickers.json."""
+    if not cik:
+        return ""
+    try:
+        from verumtrade.research.sec_client import get_sec_client
+
+        return get_sec_client().ticker_for_cik(str(cik))
+    except Exception:
+        return ""

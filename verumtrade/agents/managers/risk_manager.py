@@ -28,7 +28,10 @@ from verumtrade.graph.plan_patch_schema import (
     extract_plan_patches_from_text,
     validate_plan_patches,
 )
-from verumtrade.graph.debate_schema import invoke_with_contract_repair
+from verumtrade.graph.debate_schema import (
+    citable_evidence_ids_from_state,
+    invoke_with_contract_repair,
+)
 from verumtrade.graph.decision_schema import (
     extract_decision_json_block,
     validate_final_decision_contract,
@@ -87,11 +90,7 @@ def create_risk_manager(llm, memory):
         risk_patch_validation = validate_plan_patches(
             risk_patches,
             trader_plan=trader_plan_v1,
-            evidence_ids=[
-                str(item.get("evidence_id"))
-                for item in evidence_ledger
-                if isinstance(item, dict) and item.get("evidence_id")
-            ],
+            evidence_ids=citable_evidence_ids_from_state(state, evidence_ledger),
         )
         enforced_trader_plan_v1 = apply_valid_plan_patches(
             trader_plan_v1,

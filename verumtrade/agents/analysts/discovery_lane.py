@@ -94,9 +94,16 @@ def run_coverage_critic(ledger: AnalystLedger) -> list[CoverageGap]:
     return gaps
 
 
+def _question_text_key(text: Any) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
 def select_allowed_question(
     ledger: AnalystLedger,
     exposed_tool_names: Iterable[str] | None = None,
+    *,
+    exclude_question_ids: Iterable[str] | None = None,
+    exclude_question_texts: Iterable[str] | None = None,
 ) -> AnalystQuestion | None:
     normalized = normalize_ledger(str(ledger.get("analyst_domain") or "market"), ledger)
     critic_flags = list(dict(ledger).get("critic_flags") or []) if isinstance(ledger, dict) else []
@@ -104,6 +111,8 @@ def select_allowed_question(
     do_not_fetch_again = set(normalized.get("do_not_fetch_again", []))
     open_ids = set(normalized.get("open_questions", []))
     exposed = set(exposed_tool_names or [])
+    excluded_ids = {str(item) for item in (exclude_question_ids or [])}
+    excluded_texts = {_question_text_key(item) for item in (exclude_question_texts or [])}
 
     candidates: list[AnalystQuestion] = []
     for question in normalized.get("question_backlog", []):
@@ -114,6 +123,8 @@ def select_allowed_question(
         if exposed and tool_name and tool_name not in exposed:
             critic_flags.append(f"{qid}:unknown_cheapest_tool:{tool_name}")
         if not qid or qid in resolved:
+            continue
+        if qid in excluded_ids or _question_text_key(question.get("question")) in excluded_texts:
             continue
         if open_ids and qid not in open_ids:
             continue

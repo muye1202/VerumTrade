@@ -30,6 +30,46 @@ class EvidenceLedgerItem(TypedDict, total=False):
     numeric_values: dict[str, float]
     source_node_id: str
     criticality: float
+    source_type: str
+    provenance: dict[str, Any]
+
+
+# Provenance fields carried into the ledger; the full quoted passage stays in the
+# source store (addressed by document_id + span) to keep prompts small.
+_LEDGER_PROVENANCE_KEYS = (
+    "kind",
+    "document_id",
+    "canonical_url",
+    "accession",
+    "issuer_cik",
+    "start",
+    "end",
+    "content_hash",
+    "concept",
+    "unit",
+    "period_start",
+    "period_end",
+    "period_type",
+    "first_filed",
+    "available_at",
+    "value",
+    "original_value",
+    "restated",
+)
+
+
+def _ledger_provenance(fact: dict[str, Any]) -> dict[str, Any] | None:
+    provenance = fact.get("provenance")
+    if not isinstance(provenance, dict):
+        return None
+    compact = {key: provenance[key] for key in _LEDGER_PROVENANCE_KEYS if provenance.get(key) not in (None, "")}
+    verification = provenance.get("verification")
+    if isinstance(verification, dict):
+        compact["verification_status"] = verification.get("status")
+        failed = [c.get("check") for c in verification.get("checks") or [] if not c.get("passed")]
+        if failed:
+            compact["failed_checks"] = failed
+    return compact
 
 
 class EvidenceAdmissibilityReport(TypedDict):
@@ -88,6 +128,10 @@ def build_evidence_ledger(state: dict[str, Any] | None) -> list[EvidenceLedgerIt
             "source_node_id": source_ref,
         }
         item["criticality"] = _criticality(item)
+        item["source_type"] = str(fact.get("source_type") or "vendor")
+        provenance = _ledger_provenance(fact)
+        if provenance:
+            item["provenance"] = provenance
         items.append(item)
     return items
 
@@ -121,6 +165,14 @@ def validate_admissible_evidence(
             continue
         if _is_stale(item, time_horizon=time_horizon, as_of_date=as_of_date):
             rejected.append({"evidence_id": evidence_id, "reason": "stale relative to selected time horizon"})
+            continue
+        provenance = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+        if provenance.get("verification_status") == "failed":
+            failed = ", ".join(str(c) for c in provenance.get("failed_checks") or []) or "unspecified"
+            rejected.append({"evidence_id": evidence_id, "reason": f"source verification failed: {failed}"})
+            continue
+        if str(item.get("source_type") or "") == "model_synthesis":
+            downgraded.append({"evidence_id": evidence_id, "reason": "model synthesis, not a primary source"})
             continue
         if source_ref in seen_refs:
             downgraded.append({"evidence_id": evidence_id, "reason": "duplicate source reference"})

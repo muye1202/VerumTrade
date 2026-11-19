@@ -140,6 +140,26 @@ def _as_str_list(value: Any) -> list[str]:
     return out
 
 
+# Models do not all use the schema's `claim` key for the observed fact.
+_OBSERVATION_TEXT_KEYS = (
+    "claim", "observation", "text", "description", "finding", "statement", "fact", "summary", "detail",
+)
+
+
+def _question_ids(value: Any) -> list[str]:
+    """Question references may arrive as ids or as whole question objects; keep the id."""
+    out: list[str] = []
+    for item in _as_list(value):
+        text = str((item.get("id") or "") if isinstance(item, dict) else (item or "")).strip()
+        if text:
+            out.append(text)
+    return out
+
+
+def _question_objects(value: Any) -> list[dict[str, Any]]:
+    return [item for item in _as_list(value) if isinstance(item, dict) and item.get("id") and item.get("question")]
+
+
 def _clamp_float(value: Any, default: float = 0.0, low: float = 0.0, high: float = 1.0) -> float:
     if isinstance(value, str):
         qualitative = {
@@ -191,11 +211,10 @@ def _status(value: Any) -> ObservationStatus:
 
 def _normalize_observation(domain: AnalystDomain, raw: Any, idx: int) -> AnalystObservation:
     item = raw if isinstance(raw, dict) else {"claim": raw}
-    claim = item.get("claim")
-    if claim is None:
-        claim = item.get("text")
-    if claim is None:
-        claim = item.get("description")
+    claim = next(
+        (item.get(key) for key in _OBSERVATION_TEXT_KEYS if str(item.get(key) or "").strip()),
+        "",
+    )
     return {
         "id": str(item.get("id") or f"obs_{domain}_{idx:03d}"),
         "domain": _domain(item.get("domain") or domain),
@@ -288,9 +307,16 @@ def normalize_ledger(domain: str, raw: Any | None = None) -> AnalystLedger:
         _normalize_observation(analyst_domain, item, idx)
         for idx, item in enumerate(_as_list(raw_ledger.get("observations")), 1)
     ]
+    raw_backlog = list(_as_list(raw_ledger.get("question_backlog")))
+    backlog_ids = {str(q.get("id")) for q in raw_backlog if isinstance(q, dict) and q.get("id")}
+    for key in ("open_questions", "resolved_questions"):
+        for inline in _question_objects(raw_ledger.get(key)):
+            if str(inline["id"]) not in backlog_ids:
+                raw_backlog.append(inline)
+                backlog_ids.add(str(inline["id"]))
     question_backlog = [
         _normalize_question(analyst_domain, item, idx)
-        for idx, item in enumerate(_as_list(raw_ledger.get("question_backlog")), 1)
+        for idx, item in enumerate(raw_backlog, 1)
     ]
     hypothesis_candidates = [
         _normalize_hypothesis(analyst_domain, item, idx)
@@ -309,9 +335,9 @@ def normalize_ledger(domain: str, raw: Any | None = None) -> AnalystLedger:
             if obs["surprise_score"] >= 0.65 and obs["status"] != "explained"
         ]
 
-    open_questions = _as_str_list(raw_ledger.get("open_questions"))
+    open_questions = _question_ids(raw_ledger.get("open_questions"))
     if not open_questions:
-        resolved = set(_as_str_list(raw_ledger.get("resolved_questions")))
+        resolved = set(_question_ids(raw_ledger.get("resolved_questions")))
         open_questions = [
             q["id"]
             for q in question_backlog
@@ -329,7 +355,7 @@ def normalize_ledger(domain: str, raw: Any | None = None) -> AnalystLedger:
             _normalize_discarded(analyst_domain, item, idx)
             for idx, item in enumerate(_as_list(raw_ledger.get("discarded_hypotheses")), 1)
         ],
-        "resolved_questions": _as_str_list(raw_ledger.get("resolved_questions")),
+        "resolved_questions": _question_ids(raw_ledger.get("resolved_questions")),
         "open_questions": open_questions,
         "coverage_gaps": [
             _normalize_gap(item, idx)
@@ -385,6 +411,25 @@ def _strip_markdown_json_fence(text: str) -> str:
     return candidate.strip()
 
 
+def _load_json_object(text: str) -> dict[str, Any]:
+    """First complete JSON object in the block; markdown decoration around it (fences, a
+    '## ' heading prefix on the END marker) must not discard an otherwise valid ledger."""
+    candidate = _strip_markdown_json_fence(text)
+    try:
+        value = json.loads(candidate)
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        pass
+    start = candidate.find("{")
+    if start < 0:
+        return {}
+    try:
+        value, _ = json.JSONDecoder().raw_decode(candidate[start:])
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def extract_ledger_and_memo(domain: str, content: Any) -> tuple[AnalystLedger, str]:
     text = str(content or "")
     pattern = (
@@ -395,10 +440,7 @@ def extract_ledger_and_memo(domain: str, content: Any) -> tuple[AnalystLedger, s
     matches = list(re.finditer(pattern, text, flags=re.DOTALL | re.IGNORECASE))
     raw_ledger: dict[str, Any] = {}
     if matches:
-        try:
-            raw_ledger = json.loads(_strip_markdown_json_fence(matches[-1].group(1)))
-        except Exception:
-            raw_ledger = {}
+        raw_ledger = _load_json_object(matches[-1].group(1))
         text = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE)
     return normalize_ledger(domain, raw_ledger), strip_textual_tool_calls(strip_executable_proposals(text))
 
@@ -791,6 +833,8 @@ Default weak-prior hypotheses for this analyst: {default_priors}.
 Final output contract:
 - Emit one JSON block between BEGIN_ANALYST_LEDGER_JSON and END_ANALYST_LEDGER_JSON.
 - The JSON must match the AnalystLedger shape: observations, anomalies, question_backlog, hypothesis_candidates, active_hypotheses, discarded_hypotheses, resolved_questions, open_questions, coverage_gaps, cross_domain_handoffs, do_not_fetch_again, unexplained_but_decision_relevant.
+- Each observation is an object with exactly these keys: id, claim (the observed fact in one sentence), source_fact_ids, surprise_score, why_it_matters, status (explained|unexplained|contradictory|stale|low_quality).
+- Each question_backlog entry is an object with id, question, triggered_by, decision_relevance, expected_information_gain, evidence_surprise, estimated_tool_cost, cheapest_tool, stop_condition. `open_questions` and `resolved_questions` are lists of question id strings only, not question objects.
 - If the tool output includes compact bundle facts with `id` fields, every observation should cite the relevant vendor fact IDs in `source_fact_ids`.
 - Hypothesis support and against entries should cite observation IDs and/or vendor fact IDs when available; avoid raw prose evidence when an ID exists.
 - Every analyst should emit 3-8 observations before selecting active hypotheses.

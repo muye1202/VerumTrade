@@ -51,10 +51,24 @@ class ConditionalLogic:
         messages = state["messages"]
         last_message = messages[-1]
         if getattr(last_message, "tool_calls", None):
-            if self._can_use_tools(state, analyst_key):
+            research = (state.get("analyst_research_state") or {}).get(analyst_key) or {}
+            status = str(research.get("status") or "continue")
+            if status == "continue" and self._can_use_tools(state, analyst_key):
                 return tools_node
             return force_finalize_node
         return clear_node
+
+    def route_after_research_controller(self, state: AgentState) -> str:
+        """Pre-debate research feeds the evidence graph; manager-requested research returns to the manager."""
+        if state.get("research_phase") == "manager_revision":
+            return "Research Manager"
+        return "Evidence Graph"
+
+    def route_after_research_manager(self, state: AgentState) -> str:
+        """Reopen research only when the manager filed open tasks within its reopen budget."""
+        if state.get("research_phase") == "post_manager":
+            return "Research Controller"
+        return "Trader"
 
     def should_continue_market(self, state: AgentState):
         """Determine if market analysis should continue."""

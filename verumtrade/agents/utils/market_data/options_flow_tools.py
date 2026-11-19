@@ -145,6 +145,29 @@ def _analyze_chain_for_unusual(
     return unusual
 
 
+HISTORICAL_CHAIN_GRACE_DAYS = 3
+
+
+def _historical_chain_unavailable(symbol: str, curr_date: str, today: datetime | None = None) -> str | None:
+    """Refuse to answer a historical as-of date with the live options chain.
+
+    Yahoo only serves the current chain, so a replay dated in the past would otherwise
+    see open interest and volume that did not exist on that date.
+    """
+    try:
+        as_of = datetime.strptime(str(curr_date or "")[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    today = today or datetime.now()
+    if (today - as_of).days <= HISTORICAL_CHAIN_GRACE_DAYS:
+        return None
+    return (
+        f"Options data unavailable for {symbol} as of {curr_date}: this source only provides the "
+        f"current options chain ({today:%Y-%m-%d}), which would leak post-{curr_date} positioning "
+        "into a historical analysis. Treat options positioning as unknown for this date."
+    )
+
+
 @tool
 async def get_unusual_options_activity(
     symbol: Annotated[str, "Stock ticker symbol (e.g., 'AAPL', 'NVDA')"],
@@ -180,7 +203,9 @@ async def get_unusual_options_activity(
         return "Error: yfinance not installed. Run: pip install yfinance"
     
     symbol = symbol.upper().strip()
-    
+    if unavailable := _historical_chain_unavailable(symbol, curr_date):
+        return unavailable
+
     chain_data = await asyncio.to_thread(_get_options_chain, symbol)
     if not chain_data:
         return f"No options data available for {symbol}. The stock may not have listed options."
@@ -344,6 +369,8 @@ async def get_options_sentiment_summary(
         return "Error: yfinance not installed. Run: pip install yfinance"
     
     symbol = symbol.upper().strip()
+    if unavailable := _historical_chain_unavailable(symbol, curr_date):
+        return unavailable
     # Define blocking worker for yfinance calls
     def fetch_sentiment_data():
         ticker = yf.Ticker(symbol)

@@ -1389,7 +1389,7 @@ def _render_scenario_analysis_structured(data: dict) -> str | None:
     ]:
         case = data.get(key, {})
         if case:
-            prob = case.get("probability", 0)
+            prob = case.get("probability")
             path = case.get("path", "")
             target = case.get("target_price")
             zone = case.get("expected_price_zone")
@@ -1412,13 +1412,20 @@ def _render_scenario_analysis_structured(data: dict) -> str | None:
 
     parts = ['<div class="scenario-grid">']
     for label, prob, path, price_label, color in scenarios:
-        pct = round(prob * 100)
+        # Probabilities are null unless a subjective estimate was declared; show that plainly.
+        if isinstance(prob, (int, float)):
+            pct = round(prob * 100)
+            prob_html = (
+                f'<span class="scenario-pct">{pct}%</span>'
+                f'<div class="scenario-bar"><div class="scenario-fill" style="width:{pct}%;background:{color}"></div></div>'
+            )
+        else:
+            prob_html = '<span class="scenario-pct">not estimated</span>'
         parts.append(
             f'<div class="scenario-card">'
             f'<div class="scenario-label" style="color:{color}">{html.escape(label)}</div>'
             f'<div class="scenario-prob">'
-            f'<span class="scenario-pct">{pct}%</span>'
-            f'<div class="scenario-bar"><div class="scenario-fill" style="width:{pct}%;background:{color}"></div></div>'
+            f'{prob_html}'
             f'</div>'
             f'{"<div class=\"scenario-price\">" + html.escape(price_label) + "</div>" if price_label else ""}'
             f'<p class="scenario-path">{html.escape(path)}</p>'

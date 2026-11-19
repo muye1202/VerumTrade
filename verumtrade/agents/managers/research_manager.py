@@ -12,6 +12,12 @@ from verumtrade.agents.utils.agent_runtime.context_budget import (
 )
 from verumtrade.agents.utils.agent_runtime.evidence_graph import format_evidence_projection
 from verumtrade.execution.decision_guard import build_market_snapshot
+from verumtrade.research.controller import controller_settings, research_controller_enabled
+from verumtrade.research.requests import (
+    apply_manager_requests,
+    format_research_results,
+    research_request_prompt_block,
+)
 from verumtrade.graph.debate_schema import (
     debate_validation_context_from_state,
     degrade_or_raise,
@@ -72,6 +78,21 @@ def create_research_manager(llm, memory):
         if clipped:
             logger.debug("Research manager prompt sections were clipped by context budget.")
 
+        research_enabled = research_controller_enabled(config)
+        research_settings = controller_settings()
+        research_results = format_research_results(state) if research_enabled else ""
+        if research_results:
+            research_results = "\n" + cap_section(
+                "research_results", research_results, settings["section_max_chars_response"]
+            )
+        request_block = (
+            research_request_prompt_block(
+                research_settings["max_manager_reopens"] - int(state.get("research_manager_reopens") or 0)
+            )
+            if research_enabled
+            else ""
+        )
+
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the bear analyst, the bull analyst, or choose Hold only if it is strongly justified based on the arguments presented.
 
 Summarize the key points from both sides concisely, focusing on the most compelling evidence or reasoning. Your recommendation—Buy, Sell, or Hold—must be clear and actionable. Avoid defaulting to Hold simply because both sides have valid points; commit to a stance grounded in the debate's strongest arguments.
@@ -128,7 +149,9 @@ Debate History:
 {sections["history_tail"]}
 
 Accepted structured debate turns:
-{sections["research_turns"]}"""
+{sections["research_turns"]}
+{research_results}
+{request_block}"""
 
         debate_context = debate_validation_context_from_state(state)
 
@@ -153,6 +176,7 @@ Accepted structured debate turns:
                 ledger,
                 evidence_ids=debate_context["evidence_ids"],
                 evidence_aliases=debate_context["evidence_aliases"],
+                rejected_evidence_ids=debate_context.get("rejected_evidence_ids"),
             )
             return None if result["valid"] else result["violations"]
 
@@ -184,6 +208,7 @@ Accepted structured debate turns:
             thesis_ledger,
             evidence_ids=debate_context["evidence_ids"],
             evidence_aliases=debate_context["evidence_aliases"],
+            rejected_evidence_ids=debate_context.get("rejected_evidence_ids"),
         )
         if not thesis_validation["valid"]:
             degraded = degrade_or_raise(
@@ -195,12 +220,24 @@ Accepted structured debate turns:
             if degraded:
                 thesis_validation = {**thesis_validation, "gate_degradation": degraded}
 
+        research_update = (
+            apply_manager_requests(
+                state,
+                response.content,
+                max_reopens=research_settings["max_manager_reopens"],
+                max_tool_calls_per_task=research_settings["max_tool_calls_per_task"],
+            )
+            if research_enabled
+            else {"research_phase": "final"}
+        )
+
         return {
             "investment_debate_state": new_investment_debate_state,
             "investment_plan": response.content,
             "thesis_ledger": thesis_ledger,
             "thesis_ledger_validation": thesis_validation,
             "market_snapshot": market_snapshot,
+            **research_update,
         }
 
     return research_manager_node

@@ -1,6 +1,7 @@
 from typing import Annotated
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import pandas as pd
 import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils
@@ -350,10 +351,34 @@ def get_stockstats_indicator(
     return str(indicator_value)
 
 
+def _statement_as_of(data, curr_date):
+    """Drop statement periods that end after ``curr_date``.
+
+    yfinance returns the current statement snapshot. Period-end filtering removes
+    periods that could not have existed on ``curr_date``, but the source has no filing
+    or availability dates and reports current (possibly restated) values, so the
+    returned note says so.
+    """
+    if not curr_date:
+        return data, "# As-of filter: none (no curr_date supplied); all periods shown."
+    try:
+        cutoff = pd.Timestamp(curr_date)
+        period_ends = pd.to_datetime(list(data.columns), errors="coerce")
+        keep = [col for col, end in zip(data.columns, period_ends) if pd.notna(end) and end <= cutoff]
+    except Exception:
+        return data, "# As-of filter: could not parse period columns; periods may postdate curr_date."
+    dropped = len(data.columns) - len(keep)
+    return data[keep], (
+        f"# As-of {curr_date}: {dropped} period(s) ending after this date removed. "
+        "This source has no filing/availability dates, so a period ending shortly before the "
+        "as-of date may not yet have been public; values are current, possibly restated, figures."
+    )
+
+
 def get_balance_sheet(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date; statement periods ending after it are excluded"] = None
 ):
     """Get balance sheet data from yfinance."""
     try:
@@ -366,16 +391,20 @@ def get_balance_sheet(
             
         if data.empty:
             return f"No balance sheet data found for symbol '{ticker}'"
+        data, as_of_note = _statement_as_of(data, curr_date)
+        if data.empty:
+            return f"No balance sheet periods for symbol '{ticker}' ending on or before {curr_date}"
             
         # Convert to CSV string for consistency with other functions
         csv_string = data.to_csv()
         
         # Add header information
         header = f"# Balance Sheet data for {ticker.upper()} ({freq})\n"
-        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        
+        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += as_of_note + "\n\n"
+
         return header + csv_string
-        
+
     except Exception as e:
         _raise_vendor_error("balance sheet", ticker, e)
 
@@ -383,7 +412,7 @@ def get_balance_sheet(
 def get_cashflow(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date; statement periods ending after it are excluded"] = None
 ):
     """Get cash flow data from yfinance."""
     try:
@@ -396,16 +425,20 @@ def get_cashflow(
             
         if data.empty:
             return f"No cash flow data found for symbol '{ticker}'"
+        data, as_of_note = _statement_as_of(data, curr_date)
+        if data.empty:
+            return f"No cash flow periods for symbol '{ticker}' ending on or before {curr_date}"
             
         # Convert to CSV string for consistency with other functions
         csv_string = data.to_csv()
         
         # Add header information
         header = f"# Cash Flow data for {ticker.upper()} ({freq})\n"
-        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        
+        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += as_of_note + "\n\n"
+
         return header + csv_string
-        
+
     except Exception as e:
         _raise_vendor_error("cash flow", ticker, e)
 
@@ -413,7 +446,7 @@ def get_cashflow(
 def get_income_statement(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date; statement periods ending after it are excluded"] = None
 ):
     """Get income statement data from yfinance."""
     try:
@@ -426,16 +459,20 @@ def get_income_statement(
             
         if data.empty:
             return f"No income statement data found for symbol '{ticker}'"
+        data, as_of_note = _statement_as_of(data, curr_date)
+        if data.empty:
+            return f"No income statement periods for symbol '{ticker}' ending on or before {curr_date}"
             
         # Convert to CSV string for consistency with other functions
         csv_string = data.to_csv()
         
         # Add header information
         header = f"# Income Statement data for {ticker.upper()} ({freq})\n"
-        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        
+        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += as_of_note + "\n\n"
+
         return header + csv_string
-        
+
     except Exception as e:
         _raise_vendor_error("income statement", ticker, e)
 

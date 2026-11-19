@@ -11,6 +11,8 @@ from verumtrade.agents.utils.agent_runtime.evidence_graph import (
     create_capture_evidence_facts_node,
     create_evidence_graph_node,
 )
+from verumtrade.research.controller import create_research_controller, research_controller_enabled
+from verumtrade.research.thesis import create_thesis_compiler, thesis_compiler_enabled
 
 from .conditional_logic import ConditionalLogic
 
@@ -141,6 +143,15 @@ class GraphSetup:
             )
 
         # Add other nodes
+        research_enabled = research_controller_enabled()
+        if research_enabled:
+            workflow.add_node(
+                "Research Controller", create_research_controller(self.quick_thinking_llm)
+            )
+        thesis_enabled = thesis_compiler_enabled()
+        if thesis_enabled:
+            workflow.add_node("Thesis Compiler", create_thesis_compiler(self.deep_thinking_llm))
+        after_manager = "Thesis Compiler" if thesis_enabled else "Trader"
         workflow.add_node("Evidence Graph", create_evidence_graph_node())
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
@@ -186,7 +197,12 @@ class GraphSetup:
                 next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
                 workflow.add_edge(current_clear, next_analyst)
             else:
-                workflow.add_edge(current_clear, "Evidence Graph")
+                # Cross-domain handoffs and questions an analyst could not answer with its
+                # own tools are investigated before the evidence graph is built.
+                workflow.add_edge(
+                    current_clear,
+                    "Research Controller" if research_enabled else "Evidence Graph",
+                )
 
         # Add remaining edges
         workflow.add_edge("Evidence Graph", "Bull Researcher")
@@ -206,7 +222,21 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
             },
         )
-        workflow.add_edge("Research Manager", "Trader")
+        if research_enabled:
+            workflow.add_conditional_edges(
+                "Research Controller",
+                self.conditional_logic.route_after_research_controller,
+                {"Evidence Graph": "Evidence Graph", "Research Manager": "Research Manager"},
+            )
+            workflow.add_conditional_edges(
+                "Research Manager",
+                self.conditional_logic.route_after_research_manager,
+                {"Research Controller": "Research Controller", "Trader": after_manager},
+            )
+        else:
+            workflow.add_edge("Research Manager", after_manager)
+        if thesis_enabled:
+            workflow.add_edge("Thesis Compiler", "Trader")
         workflow.add_edge("Trader", "Risky Analyst")
         workflow.add_conditional_edges(
             "Risky Analyst",

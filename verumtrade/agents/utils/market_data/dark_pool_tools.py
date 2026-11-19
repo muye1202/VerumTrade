@@ -10,8 +10,12 @@ Data Latency:
 - ATS Data: 2-week delay for Tier 1 stocks (S&P 500, Russell 1000)
 - Short Volume: Published next trading day (T+1)
 
-For swing trading (1-8 week horizon), this delayed data is still 
-valuable for identifying institutional accumulation/distribution patterns.
+Interpretation limits (see FINRA Information Notice 05/10/19):
+- Daily short sale volume is not short interest (outstanding short positions).
+- It covers only FINRA-reported off-exchange/TRF volume, not consolidated volume.
+- Much short-sale volume is market-maker liquidity provision, so it does not
+  identify institutional accumulation, distribution, or dealer positioning.
+Use it as descriptive context only, never as evidence of who is buying or selling.
 
 Requirements:
 - requests (pip install requests)
@@ -125,14 +129,13 @@ async def get_dark_pool_short_volume(
     - Trend in short volume over recent days
     - Comparison to typical short volume levels
     
-    Interpretation:
-    - High short volume ratio (>50%) may indicate bearish sentiment or
-      market makers hedging (context matters)
-    - Rising short volume trend suggests increasing bearish positioning
-    - Falling short volume may indicate short covering
-    
-    Note: Short volume ≠ short interest. Short volume is daily flow,
-    short interest is outstanding short positions.
+    Interpretation limits:
+    - Short volume ≠ short interest. Short volume is daily flow reported to
+      FINRA facilities; short interest is outstanding short positions.
+    - The ratio is not consolidated across all venues, and routine market-maker
+      short sales make ratios near or above 50% common. A high or rising ratio
+      does not by itself establish bearish positioning, institutional selling,
+      or short covering.
     """
     import requests
     
@@ -175,23 +178,23 @@ Try again tomorrow or check that {symbol} is an NMS security.
         recent_avg = sum(ratios[:2]) / 2
         older_avg = sum(ratios[2:min(5, len(ratios))]) / min(3, len(ratios) - 2)
         if recent_avg > older_avg * 1.1:
-            trend = "📈 RISING - Short volume increasing"
+            trend = "RISING - short volume share increasing"
         elif recent_avg < older_avg * 0.9:
-            trend = "📉 FALLING - Short volume decreasing (potential covering)"
+            trend = "FALLING - short volume share decreasing"
         else:
-            trend = "➡️ STABLE - Short volume consistent"
+            trend = "STABLE - short volume share consistent"
     else:
         trend = "N/A - Insufficient history"
-    
-    # Interpretation
+
+    # Descriptive level only: short sale volume includes routine market-maker activity.
     if short_ratio > 60:
-        interpretation = "⚠️ Very high short volume - significant bearish activity or heavy hedging"
+        interpretation = "Short volume share above 60% of FINRA-reported volume (descriptive; not evidence of positioning)"
     elif short_ratio > 50:
-        interpretation = "🔴 Elevated short volume - above-average bearish activity"
+        interpretation = "Short volume share 50-60% of FINRA-reported volume (common range for many NMS stocks)"
     elif short_ratio > 40:
-        interpretation = "⚪ Normal short volume range"
+        interpretation = "Short volume share 40-50% of FINRA-reported volume"
     else:
-        interpretation = "🟢 Low short volume - less bearish activity than typical"
+        interpretation = "Short volume share below 40% of FINRA-reported volume"
     
     # Format daily history
     history_lines = []
@@ -280,8 +283,8 @@ async def get_off_exchange_volume_context(
 
 ### General Market Context
 - Approximately {estimated_dark_pool_pct}% of US equity volume trades off-exchange (dark pools + internalization)
-- Dark pools are used by institutions to minimize market impact on large orders
-- High dark pool activity often indicates institutional accumulation or distribution
+- Off-exchange volume includes retail internalization and ATS trading; its level alone
+  does not identify institutional accumulation or distribution
 
 ### Data Availability
 No recent FINRA short volume data available for {symbol}.
@@ -313,56 +316,48 @@ Real-time dark pool prints require paid services like:
         notional_total = 0
         notional_dark = 0
     
-    # Short volume trends for institutional activity proxy
-    short_ratios = [(d["short_volume"] / d["total_volume"] * 100) if d["total_volume"] > 0 else 0 
+    short_ratios = [(d["short_volume"] / d["total_volume"] * 100) if d["total_volume"] > 0 else 0
                     for d in recent_data]
     avg_short = sum(short_ratios) / len(short_ratios) if short_ratios else 0
-    
-    # Interpretation based on available signals
+
+    # Descriptive observations only; none of these identify who is trading.
     signals = []
-    
+
     if volume_vs_avg > 150:
-        signals.append("📈 Volume surge - potential institutional activity")
+        signals.append("FINRA-reported volume above 150% of its recent average")
     elif volume_vs_avg < 50:
-        signals.append("📉 Low volume - reduced institutional interest")
-    
+        signals.append("FINRA-reported volume below 50% of its recent average")
+
     if avg_short > 55:
-        signals.append("🔴 Elevated short activity - bearish institutional flow")
+        signals.append("Average short volume share above 55% of FINRA-reported volume")
     elif avg_short < 35:
-        signals.append("🟢 Low short activity - less bearish pressure")
-    
+        signals.append("Average short volume share below 35% of FINRA-reported volume")
+
     if not signals:
-        signals.append("⚪ Normal trading patterns - no strong institutional signals")
-    
+        signals.append("No unusual volume level or short volume share in the lookback window")
+
     return f"""## Off-Exchange Trading Context: {symbol} ({curr_date})
 
-### Volume Breakdown (Estimated)
-- **Total Volume**: {latest['total_volume']:,} shares
-- **Est. Dark Pool Volume**: ~{est_dark_volume:,} shares ({estimated_dark_pool_pct}%)
-- **Est. Lit Exchange Volume**: ~{est_lit_volume:,} shares ({100-estimated_dark_pool_pct}%)
-- **Volume vs 20-Day Avg**: {volume_vs_avg:.0f}%
+### Volume
+- **FINRA-reported volume**: {latest['total_volume']:,} shares
+- **Volume vs recent average**: {volume_vs_avg:.0f}%
+- Dark pool / lit split: NOT MEASURED. The figures below apply an assumed
+  {estimated_dark_pool_pct}% industry-wide off-exchange share, not this stock's actual split.
+  - Assumed off-exchange volume: ~{est_dark_volume:,} shares (${notional_dark/1_000_000:.1f}M)
+  - Total notional: ${notional_total/1_000_000:.1f}M
 
-### Notional Values
-- Total: ${notional_total/1_000_000:.1f}M
-- Est. Dark Pool: ${notional_dark/1_000_000:.1f}M
-
-### Institutional Activity Signals
+### Observations
 {chr(10).join(f'- {s}' for s in signals)}
 
 ### Short Volume Context
-- Average short ratio: {avg_short:.1f}%
-- This proxies bearish off-exchange flow
-
-### Why This Matters for Swing Trading
-- High dark pool % = institutions building/exiting positions quietly
-- Unusual volume + high short ratio = potential distribution
-- Unusual volume + low short ratio = potential accumulation
-- Watch for multi-day patterns, not single-day anomalies
+- Average short volume share: {avg_short:.1f}%
+- Short sale volume includes routine market-maker activity; it is not short interest
+  and does not by itself indicate bearish positioning.
 
 ### Data Limitations
-- Real-time dark pool prints require paid subscriptions
-- FINRA ATS transparency data has 2-4 week delay
-- Short volume is best available free proxy (T+1)
+- FINRA daily short sale volume is not consolidated across all venues (FINRA Information Notice 05/10/19)
+- None of these observations identify institutional accumulation, distribution, or dealer positioning
+- FINRA ATS transparency data has a 2-4 week delay
 """
 
 
@@ -439,7 +434,7 @@ async def get_finra_ats_summary(
 ### Note
 - Data has 2-4 week delay per FINRA rules
 - Shows which ATSs (dark pools) handle this stock
-- High volume concentration in specific ATSs may indicate institutional interest
+- ATS venue concentration describes where trades executed, not who initiated them
 """
     
     except requests.exceptions.RequestException as e:

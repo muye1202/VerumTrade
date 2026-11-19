@@ -210,7 +210,7 @@ def frame_contested_issues(
         item
         for item in evidence_ledger or []
         if isinstance(item, dict)
-        and (not accepted or item.get("evidence_id") in accepted)
+        and (admissibility_report is None or item.get("evidence_id") in accepted)
         and (item.get("supports") or item.get("contradicts"))
     ]
     candidates = sorted(
@@ -342,22 +342,61 @@ def debate_validation_context_from_state(state: dict[str, Any] | None) -> dict[s
     issues = state.get("contested_issues")
     if not isinstance(issues, list) or not issues:
         issues = frame_contested_issues(ledger, admissibility)
-    evidence_ids = [
-            str(item.get("evidence_id"))
-            for item in ledger
-            if isinstance(item, dict) and item.get("evidence_id")
-    ]
     issue_ids = [
             str(item.get("issue_id"))
             for item in issues
             if isinstance(item, dict) and item.get("issue_id")
     ]
     return {
-        "evidence_ids": evidence_ids,
+        "evidence_ids": citable_evidence_ids(ledger, admissibility),
+        "rejected_evidence_ids": sorted(_rejected_evidence_ids(admissibility)),
         "issue_ids": issue_ids,
         "issues": issues,
         "evidence_aliases": _evidence_aliases_from_state(state, ledger),
     }
+
+
+def _rejected_evidence_ids(admissibility: dict[str, Any] | None) -> set[str]:
+    return {
+        str(item.get("evidence_id"))
+        for item in (admissibility or {}).get("rejected_evidence") or []
+        if isinstance(item, dict) and item.get("evidence_id")
+    }
+
+
+def citable_evidence_ids(
+    ledger: list[dict[str, Any]] | None,
+    admissibility: dict[str, Any] | None,
+) -> list[str]:
+    """Ledger evidence IDs that downstream agents may cite.
+
+    Rejected evidence (schema failure, missing source or timestamp, stale) stays in the
+    ledger for audit but can never be cited. Downgraded evidence remains citable so it
+    can be discussed, carrying its downgrade reason in the admissibility report.
+    """
+    rejected = _rejected_evidence_ids(admissibility)
+    return [
+        str(item.get("evidence_id"))
+        for item in ledger or []
+        if isinstance(item, dict)
+        and item.get("evidence_id")
+        and str(item.get("evidence_id")) not in rejected
+    ]
+
+
+def citable_evidence_ids_from_state(
+    state: dict[str, Any],
+    ledger: list[dict[str, Any]] | None,
+) -> list[str]:
+    admissibility = state.get("admissibility_report")
+    if not isinstance(admissibility, dict):
+        from verumtrade.graph.evidence_ledger_schema import validate_admissible_evidence
+
+        admissibility = validate_admissible_evidence(
+            ledger,
+            time_horizon=str(state.get("time_horizon") or ""),
+        )
+    return citable_evidence_ids(ledger, admissibility)
 
 
 def validate_research_debate_turns(
@@ -388,10 +427,12 @@ def validate_thesis_ledger(
     *,
     evidence_ids: list[str] | set[str],
     evidence_aliases: dict[str, list[str]] | None = None,
+    rejected_evidence_ids: list[str] | set[str] | None = None,
 ) -> ThesisLedgerValidation:
     if not isinstance(thesis_ledger, dict) or not thesis_ledger:
         return {"valid": False, "violations": ["thesis_ledger must be a non-empty object"]}
     valid_evidence = {str(item) for item in evidence_ids}
+    rejected_refs = {str(item) for item in rejected_evidence_ids or []}
     aliases = evidence_aliases or {}
     violations: list[str] = []
     if not str(thesis_ledger.get("winning_thesis") or "").strip():
@@ -415,8 +456,15 @@ def validate_thesis_ledger(
                 for ref in refs
                 if not _is_valid_thesis_evidence_ref(ref, valid_evidence, aliases)
             ]
-            if missing:
-                violations.append(f"accepted_claims[{idx}] has unknown evidence_ids: {', '.join(missing)}")
+            rejected_cited = [ref for ref in missing if ref in rejected_refs]
+            unknown = [ref for ref in missing if ref not in rejected_refs]
+            if rejected_cited:
+                violations.append(
+                    f"accepted_claims[{idx}] cites evidence rejected by admissibility (not citable): "
+                    f"{', '.join(rejected_cited)}; cite other evidence or move the claim to unresolved_uncertainties"
+                )
+            if unknown:
+                violations.append(f"accepted_claims[{idx}] has unknown evidence_ids: {', '.join(unknown)}")
             if not str(claim.get("effect") or "").strip():
                 violations.append(f"accepted_claims[{idx}] missing effect")
     constraints = thesis_ledger.get("recommended_plan_constraints")

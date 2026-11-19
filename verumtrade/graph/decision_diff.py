@@ -24,6 +24,7 @@ class FinalDecisionTrace(TypedDict, total=False):
     accepted_patches: list[str]
     rejected_patches: list[dict[str, Any]]
     no_material_change_reason: str | None
+    cross_run_thesis: dict[str, Any] | None
 
 
 def build_decision_diff(
@@ -33,6 +34,7 @@ def build_decision_diff(
     accepted_patch_ids: list[str] | None = None,
     rejected_patches: list[dict[str, Any]] | None = None,
     no_material_change_reason: str | None = None,
+    thesis_change_record: dict[str, Any] | None = None,
 ) -> FinalDecisionTrace:
     plan = trader_plan if isinstance(trader_plan, dict) else {}
     final = final_decision if isinstance(final_decision, dict) else {}
@@ -61,6 +63,28 @@ def build_decision_diff(
         "accepted_patches": list(accepted_patch_ids or []),
         "rejected_patches": list(rejected_patches or []),
         "no_material_change_reason": None if has_diff else reason,
+        "cross_run_thesis": summarize_cross_run(thesis_change_record),
+    }
+
+
+def summarize_cross_run(change_record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Compact view of how this run's thesis differs from the prior version (None on a first run)."""
+    if not isinstance(change_record, dict) or not change_record or change_record.get("verdict") == "initial":
+        return None
+    premises = change_record.get("premises") or {}
+    evidence = change_record.get("evidence") or {}
+    return {
+        "verdict": change_record.get("verdict"),
+        "prior_version": change_record.get("prior_version"),
+        "prior_as_of": change_record.get("prior_as_of"),
+        "refresh_status": change_record.get("refresh_status"),
+        "action_changed": bool(change_record.get("action_changed")),
+        "decision": change_record.get("decision"),
+        "premises_added": premises.get("added") or [],
+        "premises_withdrawn": premises.get("withdrawn") or [],
+        "premises_still_supported": premises.get("retained_and_supported") or [],
+        "levels_changed": change_record.get("levels") or {},
+        "evidence_changed_or_restated": evidence.get("changed_or_restated") or [],
     }
 
 

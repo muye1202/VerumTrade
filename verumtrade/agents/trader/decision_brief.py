@@ -154,17 +154,17 @@ def build_scenario_analysis(
     brief: TraderDecisionBrief | dict[str, Any],
     setup_diagnosis: TradeSetupDiagnosis | dict[str, Any],
 ) -> ScenarioAnalysis:
-    reference_price = _float_or_none(brief.get("reference_price")) or 100.0
-    supporting = [
+    reference_price = _positive_price(brief.get("reference_price"))
+    supporting = _dedupe_claims(
         claim
         for claim in brief.get("top_supporting_evidence", []) or []
         if isinstance(claim, dict)
-    ]
-    opposing = [
+    )
+    opposing = _dedupe_claims(
         claim
         for claim in brief.get("top_opposing_evidence", []) or []
         if isinstance(claim, dict)
-    ]
+    )
     support_score = sum(float(claim.get("strength", 0.0) or 0.0) for claim in supporting)
     oppose_score = sum(float(claim.get("strength", 0.0) or 0.0) for claim in opposing)
     setup_quality = str(setup_diagnosis.get("setup_quality") or "C").upper()
@@ -174,17 +174,31 @@ def build_scenario_analysis(
     if setup_quality in {"C", "D"} or entry_status in {"early", "overextended", "unclear"}:
         bull_prob = min(bull_prob, 0.45)
     bear_prob = _scenario_probability(0.28 + oppose_score * 0.05)
-    base_prob = max(0.10, round(1.0 - bull_prob - bear_prob, 2))
-    if bull_prob + bear_prob + base_prob != 1.0:
-        base_prob = round(1.0 - bull_prob - bear_prob, 2)
+    if bull_prob + bear_prob > 0.90:
+        scale = 0.90 / (bull_prob + bear_prob)
+        bull_prob = round(bull_prob * scale, 2)
+        bear_prob = round(bear_prob * scale, 2)
+    base_prob = round(1.0 - bull_prob - bear_prob, 2)
 
-    target_pct = _target_pct(setup_diagnosis, support_score, oppose_score)
-    invalidation_pct = _invalidation_pct(setup_diagnosis, oppose_score)
-    target_price = _round_price(reference_price * (1.0 + target_pct))
-    invalidation_price = _round_price(reference_price * (1.0 - invalidation_pct))
-    risk = max(reference_price - invalidation_price, 0.0)
-    reward = max(target_price - reference_price, 0.0)
-    risk_reward = round(reward / risk, 2) if risk > 0 else None
+    missing_inputs: list[str] = []
+    target_price: float | None = None
+    invalidation_price: float | None = None
+    expected_price_zone: str | None = None
+    risk_reward: float | None = None
+    if reference_price is None:
+        # No quote means no price-derived level; never substitute a placeholder price.
+        missing_inputs.append("reference_price")
+    else:
+        target_pct = _target_pct(setup_diagnosis, support_score, oppose_score)
+        invalidation_pct = _invalidation_pct(setup_diagnosis, oppose_score)
+        target_price = _round_price(reference_price * (1.0 + target_pct))
+        invalidation_price = _round_price(reference_price * (1.0 - invalidation_pct))
+        expected_price_zone = (
+            f"{_round_price(reference_price * 0.98)}-{_round_price(reference_price * 1.04)}"
+        )
+        risk = max(reference_price - invalidation_price, 0.0)
+        reward = max(target_price - reference_price, 0.0)
+        risk_reward = round(reward / risk, 2) if risk > 0 else None
 
     dominant_risk = _dominant_risk(opposing)
     primary_setup = str(setup_diagnosis.get("primary_setup") or "NO_TRADE")
@@ -199,7 +213,7 @@ def build_scenario_analysis(
         "base_case": {
             "path": "Setup remains unresolved; preserve optionality until trigger quality improves.",
             "probability": base_prob,
-            "expected_price_zone": f"{_round_price(reference_price * 0.98)}-{_round_price(reference_price * 1.04)}",
+            "expected_price_zone": expected_price_zone,
             "evidence": _evidence_ids([*supporting[:2], *opposing[:2]]),
         },
         "bear_case": {
@@ -211,6 +225,11 @@ def build_scenario_analysis(
         "dominant_risk": dominant_risk,
         "asymmetric_payoff": bool(risk_reward is not None and risk_reward >= 1.5),
         "risk_reward_estimate": risk_reward,
+        "status": "incomplete" if missing_inputs else "complete",
+        "missing_inputs": missing_inputs,
+        # Disclosed so downstream readers do not mistake these for calibrated outputs.
+        "probability_basis": "heuristic_evidence_score_uncalibrated",
+        "price_level_basis": "setup_template_pct" if reference_price is not None else None,
     }
 
 
@@ -223,20 +242,23 @@ def build_execution_plan_compiler(
     market_session_context: str = "",
     portfolio_context: str = "",
     catalyst_event_report_structured: dict[str, Any] | None = None,
+    thesis_decision: dict[str, Any] | None = None,
 ) -> ExecutionPlanCompiler:
-    reference_price = (
-        _reference_price(market_snapshot)
-        or _float_or_none(decision_brief.get("reference_price"))
-        or 100.0
+    reference_price = _positive_price(_reference_price(market_snapshot)) or _positive_price(
+        decision_brief.get("reference_price")
     )
-    stop_loss = _round_price(
-        ((scenario_analysis.get("bear_case") or {}).get("invalidation_price"))
-        or reference_price * 0.94
-    )
-    take_profit = _round_price(
-        ((scenario_analysis.get("bull_case") or {}).get("target_price"))
-        or reference_price * 1.10
-    )
+    scenario_complete = _scenario_complete(scenario_analysis)
+    bear_level = _positive_price((scenario_analysis.get("bear_case") or {}).get("invalidation_price"))
+    bull_level = _positive_price((scenario_analysis.get("bull_case") or {}).get("target_price"))
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    if reference_price is not None and scenario_complete:
+        stop_loss = _round_price(bear_level or reference_price * 0.94)
+        take_profit = _round_price(bull_level or reference_price * 1.10)
+    else:
+        # An incomplete scenario keeps only the levels it actually derived.
+        stop_loss = _round_price(bear_level) if bear_level else None
+        take_profit = _round_price(bull_level) if bull_level else None
     current_position = decision_brief.get("current_position") or {}
     has_position = bool(current_position.get("has_position"))
     shares = current_position.get("shares")
@@ -261,12 +283,27 @@ def build_execution_plan_compiler(
     if primary_setup == "NO_TRADE":
         checks.append("NO_TRADE setup forces HOLD")
         actionable = False
+    if reference_price is None:
+        checks.append("reference price unavailable: numeric levels withheld and HOLD enforced")
+        actionable = False
+    if not scenario_complete:
+        missing = ", ".join(str(m) for m in scenario_analysis.get("missing_inputs") or []) or "unspecified"
+        checks.append(f"scenario levels incomplete ({missing}): HOLD enforced")
+        actionable = False
+    if thesis_decision:
+        thesis_action = str(thesis_decision.get("action") or "").upper()
+        thesis_mode = str(thesis_decision.get("execution_mode") or "")
+        if thesis_action != "BUY" or thesis_mode != "act_now":
+            checks.append(f"swing thesis decision {thesis_action or 'none'}/{thesis_mode or 'none'} does not authorize an immediate BUY")
+            actionable = False
 
     if actionable:
         action = "BUY"
         execution_intent = "ACT_NOW"
         decision_version = "v1"
         order_type = _session_safe_order_type(market_session_context)
+        if _anchor_is_verified_close(market_snapshot):
+            order_type = "LIMIT"  # a prior close is not an executable quote
         limit_price = _round_price(reference_price) if order_type == "LIMIT" else None
         position_size_pct = _position_size_pct(setup_quality, scenario_analysis)
     else:
@@ -330,10 +367,8 @@ def apply_trader_self_audit(
     repaired: dict[str, Any] = dict(execution_plan_compiler or {})
     violations: list[str] = []
     repairs: list[str] = []
-    reference_price = (
-        _reference_price(market_snapshot)
-        or _float_or_none(decision_brief.get("reference_price"))
-        or 100.0
+    reference_price = _positive_price(_reference_price(market_snapshot)) or _positive_price(
+        decision_brief.get("reference_price")
     )
     current_position = decision_brief.get("current_position") or {}
     has_position = bool(current_position.get("has_position"))
@@ -355,6 +390,10 @@ def apply_trader_self_audit(
         violations.append("SELL blocked because current_position.has_position is false.")
         _repair_to_wait_hold(repaired)
         repairs.append("set SELL to HOLD because no position exists")
+    if action in {"BUY", "SELL"} and reference_price is None:
+        violations.append(f"{action} blocked because the reference price is missing.")
+        _repair_to_wait_hold(repaired)
+        repairs.append("set action to HOLD because no reference price is available")
 
     action = str(repaired.get("recommended_action") or "HOLD").upper()
     intent = str(repaired.get("recommended_execution_intent") or "").upper()
@@ -372,20 +411,36 @@ def apply_trader_self_audit(
             repaired["order_type"] = "LIMIT"
             repaired["limit_price"] = _round_price(reference_price)
             repairs.append("replaced MARKET with LIMIT at reference price for closed session")
+    if action in {"BUY", "SELL"} and _anchor_is_verified_close(market_snapshot):
+        if str(repaired.get("order_type") or "").upper() == "MARKET":
+            violations.append("MARKET order blocked because the reference price is a prior close, not a live quote.")
+            repaired["order_type"] = "LIMIT"
+            repaired["limit_price"] = _round_price(reference_price)
+            repairs.append("replaced MARKET with LIMIT at the verified close")
 
     stop_loss = _float_or_none(repaired.get("stop_loss"))
     take_profit = _float_or_none(repaired.get("take_profit"))
-    if stop_loss is None:
-        violations.append("STOP_LOSS missing or non-numeric.")
-        repaired["stop_loss"] = _round_price((scenario_analysis.get("bear_case") or {}).get("invalidation_price") or reference_price * 0.94)
-        repairs.append("filled STOP_LOSS from scenario bear-case invalidation")
-    if take_profit is None:
-        violations.append("TAKE_PROFIT missing or non-numeric.")
-        repaired["take_profit"] = _round_price((scenario_analysis.get("bull_case") or {}).get("target_price") or reference_price * 1.10)
-        repairs.append("filled TAKE_PROFIT from scenario bull-case target")
+    if not _scenario_complete(scenario_analysis):
+        if stop_loss is None or take_profit is None:
+            violations.append("STOP_LOSS/TAKE_PROFIT withheld because the scenario levels are incomplete.")
+    elif reference_price is None:
+        # Levels cannot be derived without a quote; leave them missing rather than invent them.
+        if stop_loss is None or take_profit is None:
+            violations.append("STOP_LOSS/TAKE_PROFIT withheld because the reference price is missing.")
+    else:
+        if stop_loss is None:
+            violations.append("STOP_LOSS missing or non-numeric.")
+            repaired["stop_loss"] = _round_price((scenario_analysis.get("bear_case") or {}).get("invalidation_price") or reference_price * 0.94)
+            repairs.append("filled STOP_LOSS from scenario bear-case invalidation")
+        if take_profit is None:
+            violations.append("TAKE_PROFIT missing or non-numeric.")
+            repaired["take_profit"] = _round_price((scenario_analysis.get("bull_case") or {}).get("target_price") or reference_price * 1.10)
+            repairs.append("filled TAKE_PROFIT from scenario bull-case target")
 
     for field in ("limit_price", "stop_price", "stop_loss", "take_profit"):
         value = _float_or_none(repaired.get(field))
+        if reference_price is None:
+            break
         if value is not None and not _within_reference_band(value, reference_price):
             violations.append(f"{field} is outside allowed range of market_snapshot.reference_price.")
             if field == "limit_price":
@@ -473,13 +528,13 @@ def build_trader_plan_v1(state: dict[str, Any] | None) -> TraderPlanV1:
 
 def build_trade_setup_diagnosis(brief: TraderDecisionBrief | dict[str, Any]) -> TradeSetupDiagnosis:
     evidence_by_domain = brief.get("evidence_by_domain") or {}
-    all_claims = [
+    all_claims = _dedupe_claims(
         claim
         for domain_claims in evidence_by_domain.values()
         for claim in (domain_claims or [])
         if isinstance(claim, dict)
-    ]
-    text = " ".join(str(claim.get("claim") or "") for claim in all_claims).lower()
+    )
+    text = [str(claim.get("claim") or "").lower() for claim in all_claims]
     supporting = [claim for claim in all_claims if claim.get("direction") == "bullish"]
     opposing = [claim for claim in all_claims if claim.get("direction") in {"bearish", "risk_only"}]
     support_score = sum(float(claim.get("strength", 0.0) or 0.0) for claim in supporting)
@@ -655,12 +710,12 @@ def _top_claims(
     *,
     limit: int = 5,
 ) -> list[EvidenceClaim]:
-    items = [
+    items = _dedupe_claims(
         claim
         for domain_claims in evidence_by_domain.values()
         for claim in domain_claims
         if claim.get("direction") in directions
-    ]
+    )
     return sorted(items, key=lambda claim: float(claim.get("strength", 0.0)), reverse=True)[:limit]
 
 
@@ -732,6 +787,10 @@ def _concentration_flags(text: str) -> list[str]:
     return flags
 
 
+def _anchor_is_verified_close(snapshot: Any) -> bool:
+    return isinstance(snapshot, dict) and str(snapshot.get("source") or "") == "verified_close"
+
+
 def _reference_price(snapshot: Any) -> float | None:
     if not isinstance(snapshot, dict):
         return None
@@ -781,25 +840,91 @@ def _freshness(facts: list[dict[str, Any]]) -> Freshness:
     return "unknown"
 
 
+# Interim Stage 0 matcher: setup/entry labels still come from claim prose, but only
+# from asserted, word-bounded phrases. Negated ("no evidence of a squeeze") and
+# conditional ("invalid if price closes below...") mentions do not count, and generic
+# words such as "flow" in "cash flow" or "invalidation" no longer match.
+_NEGATION_BEFORE = re.compile(
+    r"\b(?:no|not|never|without|nor|lack of|lacks|absence of|rules? out|ruled out)\b(?:\W+\w+){0,3}\W*$"
+)
+_CONDITIONAL_MARKERS = re.compile(r"\b(?:if|unless|would|could|should|might)\b")
+# Status judgments stated conditionally ("invalid if price closes below X") describe a
+# falsifier, not the current state; setup mechanisms stated conditionally still name the setup.
+_CONDITION_SENSITIVE_KEYS = {"invalid", "overextended", "early"}
+_SETUP_PATTERNS: dict[str, tuple[str, ...]] = {
+    "post_earnings": (r"\bpost[- ]earnings\b",),
+    "squeeze_or_flow": (
+        r"\bsqueeze\b",
+        r"\b(?:options|order|fund|dealer|gamma)\s+flows?\b",
+        r"\bflow[- ]driven\b",
+    ),
+    "pullback": (r"\bpull ?backs?\b",),
+    "mean_reversion": (r"\bmean[- ]reversion\b", r"\bbounce\b"),
+    "breakout": (r"\bbreakout\b", r"\bresistance\b"),
+    "event": (r"\bevent\b", r"\bcatalysts?\b", r"\bearnings\b"),
+    "invalid": (
+        r"\binvalid(?:ated)?\b",
+        r"\bthesis[- ]breaking\b",
+        r"\b(?:setup|thesis|structure|trend)\s+(?:is\s+|was\s+|has\s+been\s+)?broken\b",
+    ),
+    "overextended": (r"\bover-?extended\b", r"\bchasing\b"),
+    "early": (
+        r"\btoo early\b",
+        r"\bearly entry\b",
+        r"\bunconfirmed\b",
+        r"\bnot (?:yet )?confirmed\b",
+        r"\bwait(?:ing)? for\b",
+    ),
+    "volume": (r"\bvolume\b",),
+    "price_level": (r"\bprice\b", r"\bbreakout\b", r"\bsupport\b", r"\bresistance\b"),
+    "time": (r"\bdate\b", r"\btime\b", r"\bweeks?\b"),
+}
+
+
+def _clause_around(text: str, start: int, end: int) -> tuple[str, str]:
+    clause_start = max(text.rfind(sep, 0, start) for sep in (".", ";", ",", ":")) + 1
+    ends = [pos for pos in (text.find(sep, end) for sep in (".", ";", ",")) if pos != -1]
+    clause_end = min(ends) if ends else len(text)
+    return text[clause_start:start], text[end:clause_end]
+
+
+def _asserted(texts: list[str] | str, key: str) -> bool:
+    """True when some claim asserts a phrase for ``key`` without negating or conditioning it."""
+    if isinstance(texts, str):
+        texts = [texts]
+    for text in texts:
+        for pattern in _SETUP_PATTERNS[key]:
+            for match in re.finditer(pattern, text):
+                before, after = _clause_around(text, match.start(), match.end())
+                if _NEGATION_BEFORE.search(before):
+                    continue
+                if key in _CONDITION_SENSITIVE_KEYS and (
+                    _CONDITIONAL_MARKERS.search(before) or _CONDITIONAL_MARKERS.search(after)
+                ):
+                    continue
+                return True
+    return False
+
+
 def _setup_class(
-    text: str,
+    text: list[str] | str,
     support_score: float,
     oppose_score: float,
     has_position: bool,
 ) -> tuple[str, str | None]:
     if support_score <= 0.0 and oppose_score <= 0.0:
         return "NO_TRADE", None
-    if "post-earnings" in text or "post earnings" in text:
+    if _asserted(text, "post_earnings"):
         return "POST_EARNINGS_DRIFT", None
-    if "squeeze" in text or "flow" in text:
+    if _asserted(text, "squeeze_or_flow"):
         return "SQUEEZE_OR_FLOW_TRADE", None
-    if "pullback" in text:
+    if _asserted(text, "pullback"):
         return "PULLBACK_ENTRY", None
-    if "mean reversion" in text or "bounce" in text:
+    if _asserted(text, "mean_reversion"):
         return "MEAN_REVERSION_BOUNCE", None
-    if "breakout" in text or "resistance" in text:
+    if _asserted(text, "breakout"):
         return "BREAKOUT_CONFIRMATION", "MOMENTUM_CONTINUATION"
-    if "event" in text or "catalyst" in text or "earnings" in text:
+    if _asserted(text, "event"):
         return "EVENT_DRIVEN_CATALYST", None
     if has_position and oppose_score > support_score:
         return "DEFENSIVE_EXIT", "POSITION_MANAGEMENT_ONLY"
@@ -808,30 +933,28 @@ def _setup_class(
     return "NO_TRADE", None
 
 
-def _entry_status(text: str, support_score: float, oppose_score: float) -> str:
-    if "invalid" in text or "broken" in text or "thesis-breaking" in text:
+def _entry_status(text: list[str] | str, support_score: float, oppose_score: float) -> str:
+    if _asserted(text, "invalid"):
         return "invalid"
-    if "overextended" in text or "chasing" in text:
+    if _asserted(text, "overextended"):
         return "overextended"
-    if "early" in text or "unconfirmed" in text or "wait" in text:
+    if _asserted(text, "early"):
         return "early"
     if support_score > 0.0 and support_score >= oppose_score:
         return "confirmed"
-    if oppose_score > support_score:
-        return "unclear"
     return "unclear"
 
 
-def _trigger_type(text: str, hard_constraints: list[str]) -> str:
+def _trigger_type(text: list[str] | str, hard_constraints: list[str]) -> str:
     if any("freeze_new_buys" in constraint or "risk_judge_review" in constraint for constraint in hard_constraints):
         return "event"
-    if any(term in text for term in ("earnings", "event", "catalyst")):
+    if _asserted(text, "event"):
         return "event"
-    if "volume" in text:
+    if _asserted(text, "volume"):
         return "volume"
-    if any(term in text for term in ("price", "breakout", "support", "resistance")):
+    if _asserted(text, "price_level"):
         return "price"
-    if any(term in text for term in ("date", "time", "week")):
+    if _asserted(text, "time"):
         return "time"
     return "none"
 
@@ -983,6 +1106,54 @@ def _canonical_contract(
             "override_reason": None,
         }
 
+    bull_target = _positive_price((scenario_analysis.get("bull_case") or {}).get("target_price"))
+    if bull_target is None:
+        # Without a price level the branch cannot be conditioned on price; an unconditioned
+        # BUY branch would fire at any price, so emit a HOLD branch gated on manual confirmation.
+        return {
+            "decision_version": "v2",
+            "ticker": ticker,
+            "plan_mode": "conditional",
+            "execution_plan": [
+                {
+                    "branch_id": "await_reference_price",
+                    "priority": 1,
+                    "conditions": {"schedule": {"session_constraint": "MARKET_HOURS"}},
+                    "event_conditions": [
+                        {
+                            "event_key": "reference_price_available",
+                            "requires_confirmation": True,
+                            "expected_value": None,
+                        }
+                    ],
+                    "action_template": {
+                        "action": "HOLD",
+                        "quantity": None,
+                        "order_type": "MARKET",
+                        "time_in_force": "DAY",
+                        "extended_hours": False,
+                        "limit_price": None,
+                        "stop_price": None,
+                        "trail_percent": None,
+                        "trail_price": None,
+                        "stop_loss": None,
+                        "take_profit": None,
+                        "position_size_pct": None,
+                        "time_horizon": time_horizon,
+                        "confidence": compiler["confidence"],
+                        "rationale": "No reference price: re-run analysis once a quote is available.",
+                    },
+                }
+            ],
+            "default_action": None,
+            "time_horizon": time_horizon,
+            "confidence": compiler["confidence"],
+            "rationale": "Reference price missing; numeric levels withheld.",
+            "action": "HOLD",
+            "execution_intent": "wait_for_trigger",
+            "override_reason": None,
+        }
+
     return {
         "decision_version": "v2",
         "ticker": ticker,
@@ -1068,6 +1239,58 @@ def _final_action_consistent(
     if str(setup_diagnosis.get("setup_requires_trigger")).lower() == "true" and intent == "ACT_NOW":
         return False
     return True
+
+
+def _scenario_complete(scenario_analysis: dict[str, Any] | None) -> bool:
+    return str((scenario_analysis or {}).get("status") or "complete") == "complete"
+
+
+def incomplete_scenario_analysis(missing_inputs: list[str], dominant_risk: str = "") -> ScenarioAnalysis:
+    """Scenario shape with no levels or probabilities, used when no valid thesis exists."""
+    return {
+        "bull_case": {"path": "Not compiled.", "probability": None, "target_price": None, "evidence": []},
+        "base_case": {"path": "Not compiled.", "probability": None, "expected_price_zone": None, "evidence": []},
+        "bear_case": {"path": "Not compiled.", "probability": None, "invalidation_price": None, "evidence": []},
+        "dominant_risk": dominant_risk,
+        "asymmetric_payoff": False,
+        "risk_reward_estimate": None,
+        "status": "incomplete",
+        "missing_inputs": list(missing_inputs),
+        "probability_basis": "not_estimated",
+        "price_level_basis": None,
+    }  # type: ignore[typeddict-item]
+
+
+def _positive_price(value: Any) -> float | None:
+    parsed = _float_or_none(value)
+    return parsed if parsed is not None and parsed > 0 else None
+
+
+def _dedupe_claims(claims: Any) -> list[dict[str, Any]]:
+    """Collapse claims that restate the same underlying evidence.
+
+    Claims sharing the same underlying fact IDs (or, without fact IDs, the same
+    normalized text) count once, keeping the strongest copy, so repetition cannot
+    inflate evidence scores.
+    """
+    kept: list[dict[str, Any]] = []
+    index_by_key: dict[tuple, int] = {}
+    for claim in claims:
+        source_ids = [str(item) for item in claim.get("source_ids") or [] if str(item)]
+        fact_ids = sorted({item for item in source_ids if not item.startswith("inf_")})
+        text_key = " ".join(str(claim.get("claim") or "").lower().split())
+        keys = [("text", text_key)] if text_key else []
+        if fact_ids:
+            keys.append(("facts", tuple(fact_ids)))
+        idx = next((index_by_key[key] for key in keys if key in index_by_key), None)
+        if idx is None:
+            idx = len(kept)
+            kept.append(claim)
+        elif float(claim.get("strength", 0.0) or 0.0) > float(kept[idx].get("strength", 0.0) or 0.0):
+            kept[idx] = claim
+        for key in keys:
+            index_by_key.setdefault(key, idx)
+    return kept
 
 
 def _round_price(value: Any) -> float:

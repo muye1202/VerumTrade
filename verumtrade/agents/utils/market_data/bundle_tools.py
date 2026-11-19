@@ -34,6 +34,7 @@ from verumtrade.agents.utils.market_data.short_interest_tools import (
     get_squeeze_candidates_assessment,
 )
 from verumtrade.agents.utils.market_data.technical_indicators_tools import get_indicators
+from verumtrade.research.envelope import MODEL_SYNTHESIS_MARKER, is_model_synthesis
 from verumtrade.agents.utils.market_data.vwap_tools import (
     get_intraday_vwap_position,
     get_multi_day_vwap_context,
@@ -918,6 +919,7 @@ def _missing_summary(section: str, value: str) -> str | None:
     missing_patterns = (
         r"^no\s+\w+.*(?:available|found|returned|data)",
         r"not available",
+        r"\bunavailable\b",
         r"\bfailed\b",
         r"\berror\b",
         r"\bmissing\b",
@@ -949,9 +951,21 @@ def format_evidence_bundle(
         text = str(raw or "")
         if missing := _missing_summary(section, text):
             missing_data.append({"section": section, "issue": missing})
-        source_quality.append({"section": section, "chars": len(text), "status": "missing" if missing else "ok"})
+        synthesis = is_model_synthesis(text)
+        source_quality.append(
+            {
+                "section": section,
+                "chars": len(text),
+                "status": "missing" if missing else "ok",
+                "source_class": "model_synthesis" if synthesis else "vendor_data",
+            }
+        )
 
-        lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+        lines = [
+            re.sub(r"\s+", " ", line).strip()
+            for line in text.splitlines()
+            if MODEL_SYNTHESIS_MARKER not in line
+        ]
         scored = [
             (_score_bundle_line(line), idx, line)
             for idx, line in enumerate(lines)
@@ -974,9 +988,9 @@ def format_evidence_bundle(
                     "source": section,
                     "section": section,
                     "as_of": curr_date,
-                    "confidence": 0.85,
-                    "quality": "normal",
-                    "source_type": "vendor",
+                    "confidence": 0.4 if synthesis else 0.85,
+                    "quality": "low_quality" if synthesis else "normal",
+                    "source_type": "model_synthesis" if synthesis else "vendor",
                 }
             )
 

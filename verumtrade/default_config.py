@@ -81,6 +81,32 @@ DEFAULT_CONFIG = {
     "max_tool_calls_total": int(os.getenv("VERUMTRADE_MAX_TOOL_CALLS_TOTAL", "50")),
     # When true, expose bundled one-shot tools per analyst to reduce extra LLM turns.
     "enable_bundle_tools": _env_flag("VERUMTRADE_ENABLE_BUNDLE_TOOLS", True),
+    # Research controller (harness Stage 2): works bounded research tasks from analyst
+    # handoffs/unanswerable questions before the debate, and from research-manager requests
+    # after it. Every budget below is a hard cap; set enabled=false to restore the fixed pipeline.
+    "research_controller": {
+        "enabled": _env_flag("VERUMTRADE_RESEARCH_CONTROLLER_ENABLED", True),
+        "max_tasks_pre_debate": int(os.getenv("VERUMTRADE_RESEARCH_MAX_TASKS_PRE_DEBATE", "2")),
+        "max_tasks_post_manager": int(os.getenv("VERUMTRADE_RESEARCH_MAX_TASKS_POST_MANAGER", "2")),
+        "max_tool_calls_per_task": int(os.getenv("VERUMTRADE_RESEARCH_MAX_TOOL_CALLS_PER_TASK", "3")),
+        "max_tool_calls_per_phase": int(os.getenv("VERUMTRADE_RESEARCH_MAX_TOOL_CALLS_PER_PHASE", "6")),
+        "max_manager_reopens": int(os.getenv("VERUMTRADE_RESEARCH_MAX_MANAGER_REOPENS", "1")),
+    },
+    # Thesis compiler (harness Stage 3): one model call turns the finished research into a typed,
+    # falsifiable swing thesis; price levels and reward/risk are then computed deterministically.
+    # scenario_mode "thesis" withholds levels when no valid thesis exists; "legacy_heuristic"
+    # restores the pre-Stage-3 setup-template scenarios (kept only as an A/B baseline).
+    "thesis_compiler": {
+        "enabled": _env_flag("VERUMTRADE_THESIS_COMPILER_ENABLED", True),
+        "scenario_mode": os.getenv("VERUMTRADE_SCENARIO_MODE", "thesis"),
+    },
+    # Thesis store (harness Stage 4): append-only thesis versions, frozen forecasts, resolutions
+    # and watch contracts, so later runs revise the prior thesis instead of starting over.
+    # Defaults to <results_dir>/thesis_store.db.
+    "thesis_store": {
+        "enabled": _env_flag("VERUMTRADE_THESIS_STORE_ENABLED", True),
+        "path": os.getenv("VERUMTRADE_THESIS_STORE_PATH", ""),
+    },
     # When true, build the cross-asset/regime/positioning "macro_regime" context bus once per
     # run and inject it into the news / catalyst / risk nodes (Tier-0 pullback-risk upgrade).
     # Reuses the discovery-lane snapshot builder; degrades to no-op when data is unavailable.

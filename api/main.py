@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import analysis, history, discovery
+from api.routes import analysis, history, discovery, theses
 from api.database import engine, Base, run_schema_migrations
 import api.models
 
@@ -31,6 +31,7 @@ app.add_middleware(
 app.include_router(analysis.router, prefix="/api", tags=["analysis"])
 app.include_router(history.router, prefix="/api", tags=["history"])
 app.include_router(discovery.router, prefix="/api", tags=["discovery"])
+app.include_router(theses.router, prefix="/api", tags=["theses"])
 
 @app.get("/health")
 def health_check():

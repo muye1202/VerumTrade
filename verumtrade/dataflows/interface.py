@@ -13,6 +13,7 @@ from .vendors.yfinance.y_finance import get_YFin_data_online, get_stock_stats_in
 from .vendors.alpaca.alpaca import get_stock_data_alpaca, AlpacaConnectionError
 from .vendors.finnhub.finnhub_vendor import get_company_news_finnhub, get_global_news_finnhub, get_news_sentiment_finnhub, get_earnings_calendar_finnhub
 from .vendors.sec_edgar.sec_edgar_vendor import fetch_recent_filings, fetch_company_filings
+from verumtrade.research.envelope import MODEL_SYNTHESIS_VENDORS, label_model_synthesis
 from .vendors.openai.openai import get_stock_news_openai, get_global_news_openai
 from .vendors.alpha_vantage.alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
@@ -102,7 +103,28 @@ def _clip_middle_text(text: str, max_chars: int) -> str:
     return text[:head] + marker + text[-tail:]
 
 
+# Set while a caller needs complete vendor output for computation rather than for a prompt.
+_COMPACTION_DISABLED: ContextVar[bool] = ContextVar(
+    "vendor_compaction_disabled", default=False
+)
+
+
+def route_to_vendor_raw(method: str, *args, **kwargs):
+    """``route_to_vendor`` without prompt-size compaction.
+
+    Compaction clips the middle of long outputs to protect LLM context; numeric
+    consumers (e.g. return distributions over a price series) need every row.
+    """
+    token = _COMPACTION_DISABLED.set(True)
+    try:
+        return route_to_vendor(method, *args, **kwargs)
+    finally:
+        _COMPACTION_DISABLED.reset(token)
+
+
 def _compact_tool_output(method: str, value):
+    if _COMPACTION_DISABLED.get():
+        return value
     cfg = get_config()
     mode = str(cfg.get("context_budget_mode", "adaptive")).strip().lower()
     if mode == "off":
@@ -437,6 +459,10 @@ def route_to_vendor(method: str, *args, **kwargs):
                     {"implementation": impl_func.__name__, "type": type(e).__name__, "message": str(e)[:300]}
                 )
                 continue
+
+        # Model-written fallbacks keep their class so they never pass as primary data.
+        if vendor_results and vendor in MODEL_SYNTHESIS_VENDORS:
+            vendor_results = [label_model_synthesis(str(vr), vendor) for vr in vendor_results]
 
         # Add this vendor's results
         if vendor_results:
