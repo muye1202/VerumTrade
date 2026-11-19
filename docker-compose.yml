@@ -1,0 +1,36 @@
+# One-command VerumTrade:  docker compose up --build
+# Then open http://localhost:5173
+#
+# - No API keys? Click "Replay MU" on the welcome screen to watch a recorded run.
+# - To analyze live, put at least one LLM key in .env (copy .env.example).
+# - VERUMTRADE_DEMO_MODE=1 docker compose up   serves only replays (for hosted demos).
+name: verumtrade
+
+services:
+  backend:
+    build: .
+    image: verumtrade-backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VERUMTRADE_DEMO_MODE: ${VERUMTRADE_DEMO_MODE:-0}
+      VERUMTRADE_REPLAY_SPEED: ${VERUMTRADE_REPLAY_SPEED:-1}
+    volumes:
+      - verumtrade-data:/data
+    ports:
+      - "${VERUMTRADE_API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    image: verumtrade-frontend
+    ports:
+      - "${VERUMTRADE_WEB_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  verumtrade-data:

@@ -12,9 +12,10 @@
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-≥3.10-green.svg" alt="Python">
-    <img src="https://img.shields.io/badge/Node.js-≥18-green.svg" alt="Node.js">
+    <img src="https://img.shields.io/badge/Node.js-≥20.19-green.svg" alt="Node.js">
     <img src="https://img.shields.io/badge/Framework-LangGraph-7c3aed.svg" alt="LangGraph">
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
+    <a href="https://github.com/muye1202/VerumTrade/actions/workflows/docker.yml"><img src="https://github.com/muye1202/VerumTrade/actions/workflows/docker.yml/badge.svg" alt="Docker build"></a>
   </p>
 
   <p>
@@ -34,6 +35,15 @@ Watch a real, recorded VerumTrade run stream through the full web app: analysts 
 the evidence graph forms, bull and bear agents debate, the trader drafts a plan, and the risk desk
 issues the final decision. No LLM key, no data key, no cost.
 
+**With Docker** (nothing else to install):
+
+```bash
+git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
+docker compose up --build
+```
+
+**Or with Python 3.10+ and Node 20.19+:**
+
 ```bash
 git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
 pip install -e .
@@ -43,8 +53,9 @@ python run.py
 
 Open [http://localhost:5173](http://localhost:5173) and click **▶ Replay MU (2026-06-23)** on the
 welcome screen. When you want to analyze your own tickers, add one LLM key to `.env`
-([Quick Start](#-quick-start--web-app)). More options, such as a replay-only server for hosted
-demos, are in [Demo replay mode](#-demo-replay-mode-no-api-keys).
+([Quick Start](#-quick-start--web-app); with Docker, run `docker compose up` again after editing
+`.env`). More options, such as a replay-only server for hosted demos, are in
+[Demo replay mode](#-demo-replay-mode-no-api-keys) and [Docker](#-docker).
 
 ---
 
@@ -182,7 +193,7 @@ The web interface is the easiest way to get started. It launches a **React + Vit
 | Tool | Version | Check |
 |:--|:--|:--|
 | Python | ≥ 3.10 | `python --version` |
-| Node.js | ≥ 18 | `node --version` |
+| Node.js | ≥ 20.19 | `node --version` |
 | npm | ≥ 9 | `npm --version` |
 
 **1 — Clone & install**
@@ -256,6 +267,25 @@ Open [http://localhost:5173](http://localhost:5173). The frontend talks to the b
 > [!NOTE]
 > `python run.py` starts both the backend and frontend in a single terminal. Separate terminals
 > just give you better visibility into logs.
+
+### 🐳 Docker
+
+`docker compose up --build` starts two containers:
+
+| Service | URL | What it is |
+|:--|:--|:--|
+| `frontend` | [http://localhost:5173](http://localhost:5173) | The built web app, served by nginx. nginx also proxies `/api` (including WebSockets) to the backend. |
+| `backend` | [http://localhost:8000](http://localhost:8000) | The FastAPI backend, for the [Python/REST API](#-python-api-programmatic) or `curl`. |
+
+- **API keys:** Compose loads `.env` from the project root if it exists (`cp .env.example .env`).
+  Without it, the stack still starts and the demo replay works.
+- **Saved data:** analysis history and results live in the `verumtrade-data` volume, so they
+  survive restarts. `docker compose down --volumes` deletes them.
+- **Replay-only server:** `VERUMTRADE_DEMO_MODE=1 docker compose up` makes every analysis a replay,
+  so no model is ever called (useful for a public demo).
+- **Ports in use?** `VERUMTRADE_WEB_PORT=8080 VERUMTRADE_API_PORT=8001 docker compose up` changes
+  the host ports.
+- **After pulling updates:** `docker compose up --build` rebuilds the images.
 
 ### 🎬 Demo replay mode (no API keys)
 
@@ -608,7 +638,7 @@ VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive
 | **HTTP 400 — context length exceeded** | The model's context window is too small for the prompt. Keep `VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive` (default) or set it to `compact`; avoid `off` on strict models. |
 | **HTTP 429 — rate limited** | Your provider is throttling. Use a smaller/faster model, lower research depth, or raise the manager delay knobs (`VERUMTRADE_RESEARCH_MANAGER_MIN_DELAY_S`, `VERUMTRADE_RISK_MANAGER_MIN_DELAY_S`). |
 | Frontend loads but calls fail | The backend isn't running or is on a different port. Start `uvicorn api.main:app --reload` (default `http://localhost:8000`). |
-| `npm run dev` fails | Check Node ≥ 18 and run `npm install` inside `frontend/`. |
+| `npm run dev` fails | Check Node ≥ 20.19 and run `npm install` inside `frontend/`. |
 | ChromaDB / native build errors on install | Ensure you're on Python ≥ 3.10 in a clean virtualenv; upgrade `pip` before `pip install -e .`. |
 | Analysis is slow / expensive | Use **Shallow** depth and small quick/deep models (see [cost & time](#-quick-start--web-app)), or run local models with Ollama. |
 

@@ -42,7 +42,10 @@ import {
   normalizeProviderEndpoints,
 } from './providerConfig';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// 'same-origin' is used by the Docker image, where nginx proxies /api to the backend.
+const API_BASE = import.meta.env.VITE_API_BASE_URL === 'same-origin'
+  ? window.location.origin
+  : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000');
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 const DEFAULT_API_KEYS = Object.fromEntries(Object.keys(PROVIDER_DEFAULTS).map((id) => [id, '']));
 const DEFAULT_ACTIVE_PROVIDERS = Object.fromEntries(Object.keys(PROVIDER_DEFAULTS).map((id) => [id, true]));

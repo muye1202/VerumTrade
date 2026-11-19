@@ -1,0 +1,26 @@
+# Keep the backend build context small and free of secrets.
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+*.db
+**/__pycache__
+*.py[cod]
+.venv
+venv
+.pytest_cache
+tests
+results
+eval_results
+eval_data
+journal
+execution_logs
+frontend
+assets
+demos/*.mp4
+demos/*.gif
+demos/example-reports/*.html
+verumtrade/dataflows/data_cache
+*.log

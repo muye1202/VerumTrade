@@ -12,7 +12,7 @@
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
     <img src="https://img.shields.io/badge/Python-≥3.10-green.svg" alt="Python">
-    <img src="https://img.shields.io/badge/Node.js-≥18-green.svg" alt="Node.js">
+    <img src="https://img.shields.io/badge/Node.js-≥20.19-green.svg" alt="Node.js">
     <img src="https://img.shields.io/badge/Framework-LangGraph-7c3aed.svg" alt="LangGraph">
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
   </p>
@@ -35,6 +35,15 @@
 在完整的 Web 应用中回放一次真实录制的 VerumTrade 分析：分析师收集证据、证据图谱成形、多空双方辩论、
 交易员制定计划、风控给出最终决策。无需 LLM Key、无需数据 Key、零成本。
 
+**使用 Docker**（无需安装其他依赖）：
+
+```bash
+git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
+docker compose up --build
+```
+
+**或使用 Python 3.10+ 与 Node 20.19+：**
+
 ```bash
 git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
 pip install -e .
@@ -43,7 +52,7 @@ python run.py
 ```
 
 打开 [http://localhost:5173](http://localhost:5173)，在欢迎页点击 **▶ Replay MU (2026-06-23)**。
-想分析自己的股票时，在 `.env` 中添加任意一个 LLM Key 即可。如需只提供回放的服务器（例如托管演示），
+想分析自己的股票时，在 `.env` 中添加任意一个 LLM Key 即可（使用 Docker 时，修改 `.env` 后重新运行 `docker compose up`）。分析历史保存在 Docker 卷 `verumtrade-data` 中，重启后不会丢失。如需只提供回放的服务器（例如托管演示），
 启动后端时设置 `VERUMTRADE_DEMO_MODE=1`。
 
 ---
@@ -170,7 +179,7 @@ Web 界面是最容易上手的方式。它会启动一个 **React + Vite** 前�
 | 工具 | 版本 | 检查方式 |
 |:--|:--|:--|
 | Python | ≥ 3.10 | `python --version` |
-| Node.js | ≥ 18 | `node --version` |
+| Node.js | ≥ 20.19 | `node --version` |
 | npm | ≥ 9 | `npm --version` |
 
 **1 — 克隆并安装**
@@ -536,7 +545,7 @@ VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive
 | **HTTP 400 — context length exceeded** | 模型上下文窗口太小，prompt 放不下。保持 `VERUMTRADE_CONTEXT_BUDGET_MODE=adaptive`（默认）或改为 `compact`；避免在严格模型上使用 `off`。 |
 | **HTTP 429 — rate limited** | provider 正在限流。使用更小/更快模型，降低 research depth，或提高 manager delay 配置（`VERUMTRADE_RESEARCH_MANAGER_MIN_DELAY_S`, `VERUMTRADE_RISK_MANAGER_MIN_DELAY_S`）。 |
 | 前端能加载但调用失败 | 后端没有运行，或运行在不同端口。启动 `uvicorn api.main:app --reload`（默认 `http://localhost:8000`）。 |
-| `npm run dev` 失败 | 检查 Node ≥ 18，并在 `frontend/` 内运行 `npm install`。 |
+| `npm run dev` 失败 | 检查 Node ≥ 20.19，并在 `frontend/` 内运行 `npm install`。 |
 | 安装时出现 ChromaDB / native build 错误 | 确认使用 Python ≥ 3.10 的干净 virtualenv，并在 `pip install -e .` 前升级 `pip`。 |
 | 分析很慢 / 很贵 | 使用 **Shallow** 深度和较小的 quick/deep 模型（见[成本与耗时](#quick-start-web-app)），或通过 Ollama 运行本地模型。 |
 

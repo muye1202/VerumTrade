@@ -1,0 +1,72 @@
+name: Docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-smoke-test:
+    name: Build and smoke-test docker compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Play the demo recording fast so the WebSocket check finishes in seconds.
+      VERUMTRADE_REPLAY_SPEED: "100"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up --build --detach --wait --wait-timeout 180
+
+      - name: Check the web UI and API through nginx
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:5173/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:5173/health | grep -q '"ok"'
+          curl -fsS http://localhost:5173/api/replays | grep -q 'MU-2026-06-23'
+          curl -fsS http://localhost:8000/health | grep -q '"ok"'
+
+      - name: Replay the demo run over the proxied WebSocket
+        run: |
+          pip install --quiet "websockets>=13"
+          python - <<'EOF'
+          import asyncio, json, websockets
+
+          async def main():
+              uri = "ws://localhost:5173/api/ws/analyze"
+              async with websockets.connect(uri, max_size=None) as ws:
+                  await ws.send(json.dumps({
+                      "ticker": "MU",
+                      "analysis_date": "2026-06-23",
+                      "replay_id": "MU-2026-06-23",
+                  }))
+                  report_keys = set()
+                  while True:
+                      event = json.loads(await asyncio.wait_for(ws.recv(), timeout=60))
+                      report_keys |= set((event.get("reports") or {}).keys())
+                      if event["event"] == "error":
+                          raise SystemExit(f"replay failed: {event}")
+                      if event["event"] == "completed":
+                          break
+              required = {"market_report", "final_trade_decision", "decision_trace", "agent_reasoning_trace"}
+              missing = required - report_keys
+              if missing:
+                  raise SystemExit(f"replay missing reports: {sorted(missing)}")
+              print(f"replay OK: {len(report_keys)} report sections")
+
+          asyncio.run(main())
+          EOF
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
