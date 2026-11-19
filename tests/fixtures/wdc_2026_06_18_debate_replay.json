@@ -1,0 +1,254 @@
+{
+  "session": {
+    "id": 25,
+    "ticker": "WDC",
+    "analysis_date": "2026-06-18",
+    "time_horizon": "2-3 months",
+    "created_at": "2026-06-18 09:59:37.828170"
+  },
+  "reports": {
+    "evidence_graph": {
+      "facts": [
+        {
+          "id": "fact_market_price_action_summary_001",
+          "domain": "market",
+          "claim": "- ATR(14): 47.48 (6.67% of price)",
+          "text": "- ATR(14): 47.48 (6.67% of price)",
+          "source": "price_action_summary",
+          "section": "price_action_summary",
+          "as_of": "2026-06-18",
+          "confidence": 0.85,
+          "quality": "normal",
+          "source_type": "vendor"
+        },
+        {
+          "id": "fact_fundamentals_income_statement_2026_03_31_total_revenue",
+          "domain": "fundamentals",
+          "claim": "WDC income_statement total_revenue for 2026-03-31: 3337000000",
+          "text": "total_revenue=3337000000; period_end=2026-03-31; statement_type=income_statement",
+          "source": "yfinance_csv",
+          "section": "income_statement",
+          "as_of": "2026-06-18",
+          "confidence": 0.9,
+          "quality": "normal",
+          "source_type": "vendor"
+        },
+        {
+          "id": "fact_fundamentals_balance_sheet_2026_03_31_net_cash",
+          "domain": "fundamentals",
+          "claim": "WDC balance_sheet net_cash for 2026-03-31: 1656000000",
+          "text": "net_cash=1656000000; period_end=2026-03-31; statement_type=balance_sheet",
+          "source": "yfinance_csv",
+          "section": "balance_sheet",
+          "as_of": "2026-06-18",
+          "confidence": 0.9,
+          "quality": "normal",
+          "source_type": "vendor"
+        },
+        {
+          "id": "fact_fundamentals_income_statement_2025_12_31_total_revenue",
+          "domain": "fundamentals",
+          "claim": "WDC income_statement total_revenue for 2025-12-31: 3017000000",
+          "text": "total_revenue=3017000000; period_end=2025-12-31; statement_type=income_statement",
+          "source": "yfinance_csv",
+          "section": "income_statement",
+          "as_of": "2026-06-18",
+          "confidence": 0.9,
+          "quality": "normal",
+          "source_type": "vendor"
+        },
+        {
+          "id": "fact_fundamentals_balance_sheet_2025_12_31_net_cash",
+          "domain": "fundamentals",
+          "claim": "WDC balance_sheet net_cash for 2025-12-31: -612000000",
+          "text": "net_cash=-612000000; period_end=2025-12-31; statement_type=balance_sheet",
+          "source": "yfinance_csv",
+          "section": "balance_sheet",
+          "as_of": "2026-06-18",
+          "confidence": 0.9,
+          "quality": "normal",
+          "source_type": "vendor"
+        },
+        {
+          "id": "fact_market_obs_004_recovery",
+          "domain": "market",
+          "claim": "Price ($712.13) is far above the 200 SMA (~$262.64 as of 2026-06-17) and the Bollinger Middle Band (~$550.54), indicating extreme deviation from long-term mean.",
+          "text": "Price ($712.13) is far above the 200 SMA (~$262.64 as of 2026-06-17) and the Bollinger Middle Band (~$550.54), indicating extreme deviation from long-term mean.",
+          "source": "ledger:market:observation_recovery",
+          "section": "ledger_recovery",
+          "as_of": "2026-06-18",
+          "confidence": 0.35,
+          "quality": "recovery",
+          "source_type": "ledger_recovery",
+          "source_ids": ["obs_004"]
+        }
+      ],
+      "inferences": [],
+      "audit_issues": []
+    },
+    "evidence_ledger": [
+      {
+        "evidence_id": "E-MKT-001",
+        "ticker": "WDC",
+        "source_agent": "market_analyst",
+        "source_tool": "price_action_summary",
+        "source_ref": "fact_market_price_action_summary_001",
+        "observed_at": "2026-06-18",
+        "claim": "- ATR(14): 47.48 (6.67% of price)",
+        "fact_type": "technical_indicator",
+        "polarity": "mixed",
+        "time_horizon": "2-3 months",
+        "confidence": 0.85,
+        "materiality": 0.85,
+        "supports": ["prefer_wait_for_trigger"],
+        "contradicts": ["act_now_market_buy"],
+        "raw_excerpt": "- ATR(14): 47.48 (6.67% of price)",
+        "numeric_values": {"atr": 14.0},
+        "source_node_id": "fact_market_price_action_summary_001",
+        "criticality": 0.722
+      },
+      {
+        "evidence_id": "E-FUN-001",
+        "ticker": "WDC",
+        "source_agent": "fundamentals_analyst",
+        "source_tool": "yfinance_csv",
+        "source_ref": "fact_fundamentals_income_statement_2026_03_31_total_revenue",
+        "observed_at": "2026-06-18",
+        "claim": "WDC income_statement total_revenue for 2026-03-31: 3337000000",
+        "fact_type": "fundamental_metric",
+        "polarity": "bullish",
+        "time_horizon": "2-3 months",
+        "confidence": 0.9,
+        "materiality": 0.9,
+        "supports": ["supports_long_bias"],
+        "contradicts": [],
+        "raw_excerpt": "total_revenue=3337000000; period_end=2026-03-31; statement_type=income_statement",
+        "numeric_values": {},
+        "source_node_id": "fact_fundamentals_income_statement_2026_03_31_total_revenue",
+        "criticality": 0.81
+      },
+      {
+        "evidence_id": "E-FUN-005",
+        "ticker": "WDC",
+        "source_agent": "fundamentals_analyst",
+        "source_tool": "yfinance_csv",
+        "source_ref": "fact_fundamentals_balance_sheet_2026_03_31_net_cash",
+        "observed_at": "2026-06-18",
+        "claim": "WDC balance_sheet net_cash for 2026-03-31: 1656000000",
+        "fact_type": "fundamental_metric",
+        "polarity": "bearish",
+        "time_horizon": "2-3 months",
+        "confidence": 0.9,
+        "materiality": 0.9,
+        "supports": ["prefer_wait_for_trigger", "reduce_entry_aggression"],
+        "contradicts": ["act_now_market_buy"],
+        "raw_excerpt": "net_cash=1656000000; period_end=2026-03-31; statement_type=balance_sheet",
+        "numeric_values": {},
+        "source_node_id": "fact_fundamentals_balance_sheet_2026_03_31_net_cash",
+        "criticality": 0.81
+      },
+      {
+        "evidence_id": "E-FUN-006",
+        "ticker": "WDC",
+        "source_agent": "fundamentals_analyst",
+        "source_tool": "yfinance_csv",
+        "source_ref": "fact_fundamentals_income_statement_2025_12_31_total_revenue",
+        "observed_at": "2026-06-18",
+        "claim": "WDC income_statement total_revenue for 2025-12-31: 3017000000",
+        "fact_type": "fundamental_metric",
+        "polarity": "bullish",
+        "time_horizon": "2-3 months",
+        "confidence": 0.9,
+        "materiality": 0.9,
+        "supports": ["supports_long_bias"],
+        "contradicts": [],
+        "raw_excerpt": "total_revenue=3017000000; period_end=2025-12-31; statement_type=income_statement",
+        "numeric_values": {},
+        "source_node_id": "fact_fundamentals_income_statement_2025_12_31_total_revenue",
+        "criticality": 0.81
+      },
+      {
+        "evidence_id": "E-FUN-010",
+        "ticker": "WDC",
+        "source_agent": "fundamentals_analyst",
+        "source_tool": "yfinance_csv",
+        "source_ref": "fact_fundamentals_balance_sheet_2025_12_31_net_cash",
+        "observed_at": "2026-06-18",
+        "claim": "WDC balance_sheet net_cash for 2025-12-31: -612000000",
+        "fact_type": "fundamental_metric",
+        "polarity": "bearish",
+        "time_horizon": "2-3 months",
+        "confidence": 0.9,
+        "materiality": 0.9,
+        "supports": ["prefer_wait_for_trigger", "reduce_entry_aggression"],
+        "contradicts": ["act_now_market_buy"],
+        "raw_excerpt": "net_cash=-612000000; period_end=2025-12-31; statement_type=balance_sheet",
+        "numeric_values": {},
+        "source_node_id": "fact_fundamentals_balance_sheet_2025_12_31_net_cash",
+        "criticality": 0.81
+      },
+      {
+        "evidence_id": "E-MKT-015",
+        "ticker": "WDC",
+        "source_agent": "market_analyst",
+        "source_tool": "ledger:market:observation_recovery",
+        "source_ref": "fact_market_obs_004_recovery",
+        "observed_at": "2026-06-18",
+        "claim": "Price ($712.13) is far above the 200 SMA (~$262.64 as of 2026-06-17) and the Bollinger Middle Band (~$550.54), indicating extreme deviation from long-term mean.",
+        "fact_type": "market_fact",
+        "polarity": "mixed",
+        "time_horizon": "2-3 months",
+        "confidence": 0.35,
+        "materiality": 0.55,
+        "supports": ["prefer_wait_for_trigger"],
+        "contradicts": ["act_now_market_buy"],
+        "raw_excerpt": "Price ($712.13) is far above the 200 SMA (~$262.64 as of 2026-06-17) and the Bollinger Middle Band (~$550.54), indicating extreme deviation from long-term mean.",
+        "numeric_values": {},
+        "source_node_id": "fact_market_obs_004_recovery",
+        "criticality": 0.193
+      }
+    ],
+    "thesis_ledger_source_ref_alias": {
+      "winning_thesis": "Bullish on fundamentals but cautious on technical entry; execute Buy via wait_for_trigger.",
+      "accepted_claims": [
+        {
+          "claim_id": "C-001",
+          "claim": "WDC has undergone a structural balance sheet repair, swinging from negative to positive net cash.",
+          "evidence_ids": [
+            "fact_fundamentals_balance_sheet_2026_03_31_net_cash",
+            "fact_fundamentals_balance_sheet_2025_12_31_net_cash"
+          ],
+          "effect": "supports_long_bias"
+        },
+        {
+          "claim_id": "C-002",
+          "claim": "Revenue growth is accelerating, supporting the top-line expansion narrative.",
+          "evidence_ids": [
+            "fact_fundamentals_income_statement_2026_03_31_total_revenue",
+            "fact_fundamentals_income_statement_2025_12_31_total_revenue"
+          ],
+          "effect": "supports_long_bias"
+        },
+        {
+          "claim_id": "C-003",
+          "claim": "Technical overextension necessitates waiting for a pullback to avoid chasing highs.",
+          "evidence_ids": [
+            "fact_market_price_action_summary_001",
+            "fact_market_obs_004_recovery"
+          ],
+          "effect": "execution_mode=wait_for_trigger"
+        }
+      ],
+      "rejected_claims": [],
+      "unresolved_uncertainties": [
+        {
+          "uncertainty": "Potential valuation reset risk if the AI narrative weakens post-SanDisk separation.",
+          "decision_effect": "may widen stop_loss"
+        }
+      ],
+      "recommended_plan_constraints": {
+        "execution_mode": "wait_for_trigger"
+      }
+    }
+  }
+}

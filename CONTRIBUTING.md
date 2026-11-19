@@ -54,10 +54,23 @@ The published repository tracks the runnable application only:
 - `cli/` — Typer + Rich terminal interface
 - `frontend/` — React + Vite web client
 
-Local-only working directories (`tests/`, `docs/`, `scripts/`, `results/`,
-`data_cache/`, `*.db`) are intentionally git-ignored — see [`.gitignore`](.gitignore).
-If you add tests or design docs you want to share, mention it in your PR so we can
-decide how to include them.
+- `tests/` — pytest suite (runs offline; no API keys needed)
+
+Local-only working directories (`docs/`, `scripts/`, `results/`, `data_cache/`,
+`*.db`) are intentionally git-ignored — see [`.gitignore`](.gitignore).
+
+## Running the tests
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest -q tests
+
+cd frontend && npm run lint && npm run build
+```
+
+The [Tests workflow](.github/workflows/tests.yml) runs the same checks on every pull request,
+and the [Docker workflow](.github/workflows/docker.yml) builds the containers and replays the
+demo run. Please add or update tests alongside behavior changes.
 
 ## Coding conventions
 

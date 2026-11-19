@@ -15,7 +15,6 @@ env/
 # ─── Project Artifacts ──────────────────────────────────────
 results/
 docs/
-tests/
 scripts/
 data_cache/
 execution_logs/
@@ -33,6 +32,7 @@ scratch/*
 verify_*
 check_*
 test_*
+!tests/**/test_*.py
 *_test
 *.test.*
 

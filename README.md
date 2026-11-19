@@ -15,6 +15,7 @@
     <img src="https://img.shields.io/badge/Node.js-≥20.19-green.svg" alt="Node.js">
     <img src="https://img.shields.io/badge/Framework-LangGraph-7c3aed.svg" alt="LangGraph">
     <img src="https://img.shields.io/badge/Trading-Alpaca-f5a623.svg" alt="Alpaca">
+    <a href="https://github.com/muye1202/VerumTrade/actions/workflows/tests.yml"><img src="https://github.com/muye1202/VerumTrade/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
     <a href="https://github.com/muye1202/VerumTrade/actions/workflows/docker.yml"><img src="https://github.com/muye1202/VerumTrade/actions/workflows/docker.yml/badge.svg" alt="Docker build"></a>
   </p>
 
