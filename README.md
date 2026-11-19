@@ -18,11 +18,33 @@
   </p>
 
   <p>
+    <a href="#-try-it-in-60-seconds--no-api-keys"><b>▶ Try it without API keys</b></a>
+    ·
     <a href="#single-ticker-analysis">Watch the single-ticker demo ↓</a>
     ·
     <a href="https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html">View an example report ↗</a>
   </p>
 </div>
+
+---
+
+## ▶ Try it in 60 seconds — no API keys
+
+Watch a real, recorded VerumTrade run stream through the full web app: analysts gather evidence,
+the evidence graph forms, bull and bear agents debate, the trader drafts a plan, and the risk desk
+issues the final decision. No LLM key, no data key, no cost.
+
+```bash
+git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
+pip install -e .
+cd frontend && npm install && cd ..
+python run.py
+```
+
+Open [http://localhost:5173](http://localhost:5173) and click **▶ Replay MU (2026-06-23)** on the
+welcome screen. When you want to analyze your own tickers, add one LLM key to `.env`
+([Quick Start](#-quick-start--web-app)). More options, such as a replay-only server for hosted
+demos, are in [Demo replay mode](#-demo-replay-mode-no-api-keys).
 
 ---
 
@@ -172,6 +194,12 @@ cd VerumTrade
 pip install -e .       # or, if you have uv:  uv sync
 ```
 
+> [!TIP]
+> **No API key yet?** You can skip step 2. The welcome screen has a **▶ Replay MU** button that
+> streams a real recorded run (analysts → evidence graph → bull/bear debate → trader → risk review)
+> through the full UI in about a minute, with no LLM or data keys and no cost. See
+> [Demo replay mode](#-demo-replay-mode-no-api-keys).
+
 **2 — Configure API keys**
 
 ```bash
@@ -228,6 +256,25 @@ Open [http://localhost:5173](http://localhost:5173). The frontend talks to the b
 > [!NOTE]
 > `python run.py` starts both the backend and frontend in a single terminal. Separate terminals
 > just give you better visibility into logs.
+
+### 🎬 Demo replay mode (no API keys)
+
+Replay mode plays back a recorded VerumTrade run through the same WebSocket stream a live run uses,
+so the transcript, report panels, evidence graph, decision trace, and debate views all render
+exactly as they would live. No model or data-vendor calls are made.
+
+- **In the web app:** click **▶ Replay MU (2026-06-23)** on the welcome screen.
+- **Serve only replays** (hosted demos, keyless Docker): start the backend with
+  `VERUMTRADE_DEMO_MODE=1`. Every analysis request then plays the recording instead of calling an LLM.
+- **Playback speed:** `VERUMTRADE_REPLAY_SPEED=2` plays twice as fast (default `1`).
+- **API:** `GET /api/replays` lists recordings; pass `"replay_id": "MU-2026-06-23"` in an
+  `/api/ws/analyze` or `/api/analyze` request to replay one.
+
+Recordings live in [`demos/replays/`](demos/replays). To build one from an exported example report:
+
+```bash
+python demos/replays/build_replay_from_report.py demos/example-reports/MU-2026-06-23.md demos/replays/MU-2026-06-23.json
+```
 
 <details>
 <summary><b>💡 What to expect — cost & time</b></summary>

@@ -5670,3 +5670,61 @@ input:checked + .slider:before {
   padding: 8px 0;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
+
+/* ─── Demo replay card (welcome screen) ─────────────────────── */
+.replay-demo-card {
+  width: min(100%, 760px);
+  margin: 20px auto 0;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.replay-demo-copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.replay-demo-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.replay-demo-button {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.replay-demo-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.replay-demo-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .replay-demo-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

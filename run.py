@@ -262,7 +262,8 @@ def run_preflight(root: Path) -> PreflightResult:
         result.warnings.append(
             Issue(
                 "No LLM provider API key was found in .env or the current shell environment.",
-                "Add at least one provider key such as OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY, DASHSCOPE_API_KEY, or ZHIPUAI_API_KEY.",
+                "Add at least one provider key such as OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY, OPENROUTER_API_KEY, DASHSCOPE_API_KEY, or ZHIPUAI_API_KEY. "
+                "Without a key you can still click \"Replay MU\" on the welcome screen to watch a recorded run.",
             )
         )
 

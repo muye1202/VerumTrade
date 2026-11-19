@@ -33,6 +33,10 @@ class AnalysisRequest(BaseModel):
     continue_session_id: Optional[int] = Field(default=None, description="Specific analysis session to continue")
     execution: Optional[ExecutionSettings] = None
     mock: bool = Field(default=False, description="If true, bypass LLM and return mock stream")
+    replay_id: Optional[str] = Field(
+        default=None,
+        description="Play back a recorded run from demos/replays instead of calling any LLM (e.g. MU-2026-06-23)",
+    )
     qwen_enable_thinking: Optional[bool] = Field(default=None, description="Whether Qwen thinking mode is enabled")
     qwen_thinking_budget: Optional[int] = Field(default=None, description="Qwen thinking budget")
     azure_foundry_enable_thinking: Optional[bool] = Field(default=None, description="Whether Azure Foundry reasoning is enabled")

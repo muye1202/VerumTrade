@@ -18,11 +18,33 @@
   </p>
 
   <p>
+    <a href="#try-without-keys"><b>▶ 无需 API Key 立即体验</b></a>
+    ·
     <a href="#single-ticker-analysis">观看单股分析流程demo ↓</a>
     ·
     <a href="https://muye1202.github.io/VerumTrade/demos/example-reports/MU-2026-06-23.html">查看美光示例分析 ↗</a>
   </p>
 </div>
+
+---
+
+<a id="try-without-keys"></a>
+
+## ▶ 60 秒体验 — 无需任何 API Key
+
+在完整的 Web 应用中回放一次真实录制的 VerumTrade 分析：分析师收集证据、证据图谱成形、多空双方辩论、
+交易员制定计划、风控给出最终决策。无需 LLM Key、无需数据 Key、零成本。
+
+```bash
+git clone https://github.com/muye1202/VerumTrade.git && cd VerumTrade
+pip install -e .
+cd frontend && npm install && cd ..
+python run.py
+```
+
+打开 [http://localhost:5173](http://localhost:5173)，在欢迎页点击 **▶ Replay MU (2026-06-23)**。
+想分析自己的股票时，在 `.env` 中添加任意一个 LLM Key 即可。如需只提供回放的服务器（例如托管演示），
+启动后端时设置 `VERUMTRADE_DEMO_MODE=1`。
 
 ---
 

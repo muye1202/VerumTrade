@@ -681,6 +681,8 @@ function App() {
   const [logs, setLogs] = useState([]);
   const [reports, setReports] = useState({});
   const [historyList, setHistoryList] = useState([]);
+  const [replays, setReplays] = useState([]);
+  const [demoMode, setDemoMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isPending, startTransition] = useTransition();
   const wsRef = useRef(null);
@@ -741,6 +743,32 @@ function App() {
     // Initial server sync; subsequent refreshes are user or socket driven.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHistory();
+  }, []);
+
+  useEffect(() => {
+    // Recorded runs that can be replayed without any API keys. Retry briefly so the
+    // demo card still appears when the frontend starts before the backend is up.
+    let cancelled = false;
+    let retryTimer = null;
+    const loadReplays = (attempt = 0) => {
+      fetch(`${API_BASE}/api/replays`)
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+        .then((data) => {
+          if (cancelled) return;
+          setReplays(data.replays || []);
+          setDemoMode(!!data.demo_mode);
+        })
+        .catch(() => {
+          if (!cancelled && attempt < 10) {
+            retryTimer = setTimeout(() => loadReplays(attempt + 1), 2000);
+          }
+        });
+    };
+    loadReplays();
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+    };
   }, []);
 
   const stopSocket = () => {
@@ -808,6 +836,7 @@ function App() {
       continue_previous: overrides.continuePrevious ?? continuePrevious,
       continue_session_id: overrides.continueSessionId ?? null,
       mock: false,
+      replay_id: overrides.replayId ?? null,
       qwen_enable_thinking: isThinkingEnabled(deepProvider, deepModel) || isThinkingEnabled(shallowProvider, shallowModel),
       qwen_thinking_budget: 7000,
       azure_foundry_enable_thinking: !!azureFoundryReasoningEffort,
@@ -835,7 +864,9 @@ function App() {
     setExpandedSections(DEFAULT_EXPANDED_REPORT_SECTIONS);
     setErrorMessage('');
     const payloadHorizon = HORIZONS.find((item) => item.value === payload.time_horizon) || HORIZONS[0];
-    setLogs([makeLog('user', `${payload.continue_previous ? 'Continue' : 'Analyze'} ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
+    setLogs([makeLog('user', payload.replay_id
+      ? `Replay the recorded ${payload.ticker} analysis from ${payload.analysis_date}.`
+      : `${payload.continue_previous ? 'Continue' : 'Analyze'} ${payload.ticker} for ${payloadHorizon.label.toLowerCase()} positioning.`)]);
     setReports({});
     setIsRunning(true);
 
@@ -904,6 +935,16 @@ function App() {
       setIsRunning(false);
       fetchHistory();
     };
+  };
+
+  const startReplay = (replay) => {
+    if (!replay) return;
+    startAnalysis({
+      ticker: replay.ticker,
+      analysisDate: replay.analysis_date,
+      timeHorizon: replay.time_horizon,
+      replayId: replay.replay_id,
+    });
   };
 
   const createDiscoveryPayload = (overrides = {}) => {
@@ -2221,6 +2262,27 @@ function App() {
               </div>
               {renderConfigStrip()}
             </section>
+
+            {replays.length > 0 && (
+              <section className="replay-demo-card" aria-label="Demo replay">
+                <div className="replay-demo-copy">
+                  <span className="replay-demo-eyebrow">{demoMode ? 'Demo mode' : 'No API key yet?'}</span>
+                  <p>
+                    {demoMode
+                      ? 'This server replays a recorded run instead of calling any model. Every analysis plays back the same real session.'
+                      : `Watch a real recorded ${replays[0].ticker} run stream through the full agent pipeline. No keys, no cost, about a minute.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="replay-demo-button"
+                  onClick={() => startReplay(replays[0])}
+                  disabled={isRunning}
+                >
+                  ▶ Replay {replays[0].ticker} ({replays[0].analysis_date})
+                </button>
+              </section>
+            )}
           </div>
         )}
       </main>

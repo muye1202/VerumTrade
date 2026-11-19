@@ -857,15 +857,53 @@ def _append_top_facts(lines: list[str], graph: EvidenceGraph) -> None:
         )
 
 
+_DECISION_ACTIONS = {"BUY", "SELL", "HOLD"}
+_LABELED_ACTION_PATTERNS = (
+    r"FINAL\s+(?:TRANSACTION\s+PROPOSAL|TRADING\s+DECISION)\s*:?\s*\**\s*(BUY|SELL|HOLD)\b",
+    r"(?:^|\n)\s*[-*]?\s*\**(?:FINAL[_\s]+)?(?:ACTION|DECISION)\**\s*:\s*\**\s*(BUY|SELL|HOLD)\b",
+)
+# A bare action word that is immediately negated ("SELL is invalid") is not the decision.
+_NEGATED_ACTION_RE = re.compile(
+    r"\b(BUY|SELL|HOLD)\b(?!\s+(?:is|are|was|would\s+be)\s+(?:not|invalid|disallowed|blocked|rejected)\b)",
+    flags=re.IGNORECASE,
+)
+
+
+def infer_decision_action(structured: Any, decision_text: str) -> str:
+    """Resolve the final BUY/SELL/HOLD action, preferring structured sources over prose.
+
+    Order: the structured decision in state, then the BEGIN_DECISION_JSON block embedded
+    in the decision text, then an explicitly labeled action line, and only then the first
+    non-negated action word. The risk manager builds the trace before the structured
+    decision is attached to state, so the embedded JSON block is usually the source.
+    """
+    if isinstance(structured, dict):
+        action = str(structured.get("action") or "").upper()
+        if action in _DECISION_ACTIONS:
+            return action
+
+    from verumtrade.graph.decision_schema import extract_decision_json_block
+
+    embedded, _ = extract_decision_json_block(decision_text)
+    if isinstance(embedded, dict):
+        action = str(embedded.get("action") or "").upper()
+        if action in _DECISION_ACTIONS:
+            return action
+
+    for pattern in _LABELED_ACTION_PATTERNS:
+        match = re.search(pattern, decision_text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+
+    match = _NEGATED_ACTION_RE.search(decision_text)
+    return match.group(1).upper() if match else ""
+
+
 def build_decision_trace(state: Dict[str, Any] | None, final_decision_text: Any | None = None) -> DecisionTrace:
     state = state or {}
     graph = _graph_from_state(state)
     decision_text = str(final_decision_text if final_decision_text is not None else state.get("final_trade_decision", ""))
-    structured = state.get("final_trade_decision_structured")
-    action = str(structured.get("action") or "").upper() if isinstance(structured, dict) else ""
-    if not action:
-        match = re.search(r"\b(BUY|SELL|HOLD)\b", decision_text, flags=re.IGNORECASE)
-        action = match.group(1).upper() if match else ""
+    action = infer_decision_action(state.get("final_trade_decision_structured"), decision_text)
     selected = _select_trace_inferences(graph, decision_text, action)
     inference_ids = [str(item.get("id") or "") for item in selected if item.get("id")]
     fact_ids = sorted({fact_id for inference in selected for fact_id in inference.get("depends_on", []) if fact_id})
