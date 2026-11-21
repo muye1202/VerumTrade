@@ -27,6 +27,7 @@ import ThemeCandidatesPanel from './ThemeCandidatesPanel';
 import DiscoverySignalsPanel from './DiscoverySignalsPanel';
 import DiscoveryDecisionPanel from './DiscoveryDecisionPanel';
 import CatalystDiagnosticsPanel from './CatalystDiagnosticsPanel';
+import { STATIC_DEMO, StaticReplaySocket, fetchStaticReplays } from './staticReplaySocket';
 import {
   DISCOVERY_SIGNAL_STAGES,
   hasDiscoveryDecisionData,
@@ -714,6 +715,7 @@ function App() {
   }, [logs]);
 
   const fetchHistory = async () => {
+    if (STATIC_DEMO) return;
     try {
       const res = await fetch(`${API_BASE}/api/history`);
       if (!res.ok) return;
@@ -754,8 +756,10 @@ function App() {
     let cancelled = false;
     let retryTimer = null;
     const loadReplays = (attempt = 0) => {
-      fetch(`${API_BASE}/api/replays`)
-        .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      (STATIC_DEMO
+        ? fetchStaticReplays()
+        : fetch(`${API_BASE}/api/replays`)
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))))
         .then((data) => {
           if (cancelled) return;
           setReplays(data.replays || []);
@@ -854,6 +858,11 @@ function App() {
   };
 
   const startAnalysis = (overrides = {}) => {
+    if (STATIC_DEMO && !overrides.replayId && replays[0]) {
+      // The hosted demo has no backend: like VERUMTRADE_DEMO_MODE, every run is a replay.
+      startReplay(replays[0]);
+      return;
+    }
     const payload = createPayload(overrides);
     if (!payload.ticker || isRunning) return;
 
@@ -873,7 +882,7 @@ function App() {
     setReports({});
     setIsRunning(true);
 
-    const ws = new WebSocket(`${WS_BASE}/api/ws/analyze`);
+    const ws = STATIC_DEMO ? new StaticReplaySocket() : new WebSocket(`${WS_BASE}/api/ws/analyze`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -1029,7 +1038,7 @@ function App() {
     setReports({});
     setIsRunning(true);
 
-    const ws = new WebSocket(`${WS_BASE}/api/ws/discovery`);
+    const ws = STATIC_DEMO ? new StaticReplaySocket() : new WebSocket(`${WS_BASE}/api/ws/discovery`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -2269,11 +2278,24 @@ function App() {
             {replays.length > 0 && (
               <section className="replay-demo-card" aria-label="Demo replay">
                 <div className="replay-demo-copy">
-                  <span className="replay-demo-eyebrow">{demoMode ? 'Demo mode' : 'No API key yet?'}</span>
+                  <span className="replay-demo-eyebrow">
+                    {STATIC_DEMO ? 'Live demo' : demoMode ? 'Demo mode' : 'No API key yet?'}
+                  </span>
                   <p>
-                    {demoMode
-                      ? 'This server replays a recorded run instead of calling any model. Every analysis plays back the same real session.'
-                      : `Watch a real recorded ${replays[0].ticker} run stream through the full agent pipeline. No keys, no cost, about a minute.`}
+                    {STATIC_DEMO
+                      ? `This hosted demo replays a real recorded ${replays[0].ticker} run in your browser: no server, no keys, about a minute. `
+                      : demoMode
+                        ? 'This server replays a recorded run instead of calling any model. Every analysis plays back the same real session.'
+                        : `Watch a real recorded ${replays[0].ticker} run stream through the full agent pipeline. No keys, no cost, about a minute.`}
+                    {STATIC_DEMO && (
+                      <>
+                        To analyze any ticker,{' '}
+                        <a href="https://github.com/muye1202/VerumTrade#-try-it-in-60-seconds--no-api-keys" target="_blank" rel="noreferrer">
+                          run VerumTrade locally
+                        </a>
+                        {' '}(and ⭐ the repo if you like it).
+                      </>
+                    )}
                   </p>
                 </div>
                 <button

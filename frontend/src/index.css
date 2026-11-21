@@ -5692,6 +5692,11 @@ input:checked + .slider:before {
   line-height: 1.45;
 }
 
+.replay-demo-copy a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .replay-demo-eyebrow {
   font-size: 0.75rem;
   font-weight: 600;

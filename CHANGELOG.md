@@ -4,6 +4,14 @@ All notable changes to VerumTrade are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Live demo in the browser** at <https://muye1202.github.io/VerumTrade/demo/>: the web app built
+  with `VITE_STATIC_DEMO=1` replays recorded runs from static JSON, with no server and no keys. A
+  Pages workflow publishes it with the landing page and example report.
+
 ## [0.1.0] — 2026-11-19
 
 The first tagged release of VerumTrade: an open-source, multi-agent LLM framework for stock

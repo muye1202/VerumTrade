@@ -6,7 +6,7 @@ and contributions of either flavour — research ideas or engineering fixes — 
 welcome.
 
 > ⚠️ **Reminder:** Verumtrade is a research and educational tool, not financial
-> advice. See the [Disclaimer](README.md#-disclaimer).
+> advice. See the [Disclaimer](README.md#%EF%B8%8F-disclaimer).
 
 ## Ways to contribute
 
